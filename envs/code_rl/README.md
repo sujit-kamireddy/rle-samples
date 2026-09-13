@@ -12,6 +12,7 @@ covers what's specific to code.
 | `models.py` | `CodeAction` (`code_text: str`), `CodeObservation` (`messages`, `starter_code`, `problem_id`). |
 | `server/code_rl_environment.py` | `CodeRLEnvironment`: `reset()` picks a DeepCoder-style competitive-programming problem, `step()` extracts a fenced ` ```python ``` ` block and grades it with `code_grading.check_correctness`, which executes the submission in-process. Single-turn: `step()` always returns `done=True`. |
 | `server/app.py` | FastAPI app (`create_fastapi_app(...)` from `openenv.core.env_server.http_server`), served with `uvicorn`. One environment instance, built at startup and shared by both handlers. |
+| `rle.toml` | Host-agnostic RLE identity and control-plane interface (`Gym` / `OpenEnv`). |
 | `build_dataset.py` | Bakes `train.jsonl`/`validation.jsonl` at `docker build` time from the same DeepCoder-Preview loader `code_env.py` uses locally. |
 | `Dockerfile` | Two-stage build: the `dataset` stage bakes the dataset, the runtime stage installs only what the server imports (`openenv`, `numpy`) and runs it. No `loom_cookbook` install. Self-contained: no sandbox service, no egress. |
 
@@ -64,6 +65,10 @@ step {"code_text": "a, b = map(int, input().split())\nprint(a + b)"}
 Needs Docker running and the `azd` RLE extension (see
 [`../README.md`](../README.md)).
 
+The checked-in manifest declares the initial `code_rl` release as version
+`1.0.0`. Update its name when copying this source outside `azd ai rle init`,
+and update its version before publishing a subsequent release.
+
 ## Train against it
 
 The recipe only talks to a *published* environment — publish this one
@@ -74,5 +79,5 @@ it, so each rollout leases its own instance:
 uv run python -m loom_cookbook.recipes.code_rl.train_azure \
     project_endpoint="https://<your-project>.services.ai.azure.com/api/projects/<name>" \
     model_name="Qwen/Qwen3-32B" tokenizer_name="Qwen/Qwen3-32B" \
-    use_rle=true rle_env_name="code-rl" rle_max_active_instances=32
+    use_rle=true rle_env_name="code_rl" rle_max_active_instances=32
 ```

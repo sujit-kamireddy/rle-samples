@@ -13,6 +13,7 @@ covers what's specific to math.
 | `grading/` | `safe_grade` (sympy by default) and `extract_boxed`/`math_grading.py`, vendored from `loom_cookbook/recipes/math_rl/`. `tests/test_env_grading_parity.py` pins these copies against the recipe originals. |
 | `server/math_rl_environment.py` | `MathRLEnvironment`: `reset()` picks a Hendrycks MATH problem, `step()` extracts `\boxed{...}` from the submission and reference, grades with the vendored `grading.safe_grade`. Single-turn: `step()` always returns `done=True`. |
 | `server/app.py` | FastAPI app (`create_fastapi_app(...)` from `openenv.core.env_server.http_server`), served with `uvicorn`. One environment instance, built at startup and shared by both handlers. |
+| `rle.toml` | Host-agnostic RLE identity and control-plane interface (`Gym` / `OpenEnv`). |
 | `dataset_source.py` | Vendored Hendrycks MATH loader (`HuggingFaceH4/MATH-500` for validation, the full MATH train split for train), extracted from `math_env.py`. |
 | `build_dataset.py` | Bakes `train.jsonl`/`validation.jsonl` at `docker build` time from `dataset_source.py`. |
 | `Dockerfile` | Two-stage build: the `dataset` stage installs only `datasets` to bake the dataset; the runtime stage installs only what the server imports (`openenv`, `sympy`, `pylatexenc`) and runs it. No `loom_cookbook` install. |
@@ -49,6 +50,10 @@ step {"answer_text": "The answer is \\boxed{5}"}
 Needs Docker running and the `azd` RLE extension (see
 [`../README.md`](../README.md)).
 
+The checked-in manifest declares the initial `math_rl` release as version
+`1.0.0`. Update its name when copying this source outside `azd ai rle init`,
+and update its version before publishing a subsequent release.
+
 ## Train against it
 
 The recipe only talks to a *published* environment — publish this one
@@ -59,5 +64,5 @@ it, so each rollout leases its own instance:
 uv run python -m loom_cookbook.recipes.math_rl.train_azure \
     project_endpoint="https://<your-project>.services.ai.azure.com/api/projects/<name>" \
     model_name="Qwen/Qwen3-32B" tokenizer_name="Qwen/Qwen3-32B" env=math \
-    use_rle=true rle_env_name="math-rl" rle_max_active_instances=32
+    use_rle=true rle_env_name="math_rl" rle_max_active_instances=32
 ```
