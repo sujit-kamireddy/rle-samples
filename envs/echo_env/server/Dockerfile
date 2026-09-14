@@ -28,9 +28,7 @@ RUN if [ -n "${PIP_FALLBACK_INDEX_URL}" ] && \
     fi; \
     rm -rf /tmp/idxprobe; \
     pip install --no-cache-dir uv && \
-    uv pip install --system --no-cache \
-        "openenv==0.3.1" "fastapi>=0.115.0" "pydantic>=2.0.0" \
-        "uvicorn>=0.24.0" "requests>=2.31.0"
+    uv pip install --system --no-cache "openenv==0.3.1"
 
 COPY . /app/env
 

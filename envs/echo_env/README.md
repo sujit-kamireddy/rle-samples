@@ -23,8 +23,6 @@ See [`../../README.md`](../../README.md) for the general RLE contract.
 | `server/app.py` | OpenEnv-compatible FastAPI server with HTTP and WebSocket support for MCP actions. |
 | `server/Dockerfile` | Dataset-free runtime image that installs OpenEnv and server dependencies only. |
 | `rle.toml` | Host-agnostic RLE identity and control-plane interface (`Gym` / `OpenEnv`). |
-| `client.py` | Optional `EchoEnv` Python client built on OpenEnv's `MCPToolClient`. |
-| `openenv.yaml` | OpenEnv source metadata for the environment. |
 
 ## MCP tool contract
 
