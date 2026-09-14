@@ -4,8 +4,8 @@ Self-hosted, OpenEnv-compatible environment for
 [`code_rl`](../../loom_cookbook/recipes/code_rl/README.md). It exposes the
 standard OpenEnv `reset` and `step` lifecycle, so you can iterate locally with
 your own OpenEnv-compatible agent before publishing an environment version.
-See [`../README.md`](../README.md) for the general contract; this file only
-covers what's specific to code.
+See [`../../README.md`](../../README.md) for the general contract; this file
+only covers what's specific to code.
 
 ## What's here
 
