@@ -1,8 +1,10 @@
 # `code_rl` OpenEnv environment
 
-Self-hosted OpenEnv environment for
-[`code_rl`](../../loom_cookbook/recipes/code_rl/README.md). See
-[`../README.md`](../README.md) for the general contract; this file only
+Self-hosted, OpenEnv-compatible environment for
+[`code_rl`](../../loom_cookbook/recipes/code_rl/README.md). It exposes the
+standard OpenEnv `reset` and `step` lifecycle, so you can iterate locally with
+your own OpenEnv-compatible agent before publishing an environment version.
+See [`../README.md`](../README.md) for the general contract; this file only
 covers what's specific to code.
 
 ## What's here
@@ -10,7 +12,7 @@ covers what's specific to code.
 | File | Purpose |
 | --- | --- |
 | `models.py` | `CodeAction` (`code_text: str`), `CodeObservation` (`messages`, `starter_code`, `problem_id`). |
-| `server/code_rl_environment.py` | `CodeRLEnvironment`: `reset()` picks a DeepCoder-style competitive-programming problem, `step()` extracts a fenced ` ```python ``` ` block and grades it with `code_grading.check_correctness`, which executes the submission in-process. Single-turn: `step()` always returns `done=True`. |
+| `server/code_rl_environment.py` | `CodeRLEnvironment`: `reset()` picks a DeepCoder-style competitive-programming problem. `step()` supports `check_solution` tool calls, then grades a fenced ` ```python ``` ` final response with `code_grading.check_correctness`. |
 | `server/app.py` | FastAPI app (`create_fastapi_app(...)` from `openenv.core.env_server.http_server`), served with `uvicorn`. One environment instance, built at startup and shared by both handlers. |
 | `rle.toml` | Host-agnostic RLE identity and control-plane interface (`Gym` / `OpenEnv`). |
 | `data/` | Checked-in, gzip-compressed snapshot with 900 training tasks and 100 validation tasks, plus provenance. Each task retains at most three complete test cases and 12 KiB of test input/output. |
@@ -53,7 +55,8 @@ cd envs/code_rl
 azd ai rle run
 ```
 
-Builds this Dockerfile and opens a local playground at the printed URL.
+Builds this Dockerfile, starts an OpenEnv-compatible local runtime at the
+printed URL, and opens a local playground.
 
 > **Compact sample data:** The image includes a reproducible 1,000-task
 > DeepCoder-Preview snapshot (900 training and 100 validation tasks), so the
@@ -87,11 +90,20 @@ The checked-in manifest declares the initial `code_rl` release as version
 `1.0.0`. Update its name when copying this source outside `azd ai rle init`,
 and update its version before publishing a subsequent release.
 
-## Iterate, run, publish, and invoke
+## Iterate with your agent, run, publish, and invoke
 
-1. **Iterate and run locally.** Edit the environment, then build it and open
-   an interactive local `rle>` shell. Add `--watch` to rebuild and restart
-   the local container after source changes.
+Your agent can use the same OpenEnv lifecycle as the local playground:
+send `reset`, use the returned `messages`, `starter_code`, and `problem_id`
+to construct a `CodeAction`, then send that action to `step`. `CodeAction`
+accepts a fenced Python `code_text`, plus optional `tool_calls` and
+`problem_id`.
+
+1. **Iterate locally with your agent.** Edit the environment or your agent,
+   then start the local runtime with `--watch`. Point your
+   OpenEnv-compatible agent at the URL printed by the command. It rebuilds
+   and restarts the container when the environment source changes; use the
+   `rle>` shell or playground for manual smoke tests alongside your agent.
+   Reconnect the agent and begin a new episode with `reset` after a restart.
 
    ```bash
    azd ai rle run --watch
