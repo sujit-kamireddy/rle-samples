@@ -13,8 +13,10 @@ covers what's specific to code.
 | `server/code_rl_environment.py` | `CodeRLEnvironment`: `reset()` picks a DeepCoder-style competitive-programming problem, `step()` extracts a fenced ` ```python ``` ` block and grades it with `code_grading.check_correctness`, which executes the submission in-process. Single-turn: `step()` always returns `done=True`. |
 | `server/app.py` | FastAPI app (`create_fastapi_app(...)` from `openenv.core.env_server.http_server`), served with `uvicorn`. One environment instance, built at startup and shared by both handlers. |
 | `rle.toml` | Host-agnostic RLE identity and control-plane interface (`Gym` / `OpenEnv`). |
-| `build_dataset.py` | Bakes `train.jsonl`/`validation.jsonl` at `docker build` time from the same DeepCoder-Preview loader `code_env.py` uses locally. |
-| `Dockerfile` | Two-stage build: the `dataset` stage bakes the dataset, the runtime stage installs only what the server imports (`openenv`, `numpy`) and runs it. No `loom_cookbook` install. Self-contained: no sandbox service, no egress. |
+| `data/` | Checked-in, gzip-compressed snapshot with 900 training tasks and 100 validation tasks, plus provenance. Each task retains at most three complete test cases and 12 KiB of test input/output. |
+| `tools/generate_compact_dataset.py` | Maintainer utility that regenerates the compact snapshot from the revision-pinned DeepCoder-Preview source. |
+| `build_dataset.py` | Optional maintainer utility for generating a larger dataset from the upstream corpus. It is not run during normal image builds. |
+| `Dockerfile` | Runtime-only image that copies the compact snapshot and installs only what the server imports (`openenv`, `numpy`). No Hugging Face data download, `loom_cookbook`, sandbox service, or runtime egress. |
 
 ## Executing submitted code
 
@@ -33,7 +35,7 @@ passing solution — but this environment disables `run_test`'s
 `reliability_guard()` step, since that guard permanently mutates process
 state and is only safe in the throwaway subprocess it was designed for.
 
-## Row schema (`train.jsonl`/`validation.jsonl`)
+## Row schema (`train.jsonl.gz`/`validation.jsonl.gz`)
 
 ```json
 {
@@ -55,10 +57,11 @@ azd ai rle run
 
 Builds this Dockerfile and opens a local playground at the printed URL.
 
-> **First build duration:** The initial build downloads about 7.8 GB of
-> Hugging Face parquet data while it bakes the training and validation files.
-> Expect this step to take roughly 10 minutes on a typical connection. Later
-> builds reuse the Docker Hugging Face cache unless it is cleared.
+> **Compact sample data:** The image includes a reproducible 1,000-task
+> DeepCoder-Preview snapshot (900 training and 100 validation tasks), so the
+> normal build does not download Hugging Face data. It intentionally retains
+> at most three complete test cases and 12 KiB of test input/output per task.
+> It is for trying the RLE experience, not benchmarking model quality.
 
 Validate the environment contract right there:
 

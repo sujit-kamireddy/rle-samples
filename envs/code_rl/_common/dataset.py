@@ -1,15 +1,13 @@
-"""JSONL dataset loading + episode-index picking shared by every recipe's
-OpenEnv server.
+"""JSONL dataset loading + episode-index picking for the OpenEnv server.
 
-Each recipe's ``build_dataset.py`` bakes ``train.jsonl``/``validation.jsonl``
-into the Docker image at build time (see ``envs/README.md``, "Datasets are
-baked in at build time, not downloaded per instance"). At server start, the
-environment reads that same baked file straight off local disk -- no
-network access, no per-instance download.
+The sample ships a compact, gzip-compressed ``train.jsonl``/``validation.jsonl``
+snapshot. At server start, the environment reads it from local disk -- no
+network access or per-instance download.
 """
 
 from __future__ import annotations
 
+import gzip
 import json
 import random
 from pathlib import Path
@@ -18,7 +16,9 @@ from pathlib import Path
 def load_jsonl(path: str | Path) -> list[dict]:
     """Read a JSONL file (one JSON object per line) into a list of dicts."""
     rows = []
-    with open(path, encoding="utf-8") as f:
+    path = Path(path)
+    opener = gzip.open if path.suffix == ".gz" else open
+    with opener(path, "rt", encoding="utf-8") as f:
         for line in f:
             line = line.strip()
             if line:
@@ -47,7 +47,7 @@ class EpisodePicker:
 
     def __init__(self, rows: list[dict]):
         if not rows:
-            raise ValueError("dataset is empty -- did build_dataset.py run at image build time?")
+            raise ValueError("dataset is empty -- the compact snapshot may be missing or invalid")
         self._rows = rows
         # Shuffled once, with a fixed internal seed, at load time -- not
         # reseeded per pick() call, and not derived from any seed a caller

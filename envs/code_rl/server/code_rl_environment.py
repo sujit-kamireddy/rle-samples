@@ -119,18 +119,21 @@ class CodeRLEnvironment(Environment[CodeAction, CodeObservation, State]):
         validation_dataset_path: Optional[str] = None,
     ):
         super().__init__()
-        dataset_path = dataset_path or os.environ.get("CODE_RL_DATASET_PATH", "train.jsonl")
+        default_dataset_path = Path(__file__).resolve().parents[1] / "data" / "train.jsonl.gz"
+        dataset_path = dataset_path or os.environ.get("CODE_RL_DATASET_PATH", str(default_dataset_path))
         self._rows = EpisodePicker(load_jsonl(dataset_path))
         # Resolved lazily (see _validation_rows()), not loaded here: most
         # callers (including every existing test) construct this with only
         # a train file on disk and never request split="validation", and
         # eagerly loading here would make that an unconditional
-        # FileNotFoundError. Defaults to a sibling "validation.jsonl" next
-        # to dataset_path, matching where envs/code_rl/build_dataset.py and
-        # the Dockerfile bake it (see the module docstring on validation).
+        # FileNotFoundError. Defaults to the matching sibling validation file
+        # for either plain JSONL or the checked-in gzip snapshot.
+        default_validation_name = (
+            "validation.jsonl.gz" if str(dataset_path).endswith(".gz") else "validation.jsonl"
+        )
         self._validation_dataset_path = validation_dataset_path or os.environ.get(
             "CODE_RL_VALIDATION_DATASET_PATH",
-            str(Path(dataset_path).with_name("validation.jsonl")),
+            str(Path(dataset_path).with_name(default_validation_name)),
         )
         self._validation_rows: Optional[EpisodePicker] = None
         self._grading_timeout = int(os.environ.get("CODE_RL_GRADING_TIMEOUT", grading_timeout))
@@ -150,10 +153,10 @@ class CodeRLEnvironment(Environment[CodeAction, CodeObservation, State]):
     def _rows_for_split(self, split: str) -> EpisodePicker:
         """Resolve which baked dataset file a ``reset()`` picks from.
 
-        ``split="validation"`` picks from ``validation.jsonl`` (loaded lazily
-        and cached on first use) instead of the training file -- see the
-        module docstring: without this, "validation" metrics were actually
-        computed against different rows of the *same* training file.
+        ``split="validation"`` picks from the matching validation JSONL
+        snapshot (loaded lazily and cached on first use) instead of the
+        training file. Without this, validation metrics would be computed
+        against different rows of the same training file.
         """
         if split == "train":
             return self._rows
@@ -350,4 +353,3 @@ class CodeRLEnvironment(Environment[CodeAction, CodeObservation, State]):
     @property
     def state(self) -> State:
         return self._state
-

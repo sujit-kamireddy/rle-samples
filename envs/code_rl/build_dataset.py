@@ -1,10 +1,9 @@
-"""Bake ``train.jsonl``/``validation.jsonl`` for the ``code_rl`` RLE world.
+"""Generate ``train.jsonl``/``validation.jsonl`` from the upstream corpus.
 
-Run **once, at ``docker build`` time** (see ``Dockerfile``) -- never inside
-the running container; see ``envs/README.md``. Uses ``load_deepcoder_tasks``
-from ``envs/code_rl/dataset_source.py`` -- a copy of the recipe's task loader
-(DeepCoder-Preview dataset, normalized test cases), vendored so this image
-installs no ``loom_cookbook``.
+This is a maintainer utility, not part of the Docker build. Normal sample
+images use the compact checked-in snapshot under ``data/``. It uses
+``load_deepcoder_tasks`` from ``envs/code_rl/dataset_source.py`` -- a copy of
+the recipe's task loader (DeepCoder-Preview dataset, normalized test cases).
 """
 
 from __future__ import annotations

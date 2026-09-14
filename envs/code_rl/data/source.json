@@ -1,0 +1,36 @@
+{
+  "files": {
+    "train.jsonl.gz": {
+      "bytes": 570341,
+      "rows": 900,
+      "sha256": "f227425dc9320047a545914de7f283245d15600aca578b72a3befd422c20eb83"
+    },
+    "validation.jsonl.gz": {
+      "bytes": 54072,
+      "rows": 100,
+      "sha256": "6b140580fc3669a2ff1d93d0ab224765f4351ded3892065bab1a85d76023222a"
+    }
+  },
+  "format_version": 1,
+  "selection": {
+    "max_test_bytes_per_task": 12288,
+    "max_tests_per_task": 3,
+    "seed": 20260914,
+    "train": {
+      "config": "taco",
+      "rows": 900,
+      "split": "train"
+    },
+    "validation": {
+      "config": "codeforces",
+      "rows": 100,
+      "split": "test"
+    }
+  },
+  "source": {
+    "dataset": "agentica-org/DeepCoder-Preview-Dataset",
+    "license": "MIT",
+    "revision": "177913a7bd43791646ef6a43645caa3c871ab3db",
+    "url": "https://huggingface.co/datasets/agentica-org/DeepCoder-Preview-Dataset"
+  }
+}

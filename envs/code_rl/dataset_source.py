@@ -12,9 +12,10 @@ import json
 import logging
 import random
 from dataclasses import dataclass
-from typing import Any, Literal, cast
+from typing import TYPE_CHECKING, Any, Literal, cast
 
-from datasets import Dataset, concatenate_datasets, load_dataset, load_dataset_builder
+if TYPE_CHECKING:
+    from datasets import Dataset
 
 from envs.code_rl.grading.code_grading import taco_to_lcb_format
 from envs.code_rl.grading.lcb_utils import fetch_live_code_bench_system_prompt
@@ -38,7 +39,9 @@ class DeepcoderTask:
     starter_code: str | None = None
 
 
-def _load_deepcoder_split(split: Literal["train", "test"]) -> Dataset:
+def _load_deepcoder_split(split: Literal["train", "test"]) -> "Dataset":
+    from datasets import Dataset, concatenate_datasets, load_dataset
+
     logger.info("Loading DeepCoder dataset split: %s", split)
     if split == "train":
         names = ("primeintellect", "taco", "lcbv5")
@@ -147,6 +150,8 @@ def _row_to_task(row: dict[str, Any]) -> DeepcoderTask | None:
 
 def _config_sizes(split: Literal["train", "test"]) -> dict[str, int]:
     """Row count per config, from dataset metadata -- no rows are downloaded."""
+    from datasets import load_dataset_builder
+
     sizes: dict[str, int] = {}
     for name in _SPLIT_CONFIGS[split]:
         builder = load_dataset_builder(_DATASET_ID, name=name)
@@ -180,6 +185,8 @@ def _allocate(sizes: dict[str, int], wanted: int) -> dict[str, int]:
 
 def _stream_tasks(name: str, split: str, seed: int, take: int) -> list[DeepcoderTask]:
     """Pull rows from one config until ``take`` usable tasks are collected."""
+    from datasets import load_dataset
+
     if take <= 0:
         return []
     stream = load_dataset(_DATASET_ID, name=name, split=split, streaming=True)
@@ -231,7 +238,7 @@ def load_deepcoder_tasks(
         random.Random(seed).shuffle(tasks)
         return tasks[:max_tasks]
 
-    ds: Dataset = _load_deepcoder_split(split)
+    ds = _load_deepcoder_split(split)
     if split == "train":
         ds = ds.shuffle(seed=seed)
 
@@ -243,4 +250,3 @@ def load_deepcoder_tasks(
             tasks.append(task)
 
     return tasks
-
