@@ -86,3 +86,34 @@ Needs Docker running and the `azd` RLE extension (see
 The checked-in manifest declares the initial `code_rl` release as version
 `1.0.0`. Update its name when copying this source outside `azd ai rle init`,
 and update its version before publishing a subsequent release.
+
+## Iterate, run, publish, and invoke
+
+1. **Iterate and run locally.** Edit the environment, then build it and open
+   an interactive local `rle>` shell. Add `--watch` to rebuild and restart
+   the local container after source changes.
+
+   ```bash
+   azd ai rle run --watch
+   ```
+
+2. **Publish an immutable version.** Set your Foundry project endpoint and
+   Azure Container Registry endpoint, then publish the name and version from
+   `rle.toml`. The command builds the image, pushes it to the registry, and
+   registers the environment.
+
+   ```bash
+   export FOUNDRY_PROJECT_ENDPOINT="https://<account>.services.ai.azure.com/api/projects/<project>"
+   export AZURE_CONTAINER_REGISTRY_ENDPOINT="<registry>.azurecr.io"
+   azd ai rle publish
+   ```
+
+3. **Invoke the published environment.** With
+   `FOUNDRY_PROJECT_ENDPOINT` still set, `invoke` reads `rle.name` and
+   `rle.version` from `rle.toml`, starts a remote runtime, and opens the
+   interactive `rle>` shell. Use the same `reset` and `step` commands as the
+   local shell.
+
+   ```bash
+   azd ai rle invoke
+   ```
