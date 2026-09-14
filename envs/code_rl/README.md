@@ -54,6 +54,12 @@ azd ai rle run
 ```
 
 Builds this Dockerfile and opens a local playground at the printed URL.
+
+> **First build duration:** The initial build downloads about 7.8 GB of
+> Hugging Face parquet data while it bakes the training and validation files.
+> Expect this step to take roughly 10 minutes on a typical connection. Later
+> builds reuse the Docker Hugging Face cache unless it is cleared.
+
 Validate the environment contract right there:
 
 ```
