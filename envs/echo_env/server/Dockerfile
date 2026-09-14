@@ -4,78 +4,40 @@
 # This source code is licensed under the BSD-style license found in the
 # LICENSE file in the root directory of this source tree.
 
-# Multi-stage build using openenv-base
-# This Dockerfile is flexible and works for both:
-# - In-repo environments (with local src/core)
-# - Standalone environments (with openenv from pip)
-# The build script (openenv build) handles context detection and sets appropriate build args.
+# `echo_env` has no task dataset. This image installs only the OpenEnv MCP
+# runtime and its server dependencies; no data is downloaded or baked.
+ARG PIP_INDEX_URL=https://pypi.org/simple
+ARG UV_DEFAULT_INDEX=${PIP_INDEX_URL}
+ARG PIP_FALLBACK_INDEX_URL=https://packagefeedproxy.microsoft.io/pypi/simple/
 
-ARG BASE_IMAGE=ghcr.io/huggingface/openenv-base:latest
-FROM ${BASE_IMAGE} AS builder
+FROM python:3.11-slim
 
-WORKDIR /app
+ARG PIP_INDEX_URL
+ARG UV_DEFAULT_INDEX
+ARG PIP_FALLBACK_INDEX_URL
 
-# Build argument to control whether we're building standalone or in-repo
-ARG BUILD_MODE=in-repo
-
-# Copy environment code (always at root of build context)
-COPY . /app/env
-
-# For in-repo builds, openenv is already in the pyproject.toml dependencies
-# For standalone builds, openenv will be installed from pip via pyproject.toml
 WORKDIR /app/env
 
-# Ensure uv is available (for local builds where base image lacks it)
-RUN if ! command -v uv >/dev/null 2>&1; then \
-        curl -LsSf https://astral.sh/uv/install.sh | sh && \
-        mv /root/.local/bin/uv /usr/local/bin/uv && \
-        mv /root/.local/bin/uvx /usr/local/bin/uvx; \
-    fi
+# Keep local `azd ai rle run` and `publish` usable where public PyPI cannot
+# be reached. The fallback affects dependency installation only.
+RUN if [ -n "${PIP_FALLBACK_INDEX_URL}" ] && \
+       ! pip download --no-deps --quiet --dest /tmp/idxprobe six >/dev/null 2>&1; then \
+        echo "Primary index unreachable; falling back to ${PIP_FALLBACK_INDEX_URL}"; \
+        export PIP_INDEX_URL="${PIP_FALLBACK_INDEX_URL}"; \
+        export UV_DEFAULT_INDEX="${PIP_FALLBACK_INDEX_URL}"; \
+    fi; \
+    rm -rf /tmp/idxprobe; \
+    pip install --no-cache-dir uv && \
+    uv pip install --system --no-cache \
+        "openenv==0.3.1" "fastapi>=0.115.0" "pydantic>=2.0.0" \
+        "uvicorn>=0.24.0" "requests>=2.31.0"
 
-# Install git for building from git repos (build-time only)
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    git \
-    && rm -rf /var/lib/apt/lists/*
+COPY . /app/env
 
-# Install dependencies using uv sync
-# First pass: install dependencies without the project (for better caching)
-# Second pass: install the project itself
-RUN --mount=type=cache,target=/root/.cache/uv \
-    if [ -f uv.lock ]; then \
-        uv sync --frozen --no-install-project --no-editable; \
-    else \
-        uv sync --no-install-project --no-editable; \
-    fi
+ENV PYTHONPATH=/app/env
 
-RUN --mount=type=cache,target=/root/.cache/uv \
-    if [ -f uv.lock ]; then \
-        uv sync --frozen --no-editable; \
-    else \
-        uv sync --no-editable; \
-    fi
+# Fail at build time, not at the first rollout.
+RUN python -c "import server.app as m; print('echo_env OpenEnv server OK:', m.app)"
 
-# Final runtime stage
-FROM ${BASE_IMAGE}
-
-WORKDIR /app
-
-# Copy the virtual environment from builder
-COPY --from=builder /app/env/.venv /app/.venv
-
-# Copy the environment code
-COPY --from=builder /app/env /app/env
-
-# Set PATH to use the virtual environment
-ENV PATH="/app/.venv/bin:$PATH"
-
-# Set PYTHONPATH so imports work correctly
-ENV PYTHONPATH="/app/env:$PYTHONPATH"
-ENV ENABLE_WEB_INTERFACE=true
-
-# Health check using Python (more portable than curl/wget)
-HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')" || exit 1
-
-# Run the FastAPI server
-# The module path is constructed to work with the /app/env structure
-CMD ["sh", "-c", "cd /app/env && uvicorn server.app:app --host 0.0.0.0 --port 8000"]
+EXPOSE 8000
+CMD ["uvicorn", "server.app:app", "--host", "0.0.0.0", "--port", "8000"]

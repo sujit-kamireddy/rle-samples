@@ -1,214 +1,112 @@
----
-title: Echo Environment Server
-emoji: 🔊
-colorFrom: blue
-colorTo: blue
-sdk: docker
-pinned: false
-app_port: 8000
-base_path: /web
-tags:
-  - openenv
----
+# Copyright (c) Meta Platforms, Inc. and affiliates.
+# All rights reserved.
+#
+# This source code is licensed under the BSD-style license found in the
+# LICENSE file in the root directory of this source tree.
 
-# Echo Environment
+# `echo_env` OpenEnv MCP environment
 
-A simple test environment that echoes back messages. Perfect for testing the env APIs as well as demonstrating environment usage patterns.
+Self-hosted, OpenEnv-compatible MCP environment that demonstrates an agent
+discovering and calling tools. It has no task dataset: each tool call operates
+only on the message supplied in that action. Use it to iterate locally with
+your own OpenEnv-compatible agent before publishing an environment version.
+See [`../../README.md`](../../README.md) for the general RLE contract.
 
-## Quick Start
+## What's here
 
-The simplest way to use the Echo environment is through the `EchoEnv` class. The client is **async by default**:
+| File | Purpose |
+| --- | --- |
+| `server/echo_environment.py` | `EchoEnvironment`, an `MCPEnvironment` exposing the `echo_message` and `echo_with_length` tools. |
+| `server/app.py` | OpenEnv-compatible FastAPI server with HTTP and WebSocket support for MCP actions. |
+| `server/Dockerfile` | Dataset-free runtime image that installs OpenEnv and server dependencies only. |
+| `rle.toml` | Host-agnostic RLE identity and control-plane interface (`Gym` / `OpenEnv`). |
+| `client.py` | Optional `EchoEnv` Python client built on OpenEnv's `MCPToolClient`. |
+| `openenv.yaml` | OpenEnv source metadata for the environment. |
 
-```python
-import asyncio
-from echo_env import CallToolAction, EchoEnv
+## MCP tool contract
 
-async def main():
-    # Create environment from Docker image
-    client = await EchoEnv.from_docker_image("echo-env:latest")
+| Tool | Arguments | Result |
+| --- | --- | --- |
+| `echo_message` | `{"message": "<text>"}` | The same text. |
+| `echo_with_length` | `{"message": "<text>"}` | `{"message": "<text>", "length": <character-count>}`. |
 
-    async with client:
-        await client.reset()
+An agent sends a `ListToolsAction` to discover the tool schemas, then a
+`CallToolAction` to invoke one. The JSON action forms are:
 
-        # Send multiple messages
-        messages = ["Hello, World!", "Testing echo", "Final message"]
-
-        for msg in messages:
-            result = await client.step(
-                CallToolAction(
-                    tool_name="echo_message",
-                    arguments={"message": msg},
-                )
-            )
-            print(f"Sent: '{msg}'")
-            print(f"  → Echoed: '{result.observation.result}'")
-            print(f"  → Reward: {result.reward}")
-
-asyncio.run(main())
+```json
+{"type":"list_tools"}
 ```
 
-For **synchronous usage**, use the `.sync()` wrapper:
-
-```python
-from echo_env import CallToolAction, EchoEnv
-
-with EchoEnv(base_url="http://localhost:8000").sync() as client:
-    client.reset()
-    result = client.step(
-        CallToolAction(
-            tool_name="echo_message",
-            arguments={"message": "Hello!"},
-        )
-    )
-    print(result.observation.result)
+```json
+{"type":"call_tool","tool_name":"echo_message","arguments":{"message":"Hello"}}
 ```
 
-## Using the Web Playground
-
-Start the Echo server with the optional web interface enabled:
+## Build and run locally
 
 ```bash
-ENABLE_WEB_INTERFACE=true PYTHONPATH=src:envs uv run python -m echo_env.server.app
+cd envs/echo_env
+azd ai rle run --dockerfile server/Dockerfile
 ```
 
-Open `http://localhost:8000/web/`, click **Reset**, and enter:
+This starts an OpenEnv-compatible local runtime at the printed URL and opens a
+local playground. There is no task dataset to download or bake; the image
+build only retrieves its base image and Python dependencies.
+
+### Copy-paste smoke test
+
+After `azd ai rle run` opens the `rle>` shell, enter these commands
+separately. Do not type the `rle>` prompt itself.
 
 ```text
-Type: call_tool
-Tool Name: echo_message
-Arguments:
-{
-  "message": "Hello from the playground!"
-}
+reset {}
+
+step {"type":"list_tools"}
+
+step {"type":"call_tool","tool_name":"echo_with_length","arguments":{"message":"OpenEnv"}}
 ```
 
-The `Type` field is populated automatically and is read-only. The `Arguments`
-field accepts a JSON object. For example, `echo_with_length` can be called with:
+The final response includes the structured result
+`{"message":"OpenEnv","length":7}` and remains `done: false`.
 
-```json
-{
-  "message": "OpenEnv"
-}
-```
+Needs Docker running and the `azd` RLE extension.
 
-The response includes:
+The checked-in manifest declares the initial `echo_env` release as version
+`1.0.0`. Update its name when copying this source outside `azd ai rle init`,
+and update its version before publishing a subsequent release.
 
-```json
-{
-  "message": "OpenEnv",
-  "length": 7
-}
-```
+## Iterate with your agent, run, publish, and invoke
 
-Malformed JSON is rejected in the form. A valid object that omits a required
-tool argument is submitted and returns the corresponding tool validation error.
+Your OpenEnv-compatible agent can drive the same MCP lifecycle as the local
+playground: optionally send `reset`, send `{"type":"list_tools"}` to discover
+the available tools, then send a `CallToolAction` with the tool name and
+arguments.
 
-The `EchoEnv.from_docker_image()` method handles:
-- Starting the Docker container
-- Waiting for the server to be ready
-- Connecting to the environment
-- Container cleanup when the context manager exits
+1. **Iterate locally with your agent.** Edit the environment or your agent,
+   then start the local runtime with `--watch`. Point the agent at the URL
+   printed by the command. It rebuilds and restarts the container when the
+   environment source changes; reconnect the agent after a restart.
 
-## Building the Docker Image
+   ```bash
+   azd ai rle run --watch --dockerfile server/Dockerfile
+   ```
 
-Before using the environment, you need to build the Docker image:
+2. **Publish an immutable version.** Set your Foundry project endpoint and
+   Azure Container Registry endpoint, then publish the name and version from
+   `rle.toml`. The command builds the image, pushes it to the registry, and
+   registers the environment.
 
-```bash
-# From project root
-docker build -t echo-env:latest -f envs/echo_env/server/Dockerfile .
-```
+   ```bash
+   export FOUNDRY_PROJECT_ENDPOINT="https://<account>.services.ai.azure.com/api/projects/<project>"
+   export AZURE_CONTAINER_REGISTRY_ENDPOINT="<registry>.azurecr.io"
+   azd ai rle publish --dockerfile server/Dockerfile
+   ```
 
-## Environment Details
+3. **Invoke the published environment.** With
+   `FOUNDRY_PROJECT_ENDPOINT` still set, `invoke` reads `rle.name` and
+   `rle.version` from `rle.toml`, starts a remote runtime, and opens the
+   interactive `rle>` shell. Use the same MCP action commands as the local
+   shell.
 
-### Tools
-- `echo_message(message)` - Echo the provided message
-- `echo_with_length(message)` - Echo the message and include its length
-
-### Observation
-**CallToolObservation**: Contains the tool result and metadata
-- `result` - The tool return value
-- `reward` (float) - Reward returned by the environment
-- `done` (bool) - Always `False` for the echo environment
-- `metadata` (dict) - Additional info like step count
-
-### Reward
-The echo environment returns `0.0` reward for tool calls. It is intended as a
-minimal MCP integration example rather than a reward-shaping reference.
-
-## Advanced Usage
-
-### Connecting to an Existing Server
-
-If you already have an Echo environment server running, you can connect directly:
-
-```python
-from echo_env import CallToolAction, EchoEnv
-
-# Async usage
-async with EchoEnv(base_url="http://localhost:8000") as client:
-    await client.reset()
-    result = await client.step(
-        CallToolAction(
-            tool_name="echo_message",
-            arguments={"message": "Hello!"},
-        )
-    )
-
-# Sync usage
-with EchoEnv(base_url="http://localhost:8000").sync() as client:
-    client.reset()
-    result = client.step(
-        CallToolAction(
-            tool_name="echo_message",
-            arguments={"message": "Hello!"},
-        )
-    )
-```
-
-Note: When connecting to an existing server, closing the client will NOT stop the server.
-
-## Development & Testing
-
-### Direct Environment Testing
-
-Test the environment logic directly without starting the HTTP server:
-
-```bash
-# From the server directory
-python3 envs/echo_env/server/test_echo_env.py
-```
-
-This verifies that:
-- Environment resets correctly
-- Step executes actions properly
-- State tracking works
-- Rewards are calculated correctly
-
-### Running the Full Example
-
-Run the complete example that demonstrates the full workflow:
-
-```bash
-python3 examples/local_echo_env.py
-```
-
-This example shows:
-- Creating an environment from a Docker image
-- Resetting and stepping through the environment
-- Automatic cleanup with `close()`
-
-## Project Structure
-
-```
-echo_env/
-├── __init__.py            # Module exports
-├── README.md              # This file
-├── client.py              # EchoEnv client implementation
-├── models.py              # Action and Observation models
-└── server/
-    ├── __init__.py        # Server module exports
-    ├── echo_environment.py  # Core environment logic
-    ├── app.py             # FastAPI application
-    ├── test_echo_env.py   # Direct environment tests
-    └── Dockerfile         # Container image definition
-```
+   ```bash
+   azd ai rle invoke
+   ```
