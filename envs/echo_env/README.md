@@ -10,6 +10,9 @@ Self-hosted, OpenEnv-compatible MCP environment that demonstrates an agent
 discovering and calling tools. It has no task dataset: each tool call operates
 only on the message supplied in that action. Use it to iterate locally with
 your own OpenEnv-compatible agent before publishing an environment version.
+It is a RLE connectivity and protocol sanity test, not a training or
+evaluation environment. See [`code_rl`](../code_rl/README.md) or
+[`math_rl`](../math_rl/README.md) for tasksets with datasets and graders.
 See [`../../README.md`](../../README.md) for the general RLE contract.
 
 ## What's here
@@ -110,3 +113,66 @@ arguments.
    ```bash
    azd ai rle invoke
    ```
+
+## Use the published environment for SDK sanity testing
+
+`echo_env` deliberately has no task distribution, terminal success condition,
+reward signal, or grader. Its tool calls remain non-terminal (`done: false`).
+It is therefore not compatible with the training or task-quality evaluation
+loops used by `code_rl` and `math_rl`; do not use its echo output as an RL
+reward or evaluation metric.
+
+Use a published Echo version to verify that your project credentials, RLE
+environment registration, managed instance lease, and OpenEnv MCP actions work
+end to end. For the complete SDK contract, see the
+[RLE OpenEnv/Gym guide](https://aka.ms/rle).
+
+```bash
+export FOUNDRY_PROJECT_ENDPOINT="https://<account>.services.ai.azure.com/api/projects/<project>"
+export RLE_ENV_NAME="echo_env"
+export RLE_ENV_VERSION="1.0.0"
+
+pip install --force-reinstall \
+  "https://rle-onboarding-docs.orangeground-ba9696de.eastus2.azurecontainerapps.io/downloads/azure_ai_projects-2.6.0-py3-none-any.whl" \
+  azure-identity aiohttp
+```
+
+```python
+import os
+
+from azure.ai.projects import AIProjectClient
+from azure.identity import DefaultAzureCredential
+
+
+with DefaultAzureCredential() as credential:
+    with AIProjectClient(
+        endpoint=os.environ["FOUNDRY_PROJECT_ENDPOINT"],
+        credential=credential,
+        allow_preview=True,
+    ) as project_client:
+        with project_client.rle.get_openenv_client(
+            name=os.environ["RLE_ENV_NAME"],
+            version=os.environ["RLE_ENV_VERSION"],
+            max_active_instances=1,
+            instance_acquire_timeout=900,
+        ) as openenv_client:
+            with openenv_client.get_instance() as instance:
+                instance.reset()
+                tools = instance.step({"type": "list_tools"})
+                echo = instance.step(
+                    {
+                        "type": "call_tool",
+                        "tool_name": "echo_with_length",
+                        "arguments": {"message": "OpenEnv"},
+                    }
+                )
+
+                print(tools.observation)
+                print(echo.observation)  # Contains {"message": "OpenEnv", "length": 7}.
+                print(echo.done)  # False
+```
+
+The client contexts release the instance and instance group after the test.
+Move to [`code_rl`](../code_rl/README.md) or
+[`math_rl`](../math_rl/README.md) when you need a dataset-backed, graded
+environment for a trainer loop or evaluation.
