@@ -86,16 +86,3 @@ Needs Docker running and the `azd` RLE extension (see
 The checked-in manifest declares the initial `code_rl` release as version
 `1.0.0`. Update its name when copying this source outside `azd ai rle init`,
 and update its version before publishing a subsequent release.
-
-## Train against it
-
-The recipe only talks to a *published* environment — publish this one
-to your Foundry project (see [`../README.md`](../README.md)) and name
-it, so each rollout leases its own instance:
-
-```bash
-uv run python -m loom_cookbook.recipes.code_rl.train_azure \
-    project_endpoint="https://<your-project>.services.ai.azure.com/api/projects/<name>" \
-    model_name="Qwen/Qwen3-32B" tokenizer_name="Qwen/Qwen3-32B" \
-    use_rle=true rle_env_name="code_rl" rle_max_active_instances=32
-```
