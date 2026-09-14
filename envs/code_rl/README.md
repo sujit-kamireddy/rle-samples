@@ -14,7 +14,6 @@ covers what's specific to code.
 | `server/app.py` | FastAPI app (`create_fastapi_app(...)` from `openenv.core.env_server.http_server`), served with `uvicorn`. One environment instance, built at startup and shared by both handlers. |
 | `rle.toml` | Host-agnostic RLE identity and control-plane interface (`Gym` / `OpenEnv`). |
 | `data/` | Checked-in, gzip-compressed snapshot with 900 training tasks and 100 validation tasks, plus provenance. Each task retains at most three complete test cases and 12 KiB of test input/output. |
-| `tools/generate_compact_dataset.py` | Maintainer-only utility that regenerates the compact snapshot from the revision-pinned DeepCoder-Preview source. It is not run during normal image builds. |
 | `Dockerfile` | Runtime-only image that copies the compact snapshot and installs only what the server imports (`openenv`, `numpy`). No Hugging Face data download, `loom_cookbook`, sandbox service, or runtime egress. |
 
 ## Executing submitted code

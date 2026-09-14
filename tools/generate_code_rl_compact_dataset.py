@@ -22,7 +22,7 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
-REPOSITORY_ROOT = Path(__file__).resolve().parents[3]
+REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 if str(REPOSITORY_ROOT) not in sys.path:
     sys.path.insert(0, str(REPOSITORY_ROOT))
 
@@ -241,7 +241,7 @@ def main() -> None:
     parser.add_argument(
         "--out-dir",
         type=Path,
-        default=Path(__file__).resolve().parents[1] / "data",
+        default=REPOSITORY_ROOT / "envs" / "code_rl" / "data",
     )
     parser.add_argument("--train-count", type=int, default=900)
     parser.add_argument("--validation-count", type=int, default=100)

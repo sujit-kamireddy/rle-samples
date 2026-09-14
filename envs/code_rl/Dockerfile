@@ -12,8 +12,7 @@
 #
 # The compact, checked-in data snapshot contains 900 training tasks and 100
 # validation tasks. It avoids a multi-gigabyte Hugging Face download during
-# every developer build; `tools/generate_compact_dataset.py` is only a
-# maintainer utility for refreshing that snapshot.
+# every developer build.
 #
 # `step()` grades by calling the test runner directly, in-process, so the
 # image needs no sandbox service and no egress at run time.
