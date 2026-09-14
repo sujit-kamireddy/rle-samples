@@ -25,9 +25,10 @@ in the same process as the server. `run_test` executes the submission itself
 via `exec()` and enforces its own per-test wall-clock timeout with
 `signal.alarm`; there's no subprocess and no rlimits — a bad submission can
 crash or wedge the server. That's an accepted tradeoff, not an oversight:
-Foundry RLE gives every episode a fresh container, so losing one episode
-never costs shared capacity. Because `run_test` needs `signal.alarm`, grading
-must run on the server's main thread, blocking it for that request.
+Foundry RLE leases each rollout an isolated managed instance, so a failure is
+contained to that rollout rather than the trainer process. Because `run_test`
+needs `signal.alarm`, grading must run on the server's main thread, blocking
+it for that request.
 
 `check_correctness` builds on the same `lcb_utils.run_test` the local
 (`use_rle=False`) recipe path calls, so both paths agree on what counts as a
@@ -129,3 +130,126 @@ accepts a fenced Python `code_text`, plus optional `tool_calls` and
    ```bash
    azd ai rle invoke
    ```
+
+## Use the published environment in a trainer loop
+
+`azd ai rle run` is for iterating on the environment. A trainer connects only
+to a published RLE version: it owns policy sampling, trajectories, advantages,
+and optimization; RLE owns task selection, environment execution, grading, and
+the managed instance pool. See the [RLE OpenEnv/Gym guide](https://aka.ms/rle)
+for the complete SDK contract.
+
+Pin the environment that the run uses. The name and version must match the
+published `rle.toml`, not necessarily the defaults below if you renamed the
+sample while initializing it.
+
+```bash
+export FOUNDRY_PROJECT_ENDPOINT="https://<account>.services.ai.azure.com/api/projects/<project>"
+export RLE_ENV_NAME="code_rl"
+export RLE_ENV_VERSION="1.0.0"
+```
+
+Install the RLE-enabled `azure-ai-projects` wheel shown in the guide. The
+public PyPI build with the same package version does not expose the `rle`
+operation group.
+
+```bash
+pip install --force-reinstall \
+  "https://rle-onboarding-docs.orangeground-ba9696de.eastus2.azurecontainerapps.io/downloads/azure_ai_projects-2.6.0-py3-none-any.whl" \
+  azure-identity aiohttp
+```
+
+### Collect a code rollout with the SDK
+
+Create one `OpenEnvClient` for the training run, then lease one instance for
+each concurrent rollout. `policy.next_code_action()` below is the integration
+point for your renderer and current model weights: it returns a dictionary
+with `code_text` and, when the policy calls `check_solution`, optional
+`tool_calls`. Its terminal response must contain a fenced Python solution.
+
+```python
+import asyncio
+import os
+
+from azure.ai.projects.aio import AIProjectClient
+from azure.identity.aio import DefaultAzureCredential
+
+
+async def collect_rollout(openenv_client, policy, seed):
+    async with openenv_client.get_instance() as instance:
+        reset = await instance.reset(seed=seed, split="train")
+        observation = reset.observation
+        messages = list(observation["messages"])
+        problem_id = observation["problem_id"]
+        starter_code = observation.get("starter_code")
+        trajectory = []
+
+        while True:
+            action = await policy.next_code_action(messages, starter_code)
+            action["problem_id"] = problem_id
+            result = await instance.step(action)
+            trajectory.append(
+                {
+                    "messages": list(messages),
+                    "action": action,
+                    "reward": result.reward,
+                    "done": result.done,
+                    "metadata": result.metadata,
+                }
+            )
+            if result.done:
+                return trajectory, result.reward, result.metadata
+
+            # A non-terminal step contains new check_solution tool messages.
+            messages.extend(result.observation["messages"])
+
+
+async def collect_batch(policy):
+    concurrency = 32
+    async with DefaultAzureCredential() as credential:
+        async with AIProjectClient(
+            endpoint=os.environ["FOUNDRY_PROJECT_ENDPOINT"],
+            credential=credential,
+            allow_preview=True,
+        ) as project_client:
+            async with project_client.rle.get_openenv_client(
+                name=os.environ["RLE_ENV_NAME"],
+                version=os.environ["RLE_ENV_VERSION"],
+                max_active_instances=concurrency,
+                instance_acquire_timeout=900,
+            ) as openenv_client:
+                return await asyncio.gather(
+                    *(
+                        collect_rollout(openenv_client, policy, seed)
+                        for seed in range(concurrency)
+                    )
+                )
+```
+
+Feed each returned `(trajectory, reward, metadata)` into the existing trainer's
+advantage and loss calculation. Set `max_active_instances` to the number of
+rollouts you want in flight and within project quota; extra rollout requests
+wait for an instance. Use `split="validation"` with a distinct seed range for
+held-out evaluation. Closing the client context releases the run's instance
+group and its leases.
+
+### Use the Loom adapter
+
+The `loom_cookbook` recipes already implement the adapter between their model
+renderer and this environment. From a checkout with its RLE extra and the
+RLE-enabled SDK wheel installed, run:
+
+```bash
+pip install 'loom-cookbook[rle]'
+
+uv run python -m loom_cookbook.recipes.code_rl.train_azure \
+  project_endpoint="$FOUNDRY_PROJECT_ENDPOINT" \
+  model_name="Qwen/Qwen3-32B" tokenizer_name="Qwen/Qwen3-32B" \
+  use_rle=true rle_env_name="$RLE_ENV_NAME" \
+  rle_env_version="$RLE_ENV_VERSION" rle_max_active_instances=32
+```
+
+The recipe leases published RLE instances for rollout execution while its
+training session retains model state and performs optimization. Set
+`rle_project_endpoint` as well when the environment was published to a
+different Foundry project than the training session.
