@@ -5,16 +5,15 @@
 # recipes -- see `tests/test_common_parity.py`), so this build needs nothing
 # from outside this directory.
 #
-# Also independent of `loom_cookbook`: the grading logic lives in
-# `grading/` and the task loader in `dataset_source.py`, both vendored from the
-# recipe. That keeps the runtime image to the handful of packages the server actually
-# imports rather than the recipe's full training stack (torch, transformers,
-# CUDA wheels) which the server never touches.
+# Also independent of `loom_cookbook`: the grading logic is vendored under
+# `grading/`. That keeps the runtime image to the handful of packages the
+# server actually imports rather than the recipe's full training stack
+# (torch, transformers, CUDA wheels) which the server never touches.
 #
 # The compact, checked-in data snapshot contains 900 training tasks and 100
 # validation tasks. It avoids a multi-gigabyte Hugging Face download during
-# every developer build; `build_dataset.py` is only a maintainer utility for
-# refreshing that snapshot.
+# every developer build; `tools/generate_compact_dataset.py` is only a
+# maintainer utility for refreshing that snapshot.
 #
 # `step()` grades by calling the test runner directly, in-process, so the
 # image needs no sandbox service and no egress at run time.

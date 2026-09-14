@@ -10,7 +10,6 @@ gzip JSONL files under ``data/`` instead.
 from __future__ import annotations
 
 import argparse
-from dataclasses import replace
 import gzip
 import hashlib
 import json
@@ -27,8 +26,8 @@ REPOSITORY_ROOT = Path(__file__).resolve().parents[3]
 if str(REPOSITORY_ROOT) not in sys.path:
     sys.path.insert(0, str(REPOSITORY_ROOT))
 
-from envs.code_rl.build_dataset import _row_to_record
-from envs.code_rl.dataset_source import _row_to_task
+from envs.code_rl.grading.code_grading import taco_to_lcb_format
+from envs.code_rl.grading.lcb_utils import fetch_live_code_bench_system_prompt
 
 
 DATASET_ID = "agentica-org/DeepCoder-Preview-Dataset"
@@ -38,6 +37,84 @@ ROWS_ENDPOINT = "https://datasets-server.huggingface.co/rows"
 PAGE_SIZE = 25
 MAX_FETCH_ATTEMPTS = 4
 DEFAULT_MAX_TEST_BYTES_PER_TASK = 12 * 1024
+SYSTEM_PROMPT = (
+    "You are an expert competitive programmer. Read the problem, then submit"
+    " a complete Python solution via the terminal answer tool."
+)
+
+
+def _ensure_dict(metadata: Any) -> dict[str, Any]:
+    if isinstance(metadata, str):
+        try:
+            metadata = json.loads(metadata)
+        except json.JSONDecodeError:
+            return {}
+    return metadata if isinstance(metadata, dict) else {}
+
+
+def _normalize_tests(raw_tests: Any, metadata: dict[str, Any]) -> list[dict[str, Any]]:
+    if isinstance(raw_tests, str):
+        try:
+            raw_tests = json.loads(raw_tests)
+        except json.JSONDecodeError:
+            return []
+    if isinstance(raw_tests, dict) and "inputs" in raw_tests and "outputs" in raw_tests:
+        raw_tests = taco_to_lcb_format(raw_tests)
+    if isinstance(raw_tests, dict):
+        raw_tests = [raw_tests]
+
+    tests: list[dict[str, Any]] = []
+    for test in raw_tests or []:
+        if not isinstance(test, dict):
+            continue
+        testtype = test.get("testtype") or "stdin_stdout"
+        test_metadata = _ensure_dict(test.get("metadata", {}))
+        if testtype == "functional":
+            func_name = test_metadata.get("func_name") or metadata.get("func_name")
+            if func_name is not None:
+                test_metadata["func_name"] = str(func_name)
+        tests.append(
+            {
+                "input": str(test.get("input", "")),
+                "output": str(test.get("output", "")),
+                "testtype": testtype,
+                "metadata": test_metadata or {"func_name": None},
+            }
+        )
+    return tests
+
+
+def _build_question(row: dict[str, Any]) -> str | None:
+    question = row.get("question") or row.get("prompt") or row.get("problem")
+    if not isinstance(question, str) or not question.strip():
+        return None
+    starter_code = row.get("starter_code")
+    if isinstance(starter_code, str) and starter_code.strip():
+        return fetch_live_code_bench_system_prompt(question, starter_code)
+    return fetch_live_code_bench_system_prompt(question)
+
+
+def _row_to_record(row: dict[str, Any]) -> dict[str, Any] | None:
+    metadata = _ensure_dict(row.get("metadata", {}))
+    tests = _normalize_tests(row.get("tests") or row.get("ground_truth"), metadata)
+    if not tests:
+        return None
+
+    problem = _build_question(row)
+    if problem is None:
+        return None
+
+    starter_code = row.get("starter_code")
+    if isinstance(starter_code, str) and not starter_code.strip():
+        starter_code = None
+    return {
+        "messages": [
+            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "user", "content": problem},
+        ],
+        "tests": tests,
+        "starter_code": starter_code if isinstance(starter_code, str) else None,
+    }
 
 
 def _fetch_rows(config: str, split: str, offset: int, length: int, revision: str) -> list[dict[str, Any]]:
@@ -122,20 +199,18 @@ def _collect_records(
     records: list[dict[str, Any]] = []
     for offset in _page_offsets(total_rows, target_rows, seed):
         for row in _fetch_rows(config, split, offset, PAGE_SIZE, revision):
-            task = _row_to_task(row)
-            if task is None:
+            record = _row_to_record(row)
+            if record is None:
                 continue
-            task = replace(
-                task,
-                tests=_compact_test_cases(
-                    task.tests,
-                    max_tests_per_task,
-                    max_test_bytes_per_task,
-                ),
+            tests = _compact_test_cases(
+                record["tests"],
+                max_tests_per_task,
+                max_test_bytes_per_task,
             )
-            if not task.tests:
+            if not tests:
                 continue
-            records.append(_row_to_record(task))
+            record["tests"] = tests
+            records.append(record)
             if len(records) == target_rows:
                 random.Random(seed).shuffle(records)
                 return records

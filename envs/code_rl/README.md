@@ -14,8 +14,7 @@ covers what's specific to code.
 | `server/app.py` | FastAPI app (`create_fastapi_app(...)` from `openenv.core.env_server.http_server`), served with `uvicorn`. One environment instance, built at startup and shared by both handlers. |
 | `rle.toml` | Host-agnostic RLE identity and control-plane interface (`Gym` / `OpenEnv`). |
 | `data/` | Checked-in, gzip-compressed snapshot with 900 training tasks and 100 validation tasks, plus provenance. Each task retains at most three complete test cases and 12 KiB of test input/output. |
-| `tools/generate_compact_dataset.py` | Maintainer utility that regenerates the compact snapshot from the revision-pinned DeepCoder-Preview source. |
-| `build_dataset.py` | Optional maintainer utility for generating a larger dataset from the upstream corpus. It is not run during normal image builds. |
+| `tools/generate_compact_dataset.py` | Maintainer-only utility that regenerates the compact snapshot from the revision-pinned DeepCoder-Preview source. It is not run during normal image builds. |
 | `Dockerfile` | Runtime-only image that copies the compact snapshot and installs only what the server imports (`openenv`, `numpy`). No Hugging Face data download, `loom_cookbook`, sandbox service, or runtime egress. |
 
 ## Executing submitted code
@@ -63,13 +62,24 @@ Builds this Dockerfile and opens a local playground at the printed URL.
 > at most three complete test cases and 12 KiB of test input/output per task.
 > It is for trying the RLE experience, not benchmarking model quality.
 
-Validate the environment contract right there:
+### Copy-paste smoke test
 
-```
-reset {"seed": 0}
-state
-step {"code_text": "a, b = map(int, input().split())\nprint(a + b)"}
-```
+After `azd ai rle run` opens the `rle>` shell, enter the following two
+commands separately. Do not type the `rle>` prompt itself.
+
+The checked-in compact snapshot makes `seed: 0` deterministic: it selects
+the pancake-stack task at `problem_id` `"316"`. The value below is intentional,
+not a placeholder. Including it also makes the command work with local runners
+that send `reset` and `step` as separate HTTP requests.
+
+````text
+reset {"seed":0}
+
+step {"problem_id":"316","code_text":"```python\nimport sys\n\nMOD = 1_000_000_007\nvalues = list(map(int, sys.stdin.read().split()))\nif values:\n    queries = values[1:1 + values[0]]\n    max_n = max(queries, default=0)\n\n    bell = [0] * (max_n + 1)\n    row = [1]\n    for n in range(1, max_n + 1):\n        next_row = [row[-1]]\n        for k in range(1, n + 1):\n            next_row.append((next_row[-1] + row[k - 1]) % MOD)\n        row = next_row\n        bell[n] = row[0]\n\n    sys.stdout.write(chr(10).join(str(bell[n]) if n > 0 else '0' for n in queries))\n```"}
+````
+
+The final response has `done: true`, `reward: 1.0`, and
+`metadata.passed: true`.
 
 Needs Docker running and the `azd` RLE extension (see
 [`../README.md`](../README.md)).
