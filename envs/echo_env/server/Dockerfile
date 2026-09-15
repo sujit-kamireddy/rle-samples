@@ -18,8 +18,7 @@ ARG PIP_FALLBACK_INDEX_URL
 
 WORKDIR /app/env
 
-# Keep local `azd ai rle run` and `publish` usable where public PyPI cannot
-# be reached. The fallback affects dependency installation only.
+# Use the fallback only when the primary package index cannot be reached.
 RUN if [ -n "${PIP_FALLBACK_INDEX_URL}" ] && \
        ! pip download --no-deps --quiet --dest /tmp/idxprobe six >/dev/null 2>&1; then \
         echo "Primary index unreachable; falling back to ${PIP_FALLBACK_INDEX_URL}"; \
@@ -34,7 +33,7 @@ COPY . /app/env
 
 ENV PYTHONPATH=/app/env
 
-# Fail at build time, not at the first rollout.
+# Fail during the build if the application cannot be imported.
 RUN python -c "import server.app as m; print('echo_env OpenEnv server OK:', m.app)"
 
 EXPOSE 8000
