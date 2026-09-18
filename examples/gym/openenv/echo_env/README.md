@@ -51,6 +51,28 @@ OpenEnv client, reset the environment, and then submit MCP actions.
 The server intentionally exposes only the OpenEnv runtime API and does not
 provide an environment-specific `/web` interface.
 
+## Publish and invoke
+
+1. **Publish an immutable version.** Set your Foundry project endpoint and
+   Azure Container Registry endpoint, then publish the name and version from
+   `rle.toml`.
+
+   ```bash
+   export FOUNDRY_PROJECT_ENDPOINT="https://<account>.services.ai.azure.com/api/projects/<project>"
+   export AZURE_CONTAINER_REGISTRY_ENDPOINT="<registry>.azurecr.io"
+   azd ai rle publish
+   ```
+
+2. **Execute one rollout of the published environment.** `invoke` reads
+   `rle.name`/`rle.version` from `rle.toml`, provisions a real Loom training
+   session and sampler checkpoint for `--model`, calls Execute Rollout, and
+   prints the reward. `reset()` ignores any task payload, so `--task '{}'` is
+   enough.
+
+   ```bash
+   azd ai rle invoke --model Qwen/Qwen3-32B --task '{}'
+   ```
+
 ## Environment behavior
 
 - `reset()` starts a new episode and returns an empty observation with reward

@@ -79,3 +79,20 @@ Training, evaluation, and optimization jobs against this RLE will now invoke
 your Hosted Agent version for every rollout, with one Hosted Agent version
 able to serve many rollouts and (during optimization) many candidate
 configurations resolved per rollout.
+
+## 5. Invoke a rollout
+
+Run this from `examples/harness/hosted-agent/rle` (where this sample's
+`rle.toml` lives) against whichever published name/version you registered.
+`invoke` reads `rle.name`/`rle.version` from `rle.toml`, provisions a real
+Loom training session and sampler checkpoint for `--model`, calls Execute
+Rollout (which forwards `--agent-input` to your Hosted Agent), and prints the
+resulting reward. This sample's `reset()` ignores `--task`, so `{}` is
+enough, but the agent requires `agent_input.issue`; pull the real SWE-bench
+issue text out of the bundled fixture so the command stays copy/paste-ready:
+
+```bash
+cd examples/harness/hosted-agent/rle
+AGENT_INPUT=$(python3 -c "import json; print(json.dumps({'issue': json.load(open('fixtures/instance.json'))['problem_statement']}))")
+azd ai rle invoke --model Qwen/Qwen3-32B --task '{}' --agent-input "$AGENT_INPUT"
+```

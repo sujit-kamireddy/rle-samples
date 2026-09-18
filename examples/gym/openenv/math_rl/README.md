@@ -111,14 +111,15 @@ send `reset`, use the returned `messages` and `problem_id` to construct a
    azd ai rle publish
    ```
 
-3. **Invoke the published environment.** With
+3. **Execute one rollout of the published environment.** With
    `FOUNDRY_PROJECT_ENDPOINT` still set, `invoke` reads `rle.name` and
-   `rle.version` from `rle.toml`, starts a remote runtime, and opens the
-   interactive `rle>` shell. Use the same `reset` and `step` commands as the
-   local shell.
+   `rle.version` from `rle.toml`, provisions a real Loom training session and
+   sampler checkpoint for `--model`, calls Execute Rollout with `--task`, and
+   prints the resulting reward — no interactive shell, and no Loom session or
+   checkpoint identifiers for you to manage.
 
    ```bash
-   azd ai rle invoke
+   azd ai rle invoke --model Qwen/Qwen3-32B --task '{"split": "train"}'
    ```
 
 ## Use the published environment in a trainer loop
