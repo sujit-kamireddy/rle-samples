@@ -1,5 +1,13 @@
+schema_version = "1.0.0"
+
 [rle]
 name = "code_repair"
 version = "1.0.0"
 type = "Gym"
 subtype = "OpenEnv"
+
+# Required for Execute Rollout to treat this as an enabled Gym/OpenEnv target.
+# code_repair is single-turn (server/code_repair_environment.py always returns
+# done=True after the first step), so one step per episode is all it uses.
+[defaults.reinforcement]
+max_episode_steps = 1

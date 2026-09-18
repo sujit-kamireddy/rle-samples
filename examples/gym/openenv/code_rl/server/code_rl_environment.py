@@ -44,14 +44,17 @@ from typing import Any, Optional
 from uuid import uuid4
 
 try:
-    from examples.gym.openenv.code_rl._common.dataset import EpisodePicker, load_jsonl
+    from .._common.dataset import EpisodePicker, load_jsonl
 except ImportError:  # pragma: no cover - standalone container import path
     from _common.dataset import EpisodePicker, load_jsonl
 
 from openenv.core.env_server.interfaces import Environment
 from openenv.core.env_server.types import State
 
-from examples.gym.openenv.code_rl.grading import check_correctness, extract_code_from_model
+try:
+    from ..grading import check_correctness, extract_code_from_model
+except ImportError:  # pragma: no cover - standalone container import path
+    from grading import check_correctness, extract_code_from_model
 
 try:
     from ..models import CodeAction, CodeObservation
