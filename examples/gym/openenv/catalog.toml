@@ -6,7 +6,7 @@
 # sample directories are discoverable automatically unless explicitly hidden.
 #
 # To stage a new or in-progress sample without exposing it to users yet, add
-# an entry with visible = false. The azd CLI's AZD_AI_RLE_SHOW_HIDDEN_SAMPLES
+# an entry with visible = false. The azd CLI's AZD_AI_RLE_ENABLE_ALL
 # environment variable bypasses this filter for internal testing.
 
 [[sample]]
@@ -23,4 +23,4 @@ visible = true
 
 [[sample]]
 name = "code_repair"
-visible = true
+visible = false
