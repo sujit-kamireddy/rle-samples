@@ -26,8 +26,8 @@ REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 if str(REPOSITORY_ROOT) not in sys.path:
     sys.path.insert(0, str(REPOSITORY_ROOT))
 
-from envs.code_rl.grading.code_grading import taco_to_lcb_format
-from envs.code_rl.grading.lcb_utils import fetch_live_code_bench_system_prompt
+from examples.gym.openenv.code_rl.grading.code_grading import taco_to_lcb_format
+from examples.gym.openenv.code_rl.grading.lcb_utils import fetch_live_code_bench_system_prompt
 
 
 DATASET_ID = "agentica-org/DeepCoder-Preview-Dataset"
@@ -241,7 +241,7 @@ def main() -> None:
     parser.add_argument(
         "--out-dir",
         type=Path,
-        default=REPOSITORY_ROOT / "envs" / "code_rl" / "data",
+        default=REPOSITORY_ROOT / "examples" / "gym" / "openenv" / "code_rl" / "data",
     )
     parser.add_argument("--train-count", type=int, default=900)
     parser.add_argument("--validation-count", type=int, default=100)
