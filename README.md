@@ -22,6 +22,11 @@ locations, service IDs, or credentials.
 samples, where the caller drives the environment through `reset`/`step`.
 These are copied directly by `azd ai rle init <sample-name>`.
 
+[`examples/gym/openenv/catalog.toml`](./examples/gym/openenv/catalog.toml)
+controls which sample directories `azd ai rle init` offers. A new sample
+directory is visible automatically; add an entry with `visible = false` to
+stage a sample before announcing it.
+
 ## `examples/harness/` — Harness samples (HostedAgent, BYOH)
 
 [`examples/harness/`](./examples/harness) holds worked reference examples
