@@ -4,7 +4,7 @@ Self-hosted, OpenEnv-compatible environment for
 [`code_rl`](../../loom_cookbook/recipes/code_rl/README.md). It exposes the
 standard OpenEnv `reset` and `step` lifecycle, so you can iterate locally with
 your own OpenEnv-compatible agent before publishing an environment version.
-See [`../../README.md`](../../README.md) for the general contract; this file
+See [`../../../README.md`](../../../README.md) for the general contract; this file
 only covers what's specific to code.
 
 ## What's here
@@ -85,7 +85,7 @@ The final response has `done: true`, `reward: 1.0`, and
 `metadata.passed: true`.
 
 Needs Docker running and the `azd` RLE extension (see
-[`../README.md`](../README.md)).
+[`../../../README.md`](../../../README.md)).
 
 The checked-in manifest declares the initial `code_rl` release as version
 `1.0.0`. Update its name when copying this source outside `azd ai rle init`,

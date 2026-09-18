@@ -17,7 +17,7 @@
 # `step()` grades by calling the test runner directly, in-process, so the
 # image needs no sandbox service and no egress at run time.
 #
-#   cd envs/code_rl && docker build -t ft-code-rl-env:latest .
+#   cd examples/gym/openenv/code_rl && docker build -t ft-code-rl-env:latest .
 #   docker run -p 8101:8000 ft-code-rl-env:latest
 
 # Package index for this build. Defaults to public PyPI; override it where that

@@ -16,7 +16,7 @@ reward.
 | --- | --- |
 | `server/echo_environment.py` | `EchoEnvironment`, exposing the `echo_message` and `echo_with_length` tools. |
 | `server/app.py` | FastAPI server exposing the OpenEnv HTTP and WebSocket APIs. |
-| `server/Dockerfile` | Container image for the environment server. |
+| `Dockerfile` | Container image for the environment server. |
 | `rle.toml` | Environment identity and OpenEnv interface metadata. |
 
 ## MCP tool contract
@@ -41,7 +41,7 @@ Example actions:
 From this directory:
 
 ```bash
-docker build -t echo-env:latest -f server/Dockerfile .
+docker build -t echo-env:latest .
 docker run --rm -p 8000:8000 echo-env:latest
 ```
 

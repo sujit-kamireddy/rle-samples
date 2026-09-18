@@ -21,7 +21,7 @@
 # optional `math_verify` backend (`grader="math_verify"`) is a lazily
 # imported extra, not installed here -- see `math_grading.grade_answer_math_verify`.
 #
-#   cd envs/math_rl && docker build -t ft-math-rl-env:latest .
+#   cd examples/gym/openenv/math_rl && docker build -t ft-math-rl-env:latest .
 #   docker run -p 8100:8000 ft-math-rl-env:latest
 
 # Package index for this build. Defaults to public PyPI; override it where that
