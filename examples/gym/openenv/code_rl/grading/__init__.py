@@ -4,7 +4,7 @@ See ``examples/gym/openenv/README.md``: environments install no ``loom_cookbook`
 grading logic lives here.
 """
 
-from examples.gym.openenv.code_rl.grading.code_grading import check_correctness, extract_code_from_model
+from .code_grading import check_correctness, extract_code_from_model
 
 __all__ = [
     "check_correctness",

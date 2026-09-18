@@ -1,5 +1,13 @@
+schema_version = "1.0.0"
+
 [rle]
 name = "math_rl"
 version = "1.0.0"
 type = "Gym"
 subtype = "OpenEnv"
+
+# Required for Execute Rollout to treat this as an enabled Gym/OpenEnv target.
+# math_rl is single-turn (server/math_rl_environment.py always returns
+# done=True after the first step), so one step per episode is all it uses.
+[defaults.reinforcement]
+max_episode_steps = 1

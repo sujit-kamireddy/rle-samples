@@ -25,15 +25,19 @@ from typing import Any, Optional
 from uuid import uuid4
 
 try:
-    from examples.gym.openenv.math_rl._common.dataset import EpisodePicker, load_jsonl
+    from .._common.dataset import EpisodePicker, load_jsonl
 except ImportError:  # pragma: no cover - standalone container import path
     from _common.dataset import EpisodePicker, load_jsonl
 
 from openenv.core.env_server.interfaces import Environment
 from openenv.core.env_server.types import State
 
-from examples.gym.openenv.math_rl.grading import safe_grade
-from examples.gym.openenv.math_rl.grading.math_grading import extract_boxed
+try:
+    from ..grading import safe_grade
+    from ..grading.math_grading import extract_boxed
+except ImportError:  # pragma: no cover - standalone container import path
+    from grading import safe_grade
+    from grading.math_grading import extract_boxed
 
 try:
     from ..models import MathAction, MathObservation
@@ -62,18 +66,21 @@ class MathRLEnvironment(Environment[MathAction, MathObservation, State]):
         validation_dataset_path: Optional[str] = None,
     ):
         super().__init__()
-        dataset_path = dataset_path or os.environ.get("MATH_RL_DATASET_PATH", "train.jsonl")
+        default_dataset_path = Path(__file__).resolve().parents[1] / "data" / "train.jsonl.gz"
+        dataset_path = dataset_path or os.environ.get("MATH_RL_DATASET_PATH", str(default_dataset_path))
         self._rows = EpisodePicker(load_jsonl(dataset_path))
         # Resolved lazily (see _rows_for_split()), not loaded here: most
         # callers (including every existing test) construct this with only
         # a train file on disk and never request split="validation", and
         # eagerly loading here would make that an unconditional
-        # FileNotFoundError. Defaults to a sibling "validation.jsonl" next
-        # to dataset_path, matching where examples/gym/openenv/math_rl/build_dataset.py and
-        # the Dockerfile bake it.
+        # FileNotFoundError. Defaults to the matching sibling validation file
+        # for either plain JSONL or the checked-in gzip snapshot.
+        default_validation_name = (
+            "validation.jsonl.gz" if str(dataset_path).endswith(".gz") else "validation.jsonl"
+        )
         self._validation_dataset_path = validation_dataset_path or os.environ.get(
             "MATH_RL_VALIDATION_DATASET_PATH",
-            str(Path(dataset_path).with_name("validation.jsonl")),
+            str(Path(dataset_path).with_name(default_validation_name)),
         )
         self._validation_rows: Optional[EpisodePicker] = None
         self._grader = grader

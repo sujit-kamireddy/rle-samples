@@ -1,5 +1,13 @@
+schema_version = "1.0.0"
+
 [rle]
 name = "code_rl"
 version = "1.0.0"
 type = "Gym"
 subtype = "OpenEnv"
+
+# Required for Execute Rollout to treat this as an enabled Gym/OpenEnv target.
+# Matches DEFAULT_MAX_TURNS in server/code_rl_environment.py, the server's own
+# per-episode step() cap.
+[defaults.reinforcement]
+max_episode_steps = 2

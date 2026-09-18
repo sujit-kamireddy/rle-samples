@@ -1,17 +1,20 @@
-"""Bake ``train.jsonl``/``validation.jsonl`` for the ``math_rl`` RLE world.
+"""Regenerate the ``data/train.jsonl.gz``/``validation.jsonl.gz`` snapshot for
+the ``math_rl`` RLE world.
 
-Run **once, at ``docker build`` time** (see ``Dockerfile``) -- never inside
-the running container. This is the "embed at build time, don't let each
-instance download" requirement from ``examples/gym/openenv/README.md``: it calls the same
-Hugging Face dataset loader vendored from the recipe
-(``examples.gym.openenv.math_rl.dataset_source``, pinned against
-``loom_cookbook.recipes.math_rl.math_env`` by
-``tests/test_env_grading_parity.py``), then writes plain JSONL that the
-deployed environment reads from disk with no further downloads.
+This is a **maintainer tool**, not part of the Docker build: it needs a real
+Hugging Face/network connection, so it is run once, ahead of time, from a
+full checkout of this repository (where the
+``examples.gym.openenv.math_rl.dataset_source`` import below resolves), and
+its output is gzip-compressed and checked into ``data/`` (see
+``data/NOTICE.md``). The image itself only ever reads that checked-in
+snapshot from local disk -- no network access or per-instance download, and
+no dependency on this script or ``dataset_source.py`` at build or run time.
 
-Usage::
+Usage (from the repository root)::
 
-    python build_dataset.py --out-dir . --max-train 4000 --max-validation 500
+    python -m examples.gym.openenv.math_rl.build_dataset \\
+        --out-dir examples/gym/openenv/math_rl/data --max-train 4000 --max-validation 500
+    gzip examples/gym/openenv/math_rl/data/train.jsonl examples/gym/openenv/math_rl/data/validation.jsonl
 """
 
 from __future__ import annotations

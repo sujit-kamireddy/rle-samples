@@ -4,8 +4,8 @@ See ``examples/gym/openenv/README.md``: environments install no ``loom_cookbook`
 grading logic lives here instead.
 """
 
-from examples.gym.openenv.math_rl.grading.math_env import safe_grade
-from examples.gym.openenv.math_rl.grading.math_grading import extract_boxed
+from .math_env import safe_grade
+from .math_grading import extract_boxed
 
 __all__ = [
     "extract_boxed",

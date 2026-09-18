@@ -1,4 +1,19 @@
+# Package index for this build. Defaults to public PyPI; override it where that
+# is unreachable -- see "Build fails downloading Python packages" in
+# ../../../gym/openenv/README.md.
+ARG PIP_INDEX_URL=https://pypi.org/simple
+
+# Index to fall back to when the one above cannot be reached. `azd ai rle run`
+# and `azd ai rle publish` take no --build-arg, so a build that needs a
+# different index has no way to be told about one -- without this fallback the
+# local-iteration path the READMEs document is unusable wherever public PyPI is
+# blocked. Set it empty to disable the fallback and fail on the primary index.
+ARG PIP_FALLBACK_INDEX_URL=https://packagefeedproxy.microsoft.io/pypi/simple/
+
 FROM python:3.10-slim
+
+ARG PIP_INDEX_URL
+ARG PIP_FALLBACK_INDEX_URL
 
 # This RLE wraps a real SWE-bench-Lite instance (see fixtures/instance.json):
 # psf/requests at its pinned base commit. requests 2.10 predates Python's
@@ -22,8 +37,15 @@ RUN git clone --quiet https://github.com/psf/requests.git base-repo \
     && cd base-repo \
     && git checkout --quiet 36453b95b13079296776d11b09cab2567ea3e703
 
-RUN pip install --no-cache-dir -e /opt/base-repo \
-    && pip install --no-cache-dir pytest==6.2.5 openenv
+# Use the fallback only when the primary package index cannot be reached.
+RUN if [ -n "${PIP_FALLBACK_INDEX_URL}" ] && \
+       ! pip download --no-deps --quiet --index-url "${PIP_INDEX_URL}" --dest /tmp/idxprobe six >/dev/null 2>&1; then \
+        echo "Primary index unreachable; falling back to ${PIP_FALLBACK_INDEX_URL}"; \
+        export PIP_INDEX_URL="${PIP_FALLBACK_INDEX_URL}"; \
+    fi; \
+    rm -rf /tmp/idxprobe; \
+    pip install --no-cache-dir --index-url "${PIP_INDEX_URL}" -e /opt/base-repo \
+    && pip install --no-cache-dir --index-url "${PIP_INDEX_URL}" pytest==6.2.5 openenv
 
 WORKDIR /app
 COPY fixtures/ /app/fixtures/

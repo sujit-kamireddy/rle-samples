@@ -6,16 +6,17 @@
 # from outside this directory.
 #
 # Also independent of `loom_cookbook`: the grading logic lives in
-# `grading/` and the dataset loader in `dataset_source.py`, both vendored from
-# the recipe. That keeps the runtime image to the handful of packages the
-# server actually imports (sympy/pylatexenc for grading) rather than the recipe's full
-# training stack (torch, transformers, CUDA wheels) which the server never
-# touches.
+# `grading/`, both vendored from the recipe. That keeps the runtime image to
+# the handful of packages the server actually imports (sympy/pylatexenc for
+# grading) rather than the recipe's full training stack (torch, transformers,
+# CUDA wheels) which the server never touches.
 #
-# Two stages: the `dataset` stage bakes `train.jsonl`/`validation.jsonl` at
-# *build time* (see `build_dataset.py`), and only those files cross into the
-# runtime stage -- `datasets`/`pyarrow`/`pandas` are needed to write them but
-# never to serve them, so they stay out of the shipped image.
+# The compact, checked-in `data/train.jsonl.gz`/`validation.jsonl.gz` snapshot
+# (see `data/NOTICE.md`) is baked in ahead of time by `build_dataset.py`, run
+# once against a real network/Hugging Face connection -- not at `docker
+# build` time -- so this build needs no Hugging Face/network access at all.
+# Re-run `build_dataset.py` and re-gzip its output into `data/` to refresh
+# the snapshot.
 #
 # Grading defaults to the `sympy` backend, which is always installed. The
 # optional `math_verify` backend (`grader="math_verify"`) is a lazily
@@ -36,35 +37,6 @@ ARG UV_DEFAULT_INDEX=${PIP_INDEX_URL}
 # local-iteration path the READMEs document is unusable wherever public PyPI is
 # blocked. Set it empty to disable the fallback and fail on the primary index.
 ARG PIP_FALLBACK_INDEX_URL=https://packagefeedproxy.microsoft.io/pypi/simple/
-
-
-FROM python:3.11-slim AS dataset
-
-ARG PIP_INDEX_URL
-ARG UV_DEFAULT_INDEX
-ARG PIP_FALLBACK_INDEX_URL
-ARG MAX_TRAIN_EXAMPLES=4000
-ARG MAX_VALIDATION_EXAMPLES=500
-
-RUN if [ -n "${PIP_FALLBACK_INDEX_URL}" ] && \
-       ! pip download --no-deps --quiet --dest /tmp/idxprobe six >/dev/null 2>&1; then \
-        echo "Primary index unreachable; falling back to ${PIP_FALLBACK_INDEX_URL}"; \
-        export PIP_INDEX_URL="${PIP_FALLBACK_INDEX_URL}"; \
-        export UV_DEFAULT_INDEX="${PIP_FALLBACK_INDEX_URL}"; \
-    fi; \
-    rm -rf /tmp/idxprobe; \
-    pip install --no-cache-dir uv && \
-    uv pip install --system --no-cache datasets
-
-COPY . /app/envs/math_rl
-
-ENV PYTHONPATH=/app
-
-RUN python /app/envs/math_rl/build_dataset.py \
-        --out-dir /out \
-        --max-train ${MAX_TRAIN_EXAMPLES} \
-        --max-validation ${MAX_VALIDATION_EXAMPLES}
-
 
 FROM python:3.11-slim
 
@@ -90,12 +62,11 @@ RUN if [ -n "${PIP_FALLBACK_INDEX_URL}" ] && \
         openenv sympy pylatexenc
 
 COPY . /app/envs/math_rl
-COPY --from=dataset /out/train.jsonl /out/validation.jsonl /app/envs/math_rl/
 
-ENV MATH_RL_DATASET_PATH=/app/envs/math_rl/train.jsonl \
-    PYTHONPATH=/app
+ENV PYTHONPATH=/app
 
-# Fail at build time, not at the first rollout.
+# Fail at build time, not at the first rollout. This also verifies the
+# checked-in dataset snapshot can be loaded without any network access.
 RUN python -c "import envs.math_rl.server.app as m; print('math_rl OpenEnv server OK:', m.app)"
 
 # Foundry RLE forwards to port 8000 inside the container, so the server must listen there.

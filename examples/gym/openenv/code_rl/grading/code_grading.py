@@ -39,7 +39,7 @@ import re
 import types
 from typing import Any
 
-from examples.gym.openenv.code_rl.grading.lcb_utils import TEST_UTIL
+from .lcb_utils import TEST_UTIL
 
 logger = logging.getLogger(__name__)
 
