@@ -1,13 +1,18 @@
-FROM python:3.8-slim
+FROM python:3.10-slim
 
 # This RLE wraps a real SWE-bench-Lite instance (see fixtures/instance.json):
-# psf/requests at its pinned base commit. python:3.8 matches this era of the
-# repo; requests 2.10 does not import on Python >= 3.10 (collections.Mapping
-# was removed there).
+# psf/requests at its pinned base commit. requests 2.10 predates Python's
+# collections.abc split and does `collections.Mapping` directly, which was
+# removed in Python 3.10. openenv requires Python >=3.10, so instead of an
+# older interpreter this image restores the removed aliases via
+# sitecustomize.py (auto-imported by every Python process, including the
+# pytest subprocess spawned by /grade) rather than pinning Python <3.10.
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends git \
     && rm -rf /var/lib/apt/lists/*
+
+COPY server/sitecustomize.py /usr/local/lib/python3.10/site-packages/sitecustomize.py
 
 WORKDIR /opt
 

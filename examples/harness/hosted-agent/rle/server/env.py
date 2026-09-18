@@ -19,6 +19,7 @@ mocks the production tool the harness uses to edit the checkout;
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import subprocess
 from pathlib import Path
@@ -174,6 +175,16 @@ async def grade_rollout(rollout: dict[str, Any]) -> dict[str, Any]:
         cwd=workspace,
         capture_output=True,
         text=True,
+        env={
+            **os.environ,
+            # Third-party setuptools-entry-point pytest plugins (for example
+            # anyio's, pulled in transitively by openenv/starlette) target
+            # newer pytest internals than the fail_to_pass test's pinned
+            # pytest==6.2.5 and crash it on collection. This project's own
+            # test suite needs no such plugin, so disable autoloading them;
+            # pytest's own built-in plugins are unaffected.
+            "PYTEST_DISABLE_PLUGIN_AUTOLOAD": "1",
+        },
     )
     tests_passed = result.returncode == 0
     opened_pull_request = len(_current_environment._pull_requests) > 0
@@ -184,5 +195,6 @@ async def grade_rollout(rollout: dict[str, Any]) -> dict[str, Any]:
             f"fail_to_pass tests {'passed' if tests_passed else 'failed'}; "
             f"pull request {'opened' if opened_pull_request else 'missing'}."
         ),
-        "test_output": result.stdout[-2000:],
+        "test_output": (result.stdout + result.stderr)[-2000:],
     }
+
