@@ -1,0 +1,7 @@
+[rle]
+name = "code_repair_hosted_agent"
+version = "1.0.0"
+type = "Harness"
+subtype = "HostedAgent"
+agentName = "code-repair-agent"
+agentVersion = "1"

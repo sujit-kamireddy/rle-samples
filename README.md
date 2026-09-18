@@ -1,8 +1,8 @@
 # RLE samples
 
-Each sample is a self-hosted OpenEnv environment with a host-agnostic
-`rle.toml` manifest. The manifest declares the immutable RLE identity and
-callable interface:
+RLE has two implementation types: `Gym` and `Harness`. Every environment
+carries a host-agnostic `rle.toml` manifest declaring its immutable identity
+and callable interface:
 
 ```toml
 [rle]
@@ -12,9 +12,29 @@ type = "Gym"
 subtype = "OpenEnv"
 ```
 
-The `type` and `subtype` values match the RLE control plane. Current samples
-use `Gym` and `OpenEnv`. The manifest intentionally does not contain Foundry
-project endpoints, registry locations, service IDs, or credentials.
+The `type` and `subtype` values match the RLE control plane. The manifest
+intentionally does not contain Foundry project endpoints, registry
+locations, service IDs, or credentials.
+
+## `examples/gym/openenv/` — Gym/OpenEnv samples
+
+[`examples/gym/openenv/`](./examples/gym/openenv) holds `Gym`/`OpenEnv`
+samples, where the caller drives the environment through `reset`/`step`.
+These are copied directly by `azd ai rle init <sample-name>`.
+
+## `examples/harness/` — Harness samples (HostedAgent, BYOH)
+
+[`examples/harness/`](./examples/harness) holds worked reference examples
+for the `Harness` type, where RLE wraps a production agent that owns its own
+loop: [`examples/harness/hosted-agent/`](./examples/harness/hosted-agent)
+for agents running as a Foundry Hosted Agent version, and
+[`examples/harness/byoh/`](./examples/harness/byoh) for bring-your-own
+harnesses deployed anywhere and registered by base URL. Each includes both
+the agent/harness code and the paired RLE code (task setup, mock tools,
+grader), plus a README covering deploy → wire → publish. Because the agent
+side is always specific to your own harness, `azd ai rle init --type Harness`
+scaffolds only the RLE side for you — these folders show how to build and
+wire the other half.
 
 When a sample is initialized through `azd ai rle init <folder-name>`, the CLI
 updates `rle.name` to the target folder name. Before publishing another
