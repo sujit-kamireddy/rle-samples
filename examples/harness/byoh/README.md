@@ -18,9 +18,11 @@ Two independent pieces make up this `Harness`/`BYOH` RLE:
 - [`rle/`](./rle) — the RLE container: a real, pinned `requests` checkout
   baked into the image, the hidden regression test patch, mock
   `workspace.apply_patch`/`github.create_pull_request` tools, and a grader
-  that runs the real test. This is the piece
-  `azd ai rle init --type Harness --subtype BYOH` scaffolds for you; this
-  folder is that scaffold filled in for this instance.
+  that runs the real test. Running
+  `azd ai rle init --type Harness --subtype BYOH --harness-source sample`
+  copies this exact `agent/` + `rle/` pair as your starting point (the
+  `--harness-source existing` default instead scaffolds a generic,
+  empty placeholder for a harness you already built and deployed yourself).
 
 This example and [`../hosted-agent`](../hosted-agent) are intentionally
 close to identical: `rle/` is byte-for-byte the same environment (RLE does
@@ -99,10 +101,11 @@ with it and publish a version:
 ```bash
 azd ai rle init code_repair_byoh \
   --type Harness --subtype BYOH \
+  --harness-source sample \
   --base-url https://<your-deployed-agent-host>/invoke \
   --no-prompt
 
-cd code_repair_byoh
+cd code_repair_byoh/rle
 azd ai rle publish
 ```
 
