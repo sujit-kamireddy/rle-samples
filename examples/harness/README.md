@@ -1,11 +1,11 @@
 # Harness RLE examples
 
-The samples under `envs/` are `Gym`/`OpenEnv` environments: the caller (a
+The samples under `examples/gym/openenv/` are `Gym`/`OpenEnv` environments: the caller (a
 training, evaluation, or optimization job) owns the agent loop and drives the
 environment through `reset`/`step`. They are copied directly by
 `azd ai rle init <sample-name>`.
 
-`harness-examples/` covers the other RLE type: `Harness`. A harness RLE
+`examples/harness/` covers the other RLE type: `Harness`. A harness RLE
 wraps a *production agent* that owns its own loop. RLE does not call
 `reset`/`step` on it; instead it invokes the harness once per rollout and the
 harness reports back a final response. `azd ai rle init --type Harness`

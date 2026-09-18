@@ -36,7 +36,7 @@ it wherever you already run the rest of your stack — a container in your own
 cluster, an App Service, a VM, or `docker run` locally:
 
 ```bash
-cd harness-examples/byoh/agent
+cd examples/harness/byoh/agent
 docker build -t code-repair-agent:latest .
 docker run --rm -p 8080:8080 code-repair-agent:latest
 ```
@@ -80,7 +80,7 @@ The agent must respond with `{"output_text": "..."}`.
 ## 3. Author and iterate the RLE side
 
 ```bash
-cd harness-examples/byoh/rle
+cd examples/harness/byoh/rle
 azd ai rle run
 ```
 

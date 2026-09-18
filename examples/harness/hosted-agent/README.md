@@ -55,7 +55,7 @@ exposes incoming request headers to your handler.
 ## 3. Author and iterate the RLE side
 
 ```bash
-cd harness-examples/hosted-agent/rle
+cd examples/harness/hosted-agent/rle
 azd ai rle run
 ```
 

@@ -16,19 +16,19 @@ The `type` and `subtype` values match the RLE control plane. The manifest
 intentionally does not contain Foundry project endpoints, registry
 locations, service IDs, or credentials.
 
-## `envs/` — Gym/OpenEnv samples
+## `examples/gym/openenv/` — Gym/OpenEnv samples
 
-[`envs/`](./envs) holds `Gym`/`OpenEnv` samples, where the caller drives the
-environment through `reset`/`step`. These are copied directly by
-`azd ai rle init <sample-name>`.
+[`examples/gym/openenv/`](./examples/gym/openenv) holds `Gym`/`OpenEnv`
+samples, where the caller drives the environment through `reset`/`step`.
+These are copied directly by `azd ai rle init <sample-name>`.
 
-## `harness-examples/` — Harness samples (HostedAgent, BYOH)
+## `examples/harness/` — Harness samples (HostedAgent, BYOH)
 
-[`harness-examples/`](./harness-examples) holds worked reference examples
+[`examples/harness/`](./examples/harness) holds worked reference examples
 for the `Harness` type, where RLE wraps a production agent that owns its own
-loop: [`harness-examples/hosted-agent/`](./harness-examples/hosted-agent)
+loop: [`examples/harness/hosted-agent/`](./examples/harness/hosted-agent)
 for agents running as a Foundry Hosted Agent version, and
-[`harness-examples/byoh/`](./harness-examples/byoh) for bring-your-own
+[`examples/harness/byoh/`](./examples/harness/byoh) for bring-your-own
 harnesses deployed anywhere and registered by base URL. Each includes both
 the agent/harness code and the paired RLE code (task setup, mock tools,
 grader), plus a README covering deploy → wire → publish. Because the agent
