@@ -6,7 +6,7 @@ ends the episode. Grading runs in this container using ``safe_grade``
 ``loom_cookbook.recipes.math_rl.math_env`` so this image never installs
 ``loom_cookbook`` -- ``tests/test_env_grading_parity.py`` pins the vendored
 copy against the recipe original so both keep agreeing on what counts as a
-correct answer. See ``envs/README.md``.
+correct answer. See ``examples/gym/openenv/README.md``.
 
 The reward *composition* is pinned the same way: ``FORMAT_COEF`` below must
 equal ``loom_cookbook.rl.problem_env.ProblemEnv``'s ``format_coef`` default,
@@ -25,15 +25,15 @@ from typing import Any, Optional
 from uuid import uuid4
 
 try:
-    from envs.math_rl._common.dataset import EpisodePicker, load_jsonl
+    from examples.gym.openenv.math_rl._common.dataset import EpisodePicker, load_jsonl
 except ImportError:  # pragma: no cover - standalone container import path
     from _common.dataset import EpisodePicker, load_jsonl
 
 from openenv.core.env_server.interfaces import Environment
 from openenv.core.env_server.types import State
 
-from envs.math_rl.grading import safe_grade
-from envs.math_rl.grading.math_grading import extract_boxed
+from examples.gym.openenv.math_rl.grading import safe_grade
+from examples.gym.openenv.math_rl.grading.math_grading import extract_boxed
 
 try:
     from ..models import MathAction, MathObservation
@@ -49,7 +49,7 @@ class MathRLEnvironment(Environment[MathAction, MathObservation, State]):
     """One-shot math-answer environment: reset -> problem, step -> reward.
 
     A real ``openenv`` ``Environment`` subclass -- see
-    ``envs/code_rl/server/code_rl_environment.py``'s class docstring for
+    ``examples/gym/openenv/code_rl/server/code_rl_environment.py``'s class docstring for
     why holding the episode's row on ``self`` is safe under ``openenv``'s
     own ``/ws`` per-connection session model.
     """
@@ -69,7 +69,7 @@ class MathRLEnvironment(Environment[MathAction, MathObservation, State]):
         # a train file on disk and never request split="validation", and
         # eagerly loading here would make that an unconditional
         # FileNotFoundError. Defaults to a sibling "validation.jsonl" next
-        # to dataset_path, matching where envs/math_rl/build_dataset.py and
+        # to dataset_path, matching where examples/gym/openenv/math_rl/build_dataset.py and
         # the Dockerfile bake it.
         self._validation_dataset_path = validation_dataset_path or os.environ.get(
             "MATH_RL_VALIDATION_DATASET_PATH",

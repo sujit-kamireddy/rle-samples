@@ -44,7 +44,7 @@ penalty and is not graded as a raw answer.
 ## Build and run locally
 
 ```bash
-cd envs/math_rl
+cd examples/gym/openenv/math_rl
 azd ai rle run
 ```
 

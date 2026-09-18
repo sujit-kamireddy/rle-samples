@@ -5,16 +5,16 @@ hand-rolled server this replaced, there is no reason not to use it: the
 statefulness this environment needs (``step()`` seeing what ``reset()``
 stored) now lives on the ``/ws`` route's per-connection session, which
 ``openenv``'s own server already provides one instance per connection for.
-See ``envs/README.md`` for the tradeoff (this pulls in ``openenv``'s
+See ``examples/gym/openenv/README.md`` for the tradeoff (this pulls in ``openenv``'s
 transitive dependency stack, unlike the runtime it replaced).
 
 Usage::
 
-    uvicorn envs.code_rl.server.app:app --host 0.0.0.0 --port 8000
+    uvicorn examples.gym.openenv.code_rl.server.app:app --host 0.0.0.0 --port 8000
 
 or, standalone inside the built container::
 
-    python -m envs.code_rl.server.app
+    python -m examples.gym.openenv.code_rl.server.app
 
 Serve it with a single worker. ``max_concurrent_envs=1`` below reflects
 that each container is leased to one Foundry RLE instance/episode series

@@ -1,16 +1,16 @@
 """FastAPI app exposing ``MathRLEnvironment`` over the OpenEnv HTTP/WS contract.
 
 Built with ``openenv``'s own ``create_fastapi_app`` -- see
-``envs/code_rl/server/app.py`` for why this no longer needs a hand-rolled
+``examples/gym/openenv/code_rl/server/app.py`` for why this no longer needs a hand-rolled
 runtime.
 
 Usage::
 
-    uvicorn envs.math_rl.server.app:app --host 0.0.0.0 --port 8000
+    uvicorn examples.gym.openenv.math_rl.server.app:app --host 0.0.0.0 --port 8000
 
 or, standalone inside the built container::
 
-    python -m envs.math_rl.server.app
+    python -m examples.gym.openenv.math_rl.server.app
 
 Serve it with a single worker. ``max_concurrent_envs=1`` below reflects
 that each container is leased to one Foundry RLE instance/episode series

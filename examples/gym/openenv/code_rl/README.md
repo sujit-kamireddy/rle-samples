@@ -52,7 +52,7 @@ state and is only safe in the throwaway subprocess it was designed for.
 ## Build and run locally
 
 ```bash
-cd envs/code_rl
+cd examples/gym/openenv/code_rl
 azd ai rle run
 ```
 

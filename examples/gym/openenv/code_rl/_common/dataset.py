@@ -75,7 +75,7 @@ class EpisodePicker:
         ``fallback`` is what ``reset()`` stored on the environment, and is
         the normal path: ``openenv``'s own ``/ws`` route keeps one
         environment instance for the life of a connection (see
-        ``envs/code_rl/server/code_rl_environment.py``), so ``step()``
+        ``examples/gym/openenv/code_rl/server/code_rl_environment.py``), so ``step()``
         already knows which row it is grading.
 
         ``problem_id`` overrides it. Passing it lets a caller grade against
@@ -95,5 +95,5 @@ class EpisodePicker:
         raise ValueError(
             "step() could not resolve the episode's row: the action carried no problem_id "
             "and this environment instance never served the matching reset(). Echo the "
-            "observation's problem_id back in the action -- see envs/README.md."
+            "observation's problem_id back in the action -- see examples/gym/openenv/README.md."
         )

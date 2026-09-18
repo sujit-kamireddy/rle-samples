@@ -31,7 +31,7 @@ class MathAction(Action):
             "against. The server remembers the row reset() picked, so this is only "
             "needed to grade some other row -- or to keep working behind a transport "
             "that does not preserve state between calls (see "
-            "envs/math_rl/server/math_rl_environment.py)."
+            "examples/gym/openenv/math_rl/server/math_rl_environment.py)."
         ),
     )
 

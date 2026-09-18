@@ -50,7 +50,7 @@ class CodeAction(Action):
             "against. The server remembers the row reset() picked, so this is only "
             "needed to grade some other row -- or to keep working behind a transport "
             "that does not preserve state between calls (see "
-            "envs/code_rl/server/code_rl_environment.py)."
+            "examples/gym/openenv/code_rl/server/code_rl_environment.py)."
         ),
     )
 

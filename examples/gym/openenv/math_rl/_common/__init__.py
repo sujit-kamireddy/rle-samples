@@ -1,4 +1,4 @@
-"""Small, shared plumbing used by every ``envs/<recipe>/`` OpenEnv server.
+"""Small, shared plumbing used by every ``examples/gym/openenv/<recipe>/`` OpenEnv server.
 
 Nothing reward-relevant or recipe-specific lives here -- just JSONL loading
 and episode-index picking -- so each recipe's

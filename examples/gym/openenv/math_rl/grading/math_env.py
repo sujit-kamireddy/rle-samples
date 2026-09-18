@@ -4,7 +4,7 @@
 ``renderers`` and ``rl.problem_env`` for the parts of ``MathEnv`` this
 environment doesn't need (episode/renderer plumbing) -- only ``safe_grade``
 itself is required to grade an answer. Copied verbatim (this environment
-installs no ``loom_cookbook``, see ``envs/README.md``); the paired
+installs no ``loom_cookbook``, see ``examples/gym/openenv/README.md``); the paired
 recipe test in ``tests/test_env_grading_parity.py`` asserts the two agree.
 """
 
@@ -13,7 +13,7 @@ from __future__ import annotations
 import logging
 import math
 
-from envs.math_rl.grading.math_grading import (
+from examples.gym.openenv.math_rl.grading.math_grading import (
     grade_answer,
     grade_answer_math_verify,
     run_with_timeout_signal,

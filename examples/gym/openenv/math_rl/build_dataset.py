@@ -2,9 +2,9 @@
 
 Run **once, at ``docker build`` time** (see ``Dockerfile``) -- never inside
 the running container. This is the "embed at build time, don't let each
-instance download" requirement from ``envs/README.md``: it calls the same
+instance download" requirement from ``examples/gym/openenv/README.md``: it calls the same
 Hugging Face dataset loader vendored from the recipe
-(``envs.math_rl.dataset_source``, pinned against
+(``examples.gym.openenv.math_rl.dataset_source``, pinned against
 ``loom_cookbook.recipes.math_rl.math_env`` by
 ``tests/test_env_grading_parity.py``), then writes plain JSONL that the
 deployed environment reads from disk with no further downloads.
@@ -20,7 +20,7 @@ import argparse
 import json
 from pathlib import Path
 
-from envs.math_rl.dataset_source import (
+from examples.gym.openenv.math_rl.dataset_source import (
     _get_hendrycks_math_test,
     _get_hendrycks_math_train,
     question_suffix,

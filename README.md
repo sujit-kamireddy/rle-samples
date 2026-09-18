@@ -23,7 +23,7 @@ release.
 
 ## `code_rl` compact dataset maintenance
 
-`envs/code_rl` ships its 900-training-task and 100-validation-task snapshot
+`examples/gym/openenv/code_rl` ships its 900-training-task and 100-validation-task snapshot
 under `data/`, so normal Docker builds and runtime instances do not download
 Hugging Face data. The snapshot generator is intentionally outside the sample
 at `tools/generate_code_rl_compact_dataset.py`; it is not copied by
@@ -38,4 +38,4 @@ python tools/generate_code_rl_compact_dataset.py
 
 The generator calls the Hugging Face datasets server, preserves no more than
 three complete tests and 12 KiB of test input/output per task, and updates
-`envs/code_rl/data/source.json` with the selected source and file hashes.
+`examples/gym/openenv/code_rl/data/source.json` with the selected source and file hashes.

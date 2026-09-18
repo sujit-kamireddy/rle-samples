@@ -12,9 +12,9 @@ and ``loom_cookbook.recipes.code_rl.deepcoder_tool.DeepcoderReward``, which
 together give the same turn-continuation/final-grading semantics on the
 ``use_rle=False`` path.
 
-Grading runs ``check_correctness`` from ``envs/code_rl/grading/`` -- a copy
+Grading runs ``check_correctness`` from ``examples/gym/openenv/code_rl/grading/`` -- a copy
 of the recipe's grader, vendored so this image installs no ``loom_cookbook``
-(see ``envs/README.md``). ``tests/test_env_grading_parity.py`` pins the copy
+(see ``examples/gym/openenv/README.md``). ``tests/test_env_grading_parity.py`` pins the copy
 against the original, which is what keeps the ``use_rle=True`` and
 ``use_rle=False`` paths scoring solutions identically.
 
@@ -44,14 +44,14 @@ from typing import Any, Optional
 from uuid import uuid4
 
 try:
-    from envs.code_rl._common.dataset import EpisodePicker, load_jsonl
+    from examples.gym.openenv.code_rl._common.dataset import EpisodePicker, load_jsonl
 except ImportError:  # pragma: no cover - standalone container import path
     from _common.dataset import EpisodePicker, load_jsonl
 
 from openenv.core.env_server.interfaces import Environment
 from openenv.core.env_server.types import State
 
-from envs.code_rl.grading import check_correctness, extract_code_from_model
+from examples.gym.openenv.code_rl.grading import check_correctness, extract_code_from_model
 
 try:
     from ..models import CodeAction, CodeObservation
@@ -101,7 +101,7 @@ class CodeRLEnvironment(Environment[CodeAction, CodeObservation, State]):
     """One-shot code-grading environment: reset -> problem, step -> reward.
 
     A real ``openenv`` ``Environment`` subclass, served by ``openenv``'s own
-    ``HTTPEnvServer`` (see ``envs/code_rl/server/app.py``). Its ``/ws`` route
+    ``HTTPEnvServer`` (see ``examples/gym/openenv/code_rl/server/app.py``). Its ``/ws`` route
     builds one instance per WebSocket connection and keeps it for that
     connection's whole lifetime, so ``step()`` grades against the row
     ``reset()`` picked as long as both calls land on the same connection --
@@ -221,7 +221,7 @@ class CodeRLEnvironment(Environment[CodeAction, CodeObservation, State]):
         ``TimeoutException`` elsewhere. Running this on the event loop
         thread directly is safe precisely because each container serves one
         connection/episode at a time (``max_concurrent_envs=1``, see
-        ``envs/code_rl/server/app.py``), so blocking it for the bounded
+        ``examples/gym/openenv/code_rl/server/app.py``), so blocking it for the bounded
         ``grading_overall_timeout`` here is the same tradeoff the
         single-worker/single-session deployment already makes elsewhere.
         """
