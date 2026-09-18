@@ -1,0 +1,6 @@
+[rle]
+name = "code_repair_byoh"
+version = "1.0.0"
+type = "Harness"
+subtype = "BYOH"
+baseUrl = "https://harness.example.com/invoke"
