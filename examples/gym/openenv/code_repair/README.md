@@ -112,8 +112,9 @@ export FOUNDRY_PROJECT_ENDPOINT="https://<account>.services.ai.azure.com/api/pro
 export AZURE_CONTAINER_REGISTRY_ENDPOINT="<registry>.azurecr.io"
 azd ai rle publish
 
-# 3. Invoke the published environment:
-azd ai rle invoke
+# 3. Execute one rollout of the published environment (task is ignored by
+#    this environment's reset(), so {} is enough):
+azd ai rle invoke --model Qwen/Qwen3-32B --task '{}'
 ```
 
 ## Use the published environment in a trainer loop
