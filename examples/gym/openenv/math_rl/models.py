@@ -64,3 +64,11 @@ class MathObservation(Observation):
         description="Chat messages to append to the conversation (system+user prompt on reset, empty on step).",
     )
     problem_id: Optional[str] = None
+
+    # Only populated on the ``type="list_tools"`` step (see MathAction's
+    # docstring): RLE's GymOpenEnvRolloutTargetInvoker.ParseChatCompletionTools
+    # reads this as a top-level ``tools`` array directly on the observation
+    # (each entry needing ``name``/``description``/``input_schema``), not
+    # nested under ``metadata`` -- so it must be its own declared field here.
+    # This env has no tools, so it's always empty.
+    tools: list[dict[str, Any]] = Field(default_factory=list)

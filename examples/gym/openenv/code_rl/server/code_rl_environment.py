@@ -99,6 +99,15 @@ CHECK_SOLUTION_TOOL_SPEC: dict[str, Any] = {
     },
 }
 
+# Same tool, reshaped for RLE's Gym tool-discovery response (CodeObservation.tools --
+# see its field docstring in ../models.py): "parameters" -> "input_schema", matching
+# GymOpenEnvRolloutTargetInvoker.ParseChatCompletionTools's expected key name.
+CHECK_SOLUTION_TOOL_DISCOVERY: dict[str, Any] = {
+    "name": CHECK_SOLUTION_TOOL_SPEC["name"],
+    "description": CHECK_SOLUTION_TOOL_SPEC["description"],
+    "input_schema": CHECK_SOLUTION_TOOL_SPEC["parameters"],
+}
+
 
 class CodeRLEnvironment(Environment[CodeAction, CodeObservation, State]):
     """One-shot code-grading environment: reset -> problem, step -> reward.
@@ -238,13 +247,14 @@ class CodeRLEnvironment(Environment[CodeAction, CodeObservation, State]):
     ) -> CodeObservation:
         if action.type == "list_tools":
             # Stand-in for OpenEnv's own ListToolsAction handling -- see
-            # CodeAction's docstring in ../models.py. Echoes the same spec reset()
-            # already hands back in metadata.tool_specs, so both paths agree.
+            # CodeAction's docstring in ../models.py. Echoes the same tool reset()
+            # already hands back in metadata.tool_specs, reshaped for RLE's expected
+            # top-level `tools` schema (see CHECK_SOLUTION_TOOL_DISCOVERY).
             return CodeObservation(
                 done=False,
                 reward=None,
                 messages=[],
-                metadata={"tool_specs": [CHECK_SOLUTION_TOOL_SPEC]},
+                tools=[CHECK_SOLUTION_TOOL_DISCOVERY],
             )
 
         self._state.step_count += 1

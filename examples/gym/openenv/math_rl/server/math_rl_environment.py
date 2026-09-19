@@ -135,7 +135,7 @@ class MathRLEnvironment(Environment[MathAction, MathObservation, State]):
             # Stand-in for OpenEnv's own ListToolsAction handling -- see
             # MathAction's docstring in ../models.py for why this env has to answer
             # this itself. This env exposes no tools, so the answer is just empty.
-            return MathObservation(done=False, reward=None, messages=[], metadata={"tools": []})
+            return MathObservation(done=False, reward=None, messages=[], tools=[])
 
         self._state.step_count += 1
         row = self._rows.row_for_episode(action.problem_id, self._current_row)

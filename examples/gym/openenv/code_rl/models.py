@@ -91,3 +91,12 @@ class CodeObservation(Observation):
     )
     starter_code: Optional[str] = None
     problem_id: Optional[str] = None
+
+    # Only populated on the ``type="list_tools"`` step (see CodeAction's
+    # docstring): RLE's GymOpenEnvRolloutTargetInvoker.ParseChatCompletionTools
+    # reads this as a top-level ``tools`` array directly on the observation
+    # (each entry needing ``name``/``description``/``input_schema``), not
+    # nested under ``metadata`` -- so it must be its own declared field here,
+    # shaped like CHECK_SOLUTION_TOOL_SPEC (name/description/parameters ->
+    # name/description/input_schema).
+    tools: list[dict[str, Any]] = Field(default_factory=list)
