@@ -138,6 +138,16 @@ def _current_workspace() -> Path:
     return _current_environment._workspace
 
 
+@app.get("/_env/health")
+async def env_health() -> dict[str, str]:
+    """Alias for `/health` at the literal path RLE's rollout-scoped proxy
+    forwards to (`.../rollouts/{rolloutId}/_env/health`), distinct from the
+    sandbox-scoped `/health` OpenEnv's `create_app()` already registers.
+    RLE forwards that target path verbatim with no rewriting, so Harness
+    images must expose this literal route themselves."""
+    return {"status": "healthy"}
+
+
 @app.post("/tools/workspace.apply_patch")
 async def workspace_apply_patch(arguments: dict[str, Any]) -> dict[str, Any]:
     """Mocks the production `workspace.apply_patch` tool the harness calls."""
