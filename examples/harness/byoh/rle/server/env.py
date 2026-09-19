@@ -26,11 +26,19 @@ from pathlib import Path
 from typing import Any, Optional
 from uuid import uuid4
 
+from fastapi import Body
 from pydantic import Field
 
 from openenv.core.env_server.http_server import create_app
 from openenv.core.env_server.interfaces import Environment
-from openenv.core.env_server.types import Action, EnvironmentMetadata, Observation, State
+from openenv.core.env_server.types import (
+    Action,
+    EnvironmentMetadata,
+    Observation,
+    ResetRequest,
+    ResetResponse,
+    State,
+)
 
 FIXTURES_DIR = Path(__file__).resolve().parent.parent / "fixtures"
 BASE_REPO_DIR = Path("/opt/base-repo")
@@ -148,6 +156,30 @@ async def env_health() -> dict[str, str]:
     return {"status": "healthy"}
 
 
+def _registered_endpoint(path: str, method: str):
+    """Looks up the callable `create_app()` already registered for `path`,
+    so the `_env/`-prefixed aliases below reuse its exact request handling
+    (including OpenEnv's per-rollout concurrency bookkeeping) instead of
+    reimplementing it."""
+    method = method.upper()
+    for route in app.routes:
+        if getattr(route, "path", None) == path and method in getattr(route, "methods", set()):
+            return route.endpoint
+    raise RuntimeError(f"No {method} route registered for {path!r}")
+
+
+_reset_endpoint = _registered_endpoint("/reset", "POST")
+
+
+@app.post("/_env/reset")
+async def env_reset(request: ResetRequest = Body(default_factory=ResetRequest)) -> ResetResponse:
+    """Alias for `/reset` at the literal path RLE's rollout-scoped proxy
+    forwards to (`HttpRolloutSandboxClient.cs` calls `POST _env/reset`).
+    Same rationale as `/_env/health` above: RLE never calls plain `/reset`
+    for Harness rollouts, only this `_env/`-prefixed path."""
+    return await _reset_endpoint(request)
+
+
 @app.post("/tools/workspace.apply_patch")
 async def workspace_apply_patch(arguments: dict[str, Any]) -> dict[str, Any]:
     """Mocks the production `workspace.apply_patch` tool the harness calls."""
@@ -207,4 +239,12 @@ async def grade_rollout(rollout: dict[str, Any]) -> dict[str, Any]:
         ),
         "test_output": (result.stdout + result.stderr)[-2000:],
     }
+
+
+@app.post("/_env/grade")
+async def env_grade_rollout(rollout: dict[str, Any]) -> dict[str, Any]:
+    """Alias for `/grade` at the literal path RLE's rollout-scoped proxy
+    forwards to (`HttpRolloutSandboxClient.cs` calls `POST _env/grade`).
+    Same rationale as `/_env/reset` above."""
+    return await grade_rollout(rollout)
 
