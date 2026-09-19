@@ -236,6 +236,17 @@ class CodeRLEnvironment(Environment[CodeAction, CodeObservation, State]):
         timeout_s: Optional[float] = None,
         **kwargs: Any,
     ) -> CodeObservation:
+        if action.type == "list_tools":
+            # Stand-in for OpenEnv's own ListToolsAction handling -- see
+            # CodeAction's docstring in ../models.py. Echoes the same spec reset()
+            # already hands back in metadata.tool_specs, so both paths agree.
+            return CodeObservation(
+                done=False,
+                reward=None,
+                messages=[],
+                metadata={"tool_specs": [CHECK_SOLUTION_TOOL_SPEC]},
+            )
+
         self._state.step_count += 1
         row = self._rows.row_for_episode(action.problem_id, self._current_row)
 

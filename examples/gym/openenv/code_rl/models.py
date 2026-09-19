@@ -16,7 +16,7 @@ grades only the last assistant message of the completed episode.
 
 from __future__ import annotations
 
-from typing import Any, Optional
+from typing import Any, Literal, Optional
 
 from pydantic import Field
 
@@ -24,10 +24,30 @@ from openenv.core.env_server.types import Action, Observation
 
 
 class CodeAction(Action):
-    """The policy's submitted solution for the current problem."""
+    """The policy's submitted solution for the current problem.
 
-    code_text: str = Field(
-        description="Free-text response, ideally containing a ```python ...``` fenced solution."
+    ``type`` defaults to ``"submit_answer"`` (a normal grading/tool-call step). A
+    ``type="list_tools"`` action is accepted too -- see
+    ``examples/gym/openenv/code_rl/server/code_rl_environment.py``'s ``step()`` -- as a
+    stand-in for OpenEnv's own MCP-style ``ListToolsAction`` (rfcs/003-mcp-support.md),
+    which RLE's rollout pipeline probes for on every Gym/OpenEnv target before the first
+    real step. OpenEnv only auto-recognizes that probe when ``action_cls`` is exactly
+    ``Action`` or an MCP action type (``serialization.py``'s ``_deserialize_mcp_action``),
+    not for a custom subclass like this one, so without this field the probe fails
+    Pydantic validation (extra field + missing ``code_text``) before ``step()`` is ever
+    called. This env already hands its one real tool (``check_solution``) back via
+    ``reset()``'s ``metadata.tool_specs`` (see ``CHECK_SOLUTION_TOOL_SPEC``), so the probe
+    just echoes that same spec back instead of an empty list.
+    """
+
+    type: Literal["submit_answer", "list_tools"] = Field(
+        default="submit_answer",
+        description="'submit_answer' (default) grades code_text/tool_calls; 'list_tools' is a discovery probe.",
+    )
+
+    code_text: Optional[str] = Field(
+        default=None,
+        description="Free-text response, ideally containing a ```python ...``` fenced solution.",
     )
 
     tool_calls: Optional[list[dict[str, Any]]] = Field(

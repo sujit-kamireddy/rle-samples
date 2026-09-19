@@ -131,11 +131,17 @@ class MathRLEnvironment(Environment[MathAction, MathObservation, State]):
         timeout_s: Optional[float] = None,
         **kwargs: Any,
     ) -> MathObservation:
+        if action.type == "list_tools":
+            # Stand-in for OpenEnv's own ListToolsAction handling -- see
+            # MathAction's docstring in ../models.py for why this env has to answer
+            # this itself. This env exposes no tools, so the answer is just empty.
+            return MathObservation(done=False, reward=None, messages=[], metadata={"tools": []})
+
         self._state.step_count += 1
         row = self._rows.row_for_episode(action.problem_id, self._current_row)
 
         try:
-            given = extract_boxed(action.answer_text)
+            given = extract_boxed(action.answer_text or "")
             has_format = True
         except ValueError:
             # No \boxed{} in the submission. The in-process path (MathEnv.step
