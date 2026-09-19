@@ -68,7 +68,27 @@ def _row_to_record(row: dict) -> dict:
     }
 
 
-def build(out_dir: Path, max_train: int | None, max_validation: int | None, seed: int) -> None:
+def _write_training_manifest(training_dir: Path, split_name: str, num_rows: int) -> None:
+    """Writes `training/<split>.jsonl`: one `reset()` task payload per row of
+    the baked `data/<split>.jsonl.gz` this snapshot produces -- never the
+    problem/solution content itself, just enough (`seed`, `split`) for a
+    training job to reproducibly pick that row via `EpisodePicker.pick()`.
+    Must stay in lockstep with the row counts below; see `training/README.md`."""
+    training_dir.mkdir(parents=True, exist_ok=True)
+    path = training_dir / f"{split_name}.jsonl"
+    with open(path, "w") as f:
+        for seed in range(num_rows):
+            f.write(json.dumps({"seed": seed, "split": split_name}) + "\n")
+    print(f"wrote {num_rows} rows to {path}")
+
+
+def build(
+    out_dir: Path,
+    training_dir: Path,
+    max_train: int | None,
+    max_validation: int | None,
+    seed: int,
+) -> None:
     train_ds = _get_hendrycks_math_train().shuffle(seed=seed)
     test_ds = _get_hendrycks_math_test()
     if max_train is not None:
@@ -83,13 +103,22 @@ def build(out_dir: Path, max_train: int | None, max_validation: int | None, seed
             for row in ds:
                 f.write(json.dumps(_row_to_record(row)) + "\n")
         print(f"wrote {len(ds)} rows to {path}")
+        _write_training_manifest(training_dir, split_name, len(ds))
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--out-dir", type=Path, default=Path("."))
+    parser.add_argument(
+        "--training-out-dir",
+        type=Path,
+        default=None,
+        help="Where to write training/train.jsonl + training/validation.jsonl "
+        "(defaults to --out-dir's sibling 'training' directory).",
+    )
     parser.add_argument("--max-train", type=int, default=4000)
     parser.add_argument("--max-validation", type=int, default=500)
     parser.add_argument("--seed", type=int, default=0)
     args = parser.parse_args()
-    build(args.out_dir, args.max_train, args.max_validation, args.seed)
+    training_out_dir = args.training_out_dir or args.out_dir.parent / "training"
+    build(args.out_dir, training_out_dir, args.max_train, args.max_validation, args.seed)
