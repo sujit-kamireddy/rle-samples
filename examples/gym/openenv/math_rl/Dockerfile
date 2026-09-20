@@ -1,13 +1,11 @@
 # RLE environment server for the `math_rl` recipe.
 #
-# Self-contained: this whole folder is the Docker build context. `_common/`
-# is a vendored copy of `envs/_common/` (kept identical across all four
-# recipes -- see `tests/test_common_parity.py`), so this build needs nothing
-# from outside this directory.
-#
-# Also independent of `loom_cookbook`: the grading logic lives in
-# `grading/`, both vendored from the recipe. That keeps the runtime image to
-# the handful of packages the server actually imports (sympy/pylatexenc for
+# Self-contained: this whole folder is the Docker build context, with no
+# dependency on anything outside it. `server/dataset.py` and
+# `server/grading.py` are self-contained ports of the recipe's dataset
+# loading and grading code, kept in sync by hand -- so this build needs
+# no `loom_cookbook` install, and the runtime image only needs the
+# handful of packages the server actually imports (sympy/pylatexenc for
 # grading) rather than the recipe's full training stack (torch, transformers,
 # CUDA wheels) which the server never touches.
 #
@@ -20,7 +18,7 @@
 #
 # Grading defaults to the `sympy` backend, which is always installed. The
 # optional `math_verify` backend (`grader="math_verify"`) is a lazily
-# imported extra, not installed here -- see `math_grading.grade_answer_math_verify`.
+# imported extra, not installed here -- see `grading.grade_answer_math_verify`.
 #
 #   cd examples/gym/openenv/math_rl && docker build -t ft-math-rl-env:latest .
 #   docker run -p 8100:8000 ft-math-rl-env:latest
@@ -49,7 +47,7 @@ WORKDIR /app
 # Everything the server imports: `openenv`, whose real `Environment`/
 # `HTTPEnvServer` (`fastapi`/`uvicorn` included as its own dependencies) the
 # server in `server/app.py` and `server/math_rl_environment.py` builds on --
-# and sympy/pylatexenc for the vendored grader (`grading/math_grading.py`).
+# and sympy/pylatexenc for the grader (`server/grading.py`).
 RUN if [ -n "${PIP_FALLBACK_INDEX_URL}" ] && \
        ! pip download --no-deps --quiet --dest /tmp/idxprobe six >/dev/null 2>&1; then \
         echo "Primary index unreachable; falling back to ${PIP_FALLBACK_INDEX_URL}"; \

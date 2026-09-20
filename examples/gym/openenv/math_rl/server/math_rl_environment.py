@@ -2,19 +2,18 @@
 
 ``reset()`` selects a problem, ``step()`` grades the submitted answer and
 ends the episode. Grading runs in this container using ``safe_grade``
-(sympy / math-verify), vendored from
-``loom_cookbook.recipes.math_rl.math_env`` so this image never installs
-``loom_cookbook`` -- ``tests/test_env_grading_parity.py`` pins the vendored
-copy against the recipe original so both keep agreeing on what counts as a
-correct answer. See ``examples/gym/openenv/README.md``.
+(sympy / math-verify, see ``grading.py``) -- a self-contained port of
+``loom_cookbook.recipes.math_rl.math_env``'s grading code, kept in sync by
+hand rather than by installing ``loom_cookbook`` itself (see
+``examples/gym/openenv/README.md``).
 
-The reward *composition* is pinned the same way: ``FORMAT_COEF`` below must
-equal ``loom_cookbook.rl.problem_env.ProblemEnv``'s ``format_coef`` default,
-and the ``format``/``correct`` -> reward formula must match
-``MathEnv.step()`` (with ``forced_commit`` disabled, which is this
-environment's only mode) -- a submission without ``\\boxed{}`` scores
+The reward *composition* mirrors the same recipe by hand: ``FORMAT_COEF``
+below must equal ``loom_cookbook.rl.problem_env.ProblemEnv``'s
+``format_coef`` default, and the ``format``/``correct`` -> reward formula
+must match ``MathEnv.step()`` (with ``forced_commit`` disabled, which is
+this environment's only mode) -- a submission without ``\\boxed{}`` scores
 ``-FORMAT_COEF`` without attempting to grade the raw text, exactly like the
-in-process path. ``test_env_grading_parity.py`` pins both.
+in-process path.
 """
 
 from __future__ import annotations
@@ -24,25 +23,17 @@ from pathlib import Path
 from typing import Any, Optional
 from uuid import uuid4
 
-try:
-    from .._common.dataset import EpisodePicker, load_jsonl
-except ImportError:  # pragma: no cover - standalone container import path
-    from _common.dataset import EpisodePicker, load_jsonl
-
 from openenv.core.env_server.interfaces import Environment
 from openenv.core.env_server.types import State
 
-try:
-    from ..grading import safe_grade
-    from ..grading.math_grading import extract_boxed
-except ImportError:  # pragma: no cover - standalone container import path
-    from grading import safe_grade
-    from grading.math_grading import extract_boxed
+from .dataset import EpisodePicker, load_jsonl
+from .grading import extract_boxed, safe_grade
 
 try:
     from ..models import MathAction, MathObservation
 except ImportError:  # pragma: no cover - standalone container import path
     from models import MathAction, MathObservation
+
 
 # Must equal loom_cookbook.rl.problem_env.ProblemEnv's format_coef default --
 # see the module docstring.

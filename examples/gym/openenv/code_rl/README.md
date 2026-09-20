@@ -13,6 +13,8 @@ only covers what's specific to code.
 | --- | --- |
 | `models.py` | `CodeAction` (`code_text: str`), `CodeObservation` (`messages`, `starter_code`, `problem_id`). |
 | `server/code_rl_environment.py` | `CodeRLEnvironment`: `reset()` picks a DeepCoder-style competitive-programming problem. `step()` supports `check_solution` tool calls, then grades a fenced ` ```python ``` ` final response with `code_grading.check_correctness`. |
+| `server/code_grading.py`, `server/lcb_utils.py` | Grading (`check_correctness`, `extract_code_from_model`), ported from the recipe and kept in sync by hand. |
+| `server/dataset.py` | JSONL loading + `EpisodePicker` (seed -> row, via a fixed shuffled permutation). |
 | `server/app.py` | FastAPI app (`create_fastapi_app(...)` from `openenv.core.env_server.http_server`), served with `uvicorn`. One environment instance, built at startup and shared by both handlers. |
 | `rle.toml` | Host-agnostic RLE identity and control-plane interface (`Gym` / `OpenEnv`). |
 | `env_data/` | Checked-in, gzip-compressed snapshot with 900 training tasks and 100 validation tasks, plus provenance. Each task retains at most three complete test cases and 12 KiB of test input/output. |
@@ -21,7 +23,7 @@ only covers what's specific to code.
 
 ## Executing submitted code
 
-`step()` grades by calling `run_test` (from `grading/lcb_utils.py`) directly,
+`step()` grades by calling `run_test` (from `server/lcb_utils.py`) directly,
 in the same process as the server. `run_test` executes the submission itself
 via `exec()` and enforces its own per-test wall-clock timeout with
 `signal.alarm`; there's no subprocess and no rlimits — a bad submission can

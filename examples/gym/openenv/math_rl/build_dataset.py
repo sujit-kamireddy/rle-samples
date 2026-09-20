@@ -36,10 +36,9 @@ from examples.gym.openenv.math_rl.dataset_source import (
 # (``MathDatasetBuilder.convo_prefix == "standard"``). Baking a *different*
 # prompt shape here (previously: a system-role instruction, no few-shot
 # example) meant use_rle=True and use_rle=False trained/evaluated on
-# different prompt distributions for an otherwise-identical config --
-# see ``tests/test_env_grading_parity.py``'s
-# ``test_math_rl_question_suffix_matches_the_recipe_value`` for the sibling
-# check on ``question_suffix``, which this mirrors for the fewshot prefix.
+# different prompt distributions for an otherwise-identical config -- keep
+# this in sync by hand with the recipe value above (see
+# ``dataset_source.py``'s ``question_suffix``, kept in sync the same way).
 STANDARD_FEWSHOT_PREFIX = [
     {
         "role": "user",

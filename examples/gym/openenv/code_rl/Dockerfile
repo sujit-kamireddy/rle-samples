@@ -1,14 +1,13 @@
 # RLE environment server for the `code_rl` recipe.
 #
-# Self-contained: this whole folder is the Docker build context. `_common/`
-# is a vendored copy of `envs/_common/` (kept identical across all four
-# recipes -- see `tests/test_common_parity.py`), so this build needs nothing
-# from outside this directory.
-#
-# Also independent of `loom_cookbook`: the grading logic is vendored under
-# `grading/`. That keeps the runtime image to the handful of packages the
-# server actually imports rather than the recipe's full training stack
-# (torch, transformers, CUDA wheels) which the server never touches.
+# Self-contained: this whole folder is the Docker build context, with no
+# dependency on anything outside it. `server/dataset.py` and
+# `server/code_grading.py`/`server/lcb_utils.py` are self-contained ports of
+# the recipe's dataset loading and grading code, kept in sync by hand -- so
+# this build needs no `loom_cookbook` install, and the runtime image only
+# needs the handful of packages the server actually imports rather than the
+# recipe's full training stack (torch, transformers, CUDA wheels) which the
+# server never touches.
 #
 # The compact, checked-in data snapshot contains 900 training tasks and 100
 # validation tasks. It avoids a multi-gigabyte Hugging Face download during
@@ -44,7 +43,7 @@ WORKDIR /app
 # Everything the server imports: `openenv`, whose real `Environment`/
 # `HTTPEnvServer` (`fastapi`/`uvicorn` included as its own dependencies) the
 # server in `server/app.py` and `server/code_rl_environment.py` builds on --
-# and `numpy` for the vendored grader (`grading/lcb_utils.py`).
+# and `numpy` for the grader (`server/lcb_utils.py`).
 RUN if [ -n "${PIP_FALLBACK_INDEX_URL}" ] && \
        ! pip download --no-deps --quiet --dest /tmp/idxprobe six >/dev/null 2>&1; then \
         echo "Primary index unreachable; falling back to ${PIP_FALLBACK_INDEX_URL}"; \

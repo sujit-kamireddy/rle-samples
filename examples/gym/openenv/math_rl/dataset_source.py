@@ -1,12 +1,12 @@
 """Dataset loading for the ``math_rl`` environment.
 
-Vendored from the recipe so this environment builds and runs without
-installing ``loom_cookbook`` -- see ``examples/gym/openenv/README.md``. ``_get_hendrycks_math_test``
-and ``_get_hendrycks_math_train`` are kept byte-identical to
-``loom_cookbook.recipes.math_rl.math_env``; ``question_suffix`` is
-re-shaped from ``MathEnv.question_suffix`` (a classmethod there, a plain
-function here) so it is checked by return value instead of source in
-``tests/test_env_grading_parity.py``.
+Ported from the recipe so this environment builds and runs without
+installing ``loom_cookbook`` -- see ``examples/gym/openenv/README.md``.
+``_get_hendrycks_math_test`` and ``_get_hendrycks_math_train`` are kept
+byte-identical to ``loom_cookbook.recipes.math_rl.math_env``, by hand;
+``question_suffix`` is re-shaped from ``MathEnv.question_suffix`` (a
+classmethod there, a plain function here) but must keep returning the same
+value.
 """
 
 from __future__ import annotations

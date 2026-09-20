@@ -12,11 +12,12 @@ only covers what's specific to math.
 | File | Purpose |
 | --- | --- |
 | `models.py` | `MathAction` (`answer_text: str`), `MathObservation` (`messages`, `problem_id`). |
-| `grading/` | `safe_grade` (sympy by default) and `extract_boxed`/`math_grading.py`, vendored from `loom_cookbook/recipes/math_rl/`. `tests/test_env_grading_parity.py` pins these copies against the recipe originals. |
-| `server/math_rl_environment.py` | `MathRLEnvironment`: `reset()` picks a Hendrycks MATH problem. `step()` grades one `\boxed{...}` answer with the vendored `grading.safe_grade` and ends the episode. |
+| `server/math_rl_environment.py` | `MathRLEnvironment`: `reset()` picks a Hendrycks MATH problem. `step()` grades one `\boxed{...}` answer with `grading.safe_grade` and ends the episode. |
+| `server/grading.py` | `safe_grade` (sympy by default) and `extract_boxed`, ported from `loom_cookbook/recipes/math_rl/` and kept in sync by hand. |
+| `server/dataset.py` | JSONL loading + `EpisodePicker` (seed -> row, via a fixed shuffled permutation). |
 | `server/app.py` | FastAPI app (`create_fastapi_app(...)` from `openenv.core.env_server.http_server`), served with `uvicorn`. One environment instance, built at startup and shared by both handlers. |
 | `rle.toml` | Host-agnostic RLE identity and control-plane interface (`Gym` / `OpenEnv`). |
-| `dataset_source.py` | Vendored Hendrycks MATH loader (`HuggingFaceH4/MATH-500` for validation and the filtered Hendrycks MATH corpus for train). |
+| `dataset_source.py` | Hendrycks MATH loader (`HuggingFaceH4/MATH-500` for validation and the filtered Hendrycks MATH corpus for train), ported from the recipe. |
 | `env_data/` | Checked-in, gzip-compressed Hendrycks MATH snapshot (`train.jsonl.gz`/`validation.jsonl.gz`) the server reads at rollout time, plus provenance (`source.json`, `NOTICE.md`). |
 | `build_dataset.py` | Downloads and bakes `env_data/train.jsonl.gz`/`validation.jsonl.gz`. Also (re)generates `job_data/train.jsonl`/`job_data/validation.jsonl` so the two stay in lockstep. |
 | `job_data/` | Training-job input manifests (`{"seed": ..., "split": ...}` per row) for a training loop to pass as `reset()` arguments -- distinct from, and not baked into, the server's own `env_data/` snapshot. See `job_data/README.md`. |
@@ -25,7 +26,7 @@ only covers what's specific to math.
 ## Grading answers
 
 `step()` extracts `\boxed{...}` from the submitted answer and the reference,
-then grades the values with the vendored `safe_grade` implementation using
+then grades the values with the `safe_grade` implementation (`server/grading.py`) using
 SymPy by default. An answer without `\boxed{...}` receives the formatting
 penalty and is not graded as a raw answer.
 

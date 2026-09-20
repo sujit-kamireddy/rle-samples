@@ -1,10 +1,17 @@
-"""
-Math grading utilities for RL training.
+"""Grading for the ``math_rl`` environment: ``safe_grade`` (the entry point
+``server/math_rl_environment.py`` calls), plus the normalization/parsing/
+sympy-comparison utilities it uses, and ``extract_boxed`` for pulling a
+``\\boxed{...}`` answer out of model text.
 
-Includes math_normalize functionality that was dependency of grader.
+Ported from ``loom_cookbook.recipes.math_rl``'s grading code (this image
+installs no ``loom_cookbook`` -- see ``examples/gym/openenv/README.md``);
+``safe_grade`` in particular is a trimmed copy of
+``loom_cookbook.recipes.math_rl.math_env``'s function of the same name,
+without the ``MathEnv``/episode/renderer plumbing this server doesn't need.
 """
 
 import contextlib
+import math
 import logging
 import re
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
@@ -556,3 +563,19 @@ def run_with_timeout_signal(
         executor.shutdown(wait=False)
 
     return result
+
+
+def safe_grade(given_answer: str, ground_truth: str, grader: str = "sympy", timeout: float = 1.0):
+    if grader == "sympy":
+        grader_func = grade_answer
+    elif grader == "math_verify":
+        grader_func = grade_answer_math_verify
+    else:
+        raise ValueError(f"Invalid grader: {grader}")
+    out = run_with_timeout_signal(
+        grader_func, args=(given_answer, ground_truth), timeout_seconds=int(math.ceil(timeout))
+    )
+    if out is None:
+        logger.warning(f"Timeout grading {given_answer} against {ground_truth}")
+        return False
+    return out

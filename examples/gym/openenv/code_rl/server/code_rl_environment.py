@@ -12,22 +12,20 @@ and ``loom_cookbook.recipes.code_rl.deepcoder_tool.DeepcoderReward``, which
 together give the same turn-continuation/final-grading semantics on the
 ``use_rle=False`` path.
 
-Grading runs ``check_correctness`` from ``examples/gym/openenv/code_rl/grading/`` -- a copy
-of the recipe's grader, vendored so this image installs no ``loom_cookbook``
-(see ``examples/gym/openenv/README.md``). ``tests/test_env_grading_parity.py`` pins the copy
-against the original, which is what keeps the ``use_rle=True`` and
-``use_rle=False`` paths scoring solutions identically.
+Grading runs ``check_correctness`` from ``server/code_grading.py`` -- a
+self-contained port of the recipe's grader, kept in sync by hand rather
+than installing ``loom_cookbook`` itself (see
+``examples/gym/openenv/README.md``).
 
-The reward *composition* is pinned the same way: ``FORMAT_COEF`` below must
-equal ``loom_cookbook.recipes.code_rl.deepcoder_tool.DeepcoderReward``'s
-``format_coef`` default, code-block extraction uses the same vendored
+The reward *composition* mirrors the same recipe by hand: ``FORMAT_COEF``
+below must equal ``loom_cookbook.recipes.code_rl.deepcoder_tool.DeepcoderReward``'s
+``format_coef`` default, code-block extraction uses the same ported
 ``extract_code_from_model`` (last fenced block, or ``None``) rather than a
 local regex, and an unfenced submission scores ``-FORMAT_COEF`` without
 attempting to grade the raw text -- exactly like ``DeepcoderReward.__call__``.
-``test_env_grading_parity.py`` pins both.
 
 The submitted solution is ``exec()``'d in-process (see
-``grading/code_grading.py``) rather than farmed out to an external sandbox
+``server/code_grading.py``) rather than farmed out to an external sandbox
 service, so the image needs no sandbox dependency and no egress. Grading
 (``check_correctness``) is only ever awaited from ``step_async`` -- see that
 method's docstring for why it must run on the event loop's own thread rather
@@ -43,18 +41,11 @@ from pathlib import Path
 from typing import Any, Optional
 from uuid import uuid4
 
-try:
-    from .._common.dataset import EpisodePicker, load_jsonl
-except ImportError:  # pragma: no cover - standalone container import path
-    from _common.dataset import EpisodePicker, load_jsonl
-
 from openenv.core.env_server.interfaces import Environment
 from openenv.core.env_server.types import State
 
-try:
-    from ..grading import check_correctness, extract_code_from_model
-except ImportError:  # pragma: no cover - standalone container import path
-    from grading import check_correctness, extract_code_from_model
+from .code_grading import check_correctness, extract_code_from_model
+from .dataset import EpisodePicker, load_jsonl
 
 try:
     from ..models import CodeAction, CodeObservation
@@ -71,8 +62,7 @@ DEFAULT_MAX_TURNS = 2
 
 # Byte-for-byte what @tool-decorating
 # loom_cookbook.recipes.code_rl.deepcoder_tool.DeepcoderTool.check_solution
-# generates via FunctionTool.to_spec() (pinned by
-# tests/test_env_grading_parity.py) -- vendored as a literal dict rather
+# generates via FunctionTool.to_spec() -- kept as a literal dict here rather
 # than imported, since this image installs no loom_cookbook (see module
 # docstring). Handed back in ``reset()``'s observation metadata (see
 # ``CodeRLEnvironment.reset()``) rather than a separate schema fetch, so
@@ -224,7 +214,7 @@ class CodeRLEnvironment(Environment[CodeAction, CodeObservation, State]):
         threadpool worker (see ``_run_in_session_executor`` in
         ``openenv.core.env_server.http_server``). That distinction matters
         here specifically: grading's per-test timeout
-        (``check_correctness``'s ``timeout``) is enforced by the vendored
+        (``check_correctness``'s ``timeout``) is enforced by
         ``lcb_utils.run_test`` via ``signal.alarm``, and ``SIGALRM`` is only
         ever delivered to a process's *main* thread -- on a threadpool
         worker it would instead land in whichever thread owns the signal
