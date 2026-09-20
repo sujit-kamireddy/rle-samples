@@ -2,21 +2,22 @@
 
 This directory is **not** part of the Docker image (see `.dockerignore`) and
 is not read by the server at rollout time. It is the training job's own
-input: `train.jsonl` here lists, one per line, the exact `task` payload a
-training job passes to this sample's `reset()` for one episode.
+input: `train.jsonl`/`validation.jsonl` here list, one per line, the exact
+`task` payload a training job passes to this sample's `reset()` for one
+episode.
 
-`code_repair` wraps exactly one fixed SWE-bench-Lite instance (baked into
-the image as `fixtures/instance.json`) -- `reset(seed=None, **kwargs)`
-ignores every per-episode argument (`del seed, kwargs`), so there is no
-seed/index to vary. `train.jsonl` is therefore a single line, the empty
-task object:
+For `code_repair`, `reset(seed, split)` picks a row from the dataset already
+baked into the image (`../env_data/`) by indexing `seed % len(rows)` into a
+fixed shuffled permutation -- so a row here carries no instance/patch
+content, only enough to make one episode's pick reproducible and to
+identify which split it draws from:
 
 ```json
-{}
+{"seed": 0, "split": "train"}
 ```
 
-There is no `validation.jsonl`: with one instance there is no separate
-held-out split. A sample with several instances would instead give each
-line whatever field `reset()` uses to pick one (for example
-`{"instance_id": "..."}`) -- see `math_rl`/`code_rl`'s `job_data/README.md`
-for the seed-based version of that.
+`train.jsonl` has one line per row in `../env_data/train.jsonl.gz` (32 lines,
+`seed` 0..31); `validation.jsonl` mirrors `../env_data/validation.jsonl.gz`
+(8 lines). Regenerate both if the baked dataset's row counts change -- they
+must stay in lockstep with `../env_data/source.json`'s `rows` values. See
+`math_rl`/`code_rl`'s `job_data/README.md` for the same convention.

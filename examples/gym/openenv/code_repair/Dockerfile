@@ -15,28 +15,27 @@ FROM python:3.10-slim
 ARG PIP_INDEX_URL
 ARG PIP_FALLBACK_INDEX_URL
 
-# This environment wraps a real SWE-bench-Lite instance (see
-# fixtures/instance.json): psf/requests at its pinned base commit. requests
-# 2.10 predates Python's collections.abc split and does `collections.Mapping`
-# directly, which was removed in Python 3.10. openenv requires Python >=3.10,
-# so instead of an older interpreter this image restores the removed aliases
-# via sitecustomize.py (auto-imported by every Python process, including the
-# pytest subprocess step() spawns) rather than pinning Python <3.10. Same
-# fix as examples/harness/byoh/rle's Dockerfile, for the same reason.
+# This environment wraps 40 real SWE-bench-Verified instances, all
+# django/django version 3.2 (see env_data/NOTICE.md), so one clone + one
+# dependency set covers the whole baked-in pool. Django 3.2 supports up to
+# Python 3.10 -- the newest interpreter it does, and openenv's own floor
+# (requires-python >=3.10) -- avoiding both the EOL/packaging headaches of
+# the version the original SWE-bench harness spec calls for (3.6) and any
+# collections.abc compatibility shim.
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends git \
     && rm -rf /var/lib/apt/lists/*
 
-COPY server/sitecustomize.py /usr/local/lib/python3.10/site-packages/sitecustomize.py
-
 WORKDIR /opt
 
-# Real, pinned upstream checkout -- not a synthetic fixture. Every rollout's
-# reset() copies this read-only reference into a fresh working directory.
-RUN git clone --quiet https://github.com/psf/requests.git base-repo \
-    && cd base-repo \
-    && git checkout --quiet 36453b95b13079296776d11b09cab2567ea3e703
+# Real, pinned upstream clone -- not a synthetic fixture. A *full* clone
+# (no --filter) so every base_commit's blobs are local: each episode's
+# reset() checks out its instance's commit into its own working directory
+# via `git worktree add`, which needs zero network access at runtime.
+RUN git clone --quiet https://github.com/django/django.git base-repo
+
+WORKDIR /app
 
 # Use the fallback only when the primary package index cannot be reached.
 RUN if [ -n "${PIP_FALLBACK_INDEX_URL}" ] && \
@@ -45,10 +44,10 @@ RUN if [ -n "${PIP_FALLBACK_INDEX_URL}" ] && \
         export PIP_INDEX_URL="${PIP_FALLBACK_INDEX_URL}"; \
     fi; \
     rm -rf /tmp/idxprobe; \
-    pip install --no-cache-dir --index-url "${PIP_INDEX_URL}" -e /opt/base-repo \
-    && pip install --no-cache-dir --index-url "${PIP_INDEX_URL}" pytest==6.2.5 openenv
+    pip install --no-cache-dir --index-url "${PIP_INDEX_URL}" \
+        "asgiref>=3.3.2" "sqlparse>=0.2.2" "tblib>=1.5.0" pytz tzdata \
+        "backports.zoneinfo; python_version<'3.9'" openenv
 
-WORKDIR /app
 COPY . /app/envs/code_repair
 
 ENV PYTHONPATH=/app
