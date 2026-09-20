@@ -1,13 +1,12 @@
-# RLE environment server for the `code_rl` recipe.
+# RLE environment server for `code_rl`.
 #
 # Self-contained: this whole folder is the Docker build context, with no
 # dependency on anything outside it. `server/dataset.py` and
-# `server/code_grading.py`/`server/lcb_utils.py` are self-contained ports of
-# the recipe's dataset loading and grading code, kept in sync by hand -- so
-# this build needs no `loom_cookbook` install, and the runtime image only
-# needs the handful of packages the server actually imports rather than the
-# recipe's full training stack (torch, transformers, CUDA wheels) which the
-# server never touches.
+# `server/code_grading.py`/`server/lcb_utils.py` implement dataset loading
+# and grading directly, so the runtime image only needs the handful of
+# packages the server actually imports (`openenv`, `numpy`) rather than a
+# full training stack (torch, transformers, CUDA wheels) which the server
+# never touches.
 #
 # The compact, checked-in data snapshot contains 900 training tasks and 100
 # validation tasks. It avoids a multi-gigabyte Hugging Face download during

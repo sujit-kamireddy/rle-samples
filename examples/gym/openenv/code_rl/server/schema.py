@@ -7,11 +7,9 @@ times (see ``CODE_RL_MAX_TURNS``) before submitting a final answer via
 ``step()``. Only the final step -- either because the response has no
 tool call, or ``max_turns`` was reached -- grades the submission and ends
 the episode (``done=True``) with a reward from running the submitted code
-against the problem's hidden tests, shaped by ``FORMAT_COEF`` the same way
-the in-process recipe path is (1.0 if correct and fenced, 0.0 if fenced
-but failing, -FORMAT_COEF if unfenced). This mirrors
-``loom_cookbook.recipes.code_rl.deepcoder_tool.DeepcoderReward``, which
-grades only the last assistant message of the completed episode.
+against the problem's hidden tests, shaped by ``FORMAT_COEF`` (1.0 if
+correct and fenced, 0.0 if fenced but failing, -FORMAT_COEF if unfenced),
+grading only the last assistant message of the completed episode.
 """
 
 from __future__ import annotations
@@ -55,9 +53,9 @@ class CodeAction(Action):
         description=(
             "The response's parsed tool calls, if any -- each shaped like "
             "``{'id': str, 'name': str, 'arguments': <JSON string>}``. "
-            "Populated by the renderer's tool-call parsing (see "
-            "loom_cookbook/renderers/base.py's ``ToolCall``) whenever the "
-            "conversation prefix declared the ``check_solution`` tool. "
+            "Populated by the training client's own tool-call parsing "
+            "whenever the conversation prefix declared the "
+            "``check_solution`` tool. "
             "A response with a non-empty ``tool_calls`` keeps the episode "
             "going (see module docstring) instead of grading ``code_text``."
         ),

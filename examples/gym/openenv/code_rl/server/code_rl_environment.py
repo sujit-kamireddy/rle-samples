@@ -6,23 +6,16 @@ times per episode: a response with a ``check_solution`` tool call runs that
 call for real (same grader as the final answer) and keeps the episode going
 (``done=False``) by returning the tool's result as a ``"tool"``-role
 message; a response with no tool call, or one at ``max_turns``, grades
-``code_text`` and ends the episode (``done=True``). This mirrors
-``loom_cookbook.tool_use.agent_tool_message_env.AgentToolMessageEnv.step()``
-and ``loom_cookbook.recipes.code_rl.deepcoder_tool.DeepcoderReward``, which
-together give the same turn-continuation/final-grading semantics on the
-``use_rle=False`` path.
+``code_text`` and ends the episode (``done=True``).
 
-Grading runs ``check_correctness`` from ``server/code_grading.py`` -- a
-self-contained port of the recipe's grader, kept in sync by hand rather
-than installing ``loom_cookbook`` itself (see
-``examples/gym/openenv/README.md``).
+Grading runs ``check_correctness`` from ``server/code_grading.py``, entirely
+in this container (see ``examples/gym/openenv/README.md``).
 
-The reward *composition* mirrors the same recipe by hand: ``FORMAT_COEF``
-below must equal ``loom_cookbook.recipes.code_rl.deepcoder_tool.DeepcoderReward``'s
-``format_coef`` default, code-block extraction uses the same ported
-``extract_code_from_model`` (last fenced block, or ``None``) rather than a
-local regex, and an unfenced submission scores ``-FORMAT_COEF`` without
-attempting to grade the raw text -- exactly like ``DeepcoderReward.__call__``.
+``FORMAT_COEF`` is the format-penalty coefficient: code-block extraction
+uses ``extract_code_from_model`` (last fenced block, or ``None``), and an
+unfenced submission scores ``-FORMAT_COEF`` without attempting to grade the
+raw text at all -- rewarding "submitted correctly-formatted code" strictly
+more than "got lucky with unformatted text".
 
 The submitted solution is ``exec()``'d in-process (see
 ``server/code_grading.py``) rather than farmed out to an external sandbox
@@ -48,23 +41,18 @@ from .code_grading import check_correctness, extract_code_from_model
 from .dataset import EpisodePicker, load_jsonl
 from .schema import CodeAction, CodeObservation
 
-# Must equal loom_cookbook.recipes.code_rl.deepcoder_tool.DeepcoderReward's
-# format_coef default -- see the module docstring.
+# Format-penalty coefficient -- see the module docstring.
 FORMAT_COEF = 0.1
 
-# Must equal loom_cookbook.recipes.code_rl.train_azure.CLIConfig's
-# max_turns default -- see the module docstring.
+# Default number of check_solution turns allowed before a final answer is
+# required.
 DEFAULT_MAX_TURNS = 2
 
-# Byte-for-byte what @tool-decorating
-# loom_cookbook.recipes.code_rl.deepcoder_tool.DeepcoderTool.check_solution
-# generates via FunctionTool.to_spec() -- kept as a literal dict here rather
-# than imported, since this image installs no loom_cookbook (see module
-# docstring). Handed back in ``reset()``'s observation metadata (see
-# ``CodeRLEnvironment.reset()``) rather than a separate schema fetch, so
-# the client (``loom_cookbook/rl/rle_env.py``) never needs its own copy
-# of this spec and OpenEnv's ``/ws`` protocol -- which has no distinct
-# "schema" message type -- never needs one either.
+# The check_solution tool's spec, as a literal dict rather than generated
+# from a decorator. Handed back in ``reset()``'s observation metadata (see
+# ``CodeRLEnvironment.reset()``) rather than a separate schema fetch, so a
+# training client never needs its own copy of this spec -- OpenEnv's ``/ws``
+# protocol has no distinct "schema" message type.
 CHECK_SOLUTION_TOOL_SPEC: dict[str, Any] = {
     "name": "check_solution",
     "description": (
@@ -103,8 +91,8 @@ class CodeRLEnvironment(Environment[CodeAction, CodeObservation, State]):
     builds one instance per WebSocket connection and keeps it for that
     connection's whole lifetime, so ``step()`` grades against the row
     ``reset()`` picked as long as both calls land on the same connection --
-    which they do, since ``loom_cookbook/rl/rle_env.py`` opens exactly one
-    connection per leased instance and reuses it for every episode that
+    which they do, since a training client is expected to open exactly one
+    connection per leased instance and reuse it for every episode that
     instance goes on to serve.
     """
 
@@ -282,8 +270,8 @@ class CodeRLEnvironment(Environment[CodeAction, CodeObservation, State]):
 
         if not done:
             # Episode continues: hand back the tool result(s), don't grade
-            # yet -- mirrors AgentToolMessageEnv.step()'s reward_fn only
-            # firing once the episode is done.
+            # yet -- only the episode's final step grades and assigns
+            # reward.
             return CodeObservation(done=False, reward=0.0, messages=tool_messages)
 
         code = extract_code_from_model(action.code_text)
@@ -321,18 +309,16 @@ class CodeRLEnvironment(Environment[CodeAction, CodeObservation, State]):
         return CodeObservation(
             done=True,
             reward=reward,
-            # Tool result(s) from this same turn are included for parity
-            # with the local (use_rle=False) path's message history, even
-            # though the episode ends here -- see AgentToolMessageEnv.step().
+            # Tool result(s) from this same turn are included in the message
+            # history even though the episode ends here, so the transcript
+            # shows the full final turn.
             messages=tool_messages,
             metadata=metadata,
         )
 
     async def _run_check_solution_call(self, tool_call: dict[str, Any], tests: Any) -> dict[str, Any]:
         """Run one ``check_solution`` tool call for real and return its
-        ``"tool"``-role result message -- mirrors
-        ``loom_cookbook.recipes.code_rl.deepcoder_tool.DeepcoderTool.check_solution``
-        and ``loom_cookbook.tool_use.tools.simple_tool_result``.
+        ``"tool"``-role result message.
         """
         call_id = tool_call.get("id") or ""
         name = tool_call.get("name") or "check_solution"

@@ -1,9 +1,10 @@
 # `code_rl` OpenEnv environment
 
-Self-hosted, OpenEnv-compatible environment for
-[`code_rl`](../../loom_cookbook/recipes/code_rl/README.md). It exposes the
-standard OpenEnv `reset` and `step` lifecycle, so you can iterate locally with
-your own OpenEnv-compatible agent before publishing an environment version.
+Self-hosted, OpenEnv-compatible environment for DeepCoder-style
+competitive-programming problems, graded by running each submission's real
+test cases. It exposes the standard OpenEnv `reset` and `step` lifecycle, so
+you can iterate locally with your own OpenEnv-compatible agent before
+publishing an environment version.
 See [`../../../README.md`](../../../README.md) for the general contract; this file
 only covers what's specific to code.
 
@@ -13,13 +14,13 @@ only covers what's specific to code.
 | --- | --- |
 | `server/schema.py` | `CodeAction` (`code_text: str`), `CodeObservation` (`messages`, `starter_code`, `problem_id`). |
 | `server/code_rl_environment.py` | `CodeRLEnvironment`: `reset()` picks a DeepCoder-style competitive-programming problem. `step()` supports `check_solution` tool calls, then grades a fenced ` ```python ``` ` final response with `code_grading.check_correctness`. |
-| `server/code_grading.py`, `server/lcb_utils.py` | Grading (`check_correctness`, `extract_code_from_model`), ported from the recipe and kept in sync by hand. |
+| `server/code_grading.py`, `server/lcb_utils.py` | Grading (`check_correctness`, `extract_code_from_model`): runs each submission's test cases in an isolated subprocess. |
 | `server/dataset.py` | JSONL loading + `EpisodePicker` (seed -> row, via a fixed shuffled permutation). |
 | `server/app.py` | FastAPI app (`create_fastapi_app(...)` from `openenv.core.env_server.http_server`), served with `uvicorn`. One environment instance, built at startup and shared by both handlers. |
 | `rle.toml` | Host-agnostic RLE identity and control-plane interface (`Gym` / `OpenEnv`). |
 | `env_data/` | Checked-in, gzip-compressed snapshot with 900 training tasks and 100 validation tasks, plus provenance. Each task retains at most three complete test cases and 12 KiB of test input/output. |
 | `job_data/` | Training-job input manifests (`{"seed": ..., "split": ...}` per row) for a training loop to pass as `reset()` arguments -- distinct from, and not baked into, the server's own `env_data/` snapshot. See `job_data/README.md`. |
-| `Dockerfile` | Runtime-only image that copies the compact snapshot and installs only what the server imports (`openenv`, `numpy`). No Hugging Face data download, `loom_cookbook`, sandbox service, or runtime egress. |
+| `Dockerfile` | Runtime-only image that copies the compact snapshot and installs only what the server imports (`openenv`, `numpy`). No Hugging Face data download, sandbox service, or runtime egress. |
 
 ## Executing submitted code
 
@@ -126,9 +127,9 @@ accepts a fenced Python `code_text`, plus optional `tool_calls` and
 
 3. **Execute one rollout of the published environment.** With
    `FOUNDRY_PROJECT_ENDPOINT` still set, `invoke` reads `rle.name` and
-   `rle.version` from `rle.toml`, provisions a real Loom training session and
-   sampler checkpoint for `--model`, calls Execute Rollout with `--task`, and
-   prints the resulting reward — no interactive shell, and no Loom session or
+   `rle.version` from `rle.toml`, provisions a model session and sampler
+   checkpoint for `--model`, calls Execute Rollout with `--task`, and prints
+   the resulting reward — no interactive shell, and no session or
    checkpoint identifiers for you to manage.
 
    ```bash
@@ -236,24 +237,3 @@ rollouts you want in flight and within project quota; extra rollout requests
 wait for an instance. Use `split="validation"` with a distinct seed range for
 held-out evaluation. Closing the client context releases the run's instance
 group and its leases.
-
-### Use the Loom adapter
-
-The `loom_cookbook` recipes already implement the adapter between their model
-renderer and this environment. From a checkout with its RLE extra and the
-RLE-enabled SDK wheel installed, run:
-
-```bash
-pip install 'loom-cookbook[rle]'
-
-uv run python -m loom_cookbook.recipes.code_rl.train_azure \
-  project_endpoint="$FOUNDRY_PROJECT_ENDPOINT" \
-  model_name="Qwen/Qwen3-32B" tokenizer_name="Qwen/Qwen3-32B" \
-  use_rle=true rle_env_name="$RLE_ENV_NAME" \
-  rle_env_version="$RLE_ENV_VERSION" rle_max_active_instances=32
-```
-
-The recipe leases published RLE instances for rollout execution while its
-training session retains model state and performs optimization. Set
-`rle_project_endpoint` as well when the environment was published to a
-different Foundry project than the training session.

@@ -2,18 +2,13 @@
 
 ``reset()`` selects a problem, ``step()`` grades the submitted answer and
 ends the episode. Grading runs in this container using ``safe_grade``
-(sympy / math-verify, see ``grading.py``) -- a self-contained port of
-``loom_cookbook.recipes.math_rl.math_env``'s grading code, kept in sync by
-hand rather than by installing ``loom_cookbook`` itself (see
-``examples/gym/openenv/README.md``).
+(sympy / math-verify, see ``grading.py``).
 
-The reward *composition* mirrors the same recipe by hand: ``FORMAT_COEF``
-below must equal ``loom_cookbook.rl.problem_env.ProblemEnv``'s
-``format_coef`` default, and the ``format``/``correct`` -> reward formula
-must match ``MathEnv.step()`` (with ``forced_commit`` disabled, which is
-this environment's only mode) -- a submission without ``\\boxed{}`` scores
-``-FORMAT_COEF`` without attempting to grade the raw text, exactly like the
-in-process path.
+A submission without ``\\boxed{}`` scores ``-FORMAT_COEF`` (below) without
+attempting to grade the raw text: this rewards "submitted a correctly
+formatted final answer" strictly more than "got lucky with unformatted
+text", while still keeping the format penalty small next to the +1/-1
+correctness reward.
 """
 
 from __future__ import annotations
@@ -31,8 +26,8 @@ from .grading import extract_boxed, safe_grade
 from .schema import MathAction, MathObservation
 
 
-# Must equal loom_cookbook.rl.problem_env.ProblemEnv's format_coef default --
-# see the module docstring.
+# The penalty applied when a submission has no `\boxed{...}` answer to grade
+# -- see the module docstring.
 FORMAT_COEF = 0.1
 
 
@@ -131,9 +126,9 @@ class MathRLEnvironment(Environment[MathAction, MathObservation, State]):
             given = extract_boxed(action.answer_text or "")
             has_format = True
         except ValueError:
-            # No \boxed{} in the submission. The in-process path (MathEnv.step
-            # with forced_commit disabled) never grades the raw text in this
-            # case -- it forces correct=0 -- so neither do we.
+            # No \boxed{} in the submission -- treat it as automatically
+            # incorrect (correct=False below) rather than attempting to
+            # grade the raw, unformatted text.
             given = None
             has_format = False
 

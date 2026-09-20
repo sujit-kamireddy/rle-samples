@@ -17,8 +17,8 @@ process that exits right after, which is exactly what the child here is.
 Running it in-process in the long-lived server (as this module used to do,
 with the guard disabled to compensate) would have been safe *only* if every
 episode got its own fresh container for its one and only submission -- but
-Foundry RLE instances are pooled and reused across many episodes/rollouts
-(``loom_cookbook/rl/rle_env.py``'s ``_InstanceGroup``), so a submission that
+Foundry RLE instances are pooled and reused across many episodes/rollouts,
+so a submission that
 crashes, wedges, or (with the guard disabled) tampers with the process
 could affect every later episode that instance goes on to serve, not just
 its own. Isolating each submission in its own child process -- torn down

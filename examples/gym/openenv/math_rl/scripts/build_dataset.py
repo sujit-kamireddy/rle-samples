@@ -30,16 +30,9 @@ from examples.gym.openenv.math_rl.scripts.dataset_source import (
     question_suffix,
 )
 
-# Kept in lockstep (by value, not source -- there is no shared import
-# without depending on loom_cookbook) with
-# ``loom_cookbook.recipes.math_rl.math_env.MathEnv.standard_fewshot_prefix``,
-# which is what the local (non-RLE) path prepends by default
-# (``MathDatasetBuilder.convo_prefix == "standard"``). Baking a *different*
-# prompt shape here (previously: a system-role instruction, no few-shot
-# example) meant use_rle=True and use_rle=False trained/evaluated on
-# different prompt distributions for an otherwise-identical config -- keep
-# this in sync by hand with the recipe value above (see
-# ``dataset_source.py``'s ``question_suffix``, kept in sync the same way).
+# One-shot few-shot prefix prepended to every prompt, showing the model the
+# expected \boxed{} answer format on an unrelated warm-up question before
+# the real problem.
 STANDARD_FEWSHOT_PREFIX = [
     {
         "role": "user",

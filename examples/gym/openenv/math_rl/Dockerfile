@@ -1,13 +1,11 @@
-# RLE environment server for the `math_rl` recipe.
+# RLE environment server for `math_rl`.
 #
 # Self-contained: this whole folder is the Docker build context, with no
 # dependency on anything outside it. `server/dataset.py` and
-# `server/grading.py` are self-contained ports of the recipe's dataset
-# loading and grading code, kept in sync by hand -- so this build needs
-# no `loom_cookbook` install, and the runtime image only needs the
-# handful of packages the server actually imports (sympy/pylatexenc for
-# grading) rather than the recipe's full training stack (torch, transformers,
-# CUDA wheels) which the server never touches.
+# `server/grading.py` implement dataset loading and grading directly, so the
+# runtime image only needs the handful of packages the server actually
+# imports (sympy/pylatexenc for grading) rather than a full training stack
+# (torch, transformers, CUDA wheels) which the server never touches.
 #
 # The compact, checked-in `env_data/train.jsonl.gz`/`validation.jsonl.gz` snapshot
 # (see `env_data/NOTICE.md`) is baked in ahead of time by `scripts/build_dataset.py`, run

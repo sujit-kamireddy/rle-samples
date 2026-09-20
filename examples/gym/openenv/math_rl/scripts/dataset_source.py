@@ -1,12 +1,9 @@
 """Dataset loading for the ``math_rl`` environment.
 
-Ported from the recipe so this environment builds and runs without
-installing ``loom_cookbook`` -- see ``examples/gym/openenv/README.md``.
-``_get_hendrycks_math_test`` and ``_get_hendrycks_math_train`` are kept
-byte-identical to ``loom_cookbook.recipes.math_rl.math_env``, by hand;
-``question_suffix`` is re-shaped from ``MathEnv.question_suffix`` (a
-classmethod there, a plain function here) but must keep returning the same
-value.
+Downloads the Hendrycks MATH dataset from Hugging Face and normalizes it
+into the flat ``{"problem": ..., "answer": ...}`` row shape this sample
+uses; see ``build_dataset.py`` for how these rows become the checked-in
+snapshot.
 """
 
 from __future__ import annotations

@@ -3,11 +3,9 @@
 sympy-comparison utilities it uses, and ``extract_boxed`` for pulling a
 ``\\boxed{...}`` answer out of model text.
 
-Ported from ``loom_cookbook.recipes.math_rl``'s grading code (this image
-installs no ``loom_cookbook`` -- see ``examples/gym/openenv/README.md``);
-``safe_grade`` in particular is a trimmed copy of
-``loom_cookbook.recipes.math_rl.math_env``'s function of the same name,
-without the ``MathEnv``/episode/renderer plumbing this server doesn't need.
+``safe_grade`` extracts the boxed answer, normalizes both sides (numeric,
+fraction, and simple algebraic forms), and falls back to a sympy equality
+check with a timeout so a pathological expression can't hang grading.
 """
 
 import contextlib

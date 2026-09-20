@@ -1,11 +1,12 @@
 # `math_rl` OpenEnv environment
 
-Self-hosted, OpenEnv-compatible environment for
-[`math_rl`](../../loom_cookbook/recipes/math_rl/README.md). It exposes the
-standard OpenEnv `reset` and `step` lifecycle, so you can iterate locally with
-your own OpenEnv-compatible agent before publishing an environment version.
-See [`../../../README.md`](../../../README.md) for the general contract; this file
-only covers what's specific to math.
+Self-hosted, OpenEnv-compatible environment for one Hendrycks MATH problem
+per episode, graded by comparing the submitted `\boxed{...}` answer against
+the reference answer. It exposes the standard OpenEnv `reset` and `step`
+lifecycle, so you can iterate locally with your own OpenEnv-compatible agent
+before publishing an environment version. See
+[`../../../README.md`](../../../README.md) for the general contract; this
+file only covers what's specific to math.
 
 ## What's here
 
@@ -13,15 +14,15 @@ only covers what's specific to math.
 | --- | --- |
 | `server/schema.py` | `MathAction` (`answer_text: str`), `MathObservation` (`messages`, `problem_id`). |
 | `server/math_rl_environment.py` | `MathRLEnvironment`: `reset()` picks a Hendrycks MATH problem. `step()` grades one `\boxed{...}` answer with `grading.safe_grade` and ends the episode. |
-| `server/grading.py` | `safe_grade` (sympy by default) and `extract_boxed`, ported from `loom_cookbook/recipes/math_rl/` and kept in sync by hand. |
+| `server/grading.py` | `safe_grade` (sympy by default) and `extract_boxed`. |
 | `server/dataset.py` | JSONL loading + `EpisodePicker` (seed -> row, via a fixed shuffled permutation). |
 | `server/app.py` | FastAPI app (`create_fastapi_app(...)` from `openenv.core.env_server.http_server`), served with `uvicorn`. One environment instance, built at startup and shared by both handlers. |
 | `rle.toml` | Host-agnostic RLE identity and control-plane interface (`Gym` / `OpenEnv`). |
 | `env_data/` | Checked-in, gzip-compressed Hendrycks MATH snapshot (`train.jsonl.gz`/`validation.jsonl.gz`) the server reads at rollout time, plus provenance (`source.json`, `NOTICE.md`). |
 | `job_data/` | Training-job input manifests (`{"seed": ..., "split": ...}` per row) for a training loop to pass as `reset()` arguments -- distinct from, and not baked into, the server's own `env_data/` snapshot. See `job_data/README.md`. |
-| `scripts/dataset_source.py` | Hendrycks MATH loader (`HuggingFaceH4/MATH-500` for validation and the filtered Hendrycks MATH corpus for train), ported from the recipe. Maintainer-only, not part of the Docker build. |
+| `scripts/dataset_source.py` | Hendrycks MATH loader (`HuggingFaceH4/MATH-500` for validation and the filtered Hendrycks MATH corpus for train). Maintainer-only, not part of the Docker build. |
 | `scripts/build_dataset.py` | Maintainer-only CLI that downloads and bakes `env_data/train.jsonl.gz`/`validation.jsonl.gz`. Also (re)generates `job_data/train.jsonl`/`job_data/validation.jsonl` so the two stay in lockstep. |
-| `Dockerfile` | Two-stage build: the dataset stage downloads and bakes the data; the runtime stage installs only `openenv`, `sympy`, and `pylatexenc`. No `loom_cookbook` install or runtime dataset download. |
+| `Dockerfile` | Two-stage build: the dataset stage downloads and bakes the data; the runtime stage installs only `openenv`, `sympy`, and `pylatexenc`. No runtime dataset download. |
 
 ## Grading answers
 
@@ -116,9 +117,9 @@ send `reset`, use the returned `messages` and `problem_id` to construct a
 
 3. **Execute one rollout of the published environment.** With
    `FOUNDRY_PROJECT_ENDPOINT` still set, `invoke` reads `rle.name` and
-   `rle.version` from `rle.toml`, provisions a real Loom training session and
-   sampler checkpoint for `--model`, calls Execute Rollout with `--task`, and
-   prints the resulting reward — no interactive shell, and no Loom session or
+   `rle.version` from `rle.toml`, provisions a model session and sampler
+   checkpoint for `--model`, calls Execute Rollout with `--task`, and prints
+   the resulting reward — no interactive shell, and no session or
    checkpoint identifiers for you to manage.
 
    ```bash
@@ -214,24 +215,3 @@ calculation. Set `max_active_instances` to the number of rollouts you want in
 flight and within project quota; extra rollout requests wait for an instance.
 Use `split="validation"` with a distinct seed range for held-out evaluation.
 Closing the client context releases the run's instance group and its leases.
-
-### Use the Loom adapter
-
-The `loom_cookbook` recipes already implement the adapter between their model
-renderer and this environment. From a checkout with its RLE extra and the
-RLE-enabled SDK wheel installed, run:
-
-```bash
-pip install 'loom-cookbook[rle]'
-
-uv run python -m loom_cookbook.recipes.math_rl.train_azure \
-  project_endpoint="$FOUNDRY_PROJECT_ENDPOINT" \
-  model_name="Qwen/Qwen3-32B" tokenizer_name="Qwen/Qwen3-32B" env=math \
-  use_rle=true rle_env_name="$RLE_ENV_NAME" \
-  rle_env_version="$RLE_ENV_VERSION" rle_max_active_instances=32
-```
-
-The recipe leases published RLE instances for rollout execution while its
-training session retains model state and performs optimization. Set
-`rle_project_endpoint` as well when the environment was published to a
-different Foundry project than the training session.

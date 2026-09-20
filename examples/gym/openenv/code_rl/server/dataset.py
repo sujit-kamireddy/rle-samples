@@ -31,18 +31,17 @@ class EpisodePicker:
 
     ``seed`` (if given) makes the pick reproducible *and* indexes into a
     fixed shuffled permutation of every row, rather than each seed
-    independently drawing a uniformly random one. ``loom_cookbook/rl/rle_env.py``
-    always calls ``pick()`` with a run of consecutive integer seeds for one
-    epoch (``base_seed + i`` for ``i in range(num_examples)`` --
-    see ``_RLEDataset``/``_RLEGroupBuilder``), so consecutive seeds now land
-    on distinct permutation slots and therefore distinct rows: a real
-    traversal of the dataset for any ``num_examples <= len(rows)``, wrapping
-    around (and repeating the same permutation order) past that -- instead
-    of the "balls into bins" behavior independent random draws would give,
-    where roughly 1/e of rows go unpicked and others are duplicated within
-    what's meant to be one epoch. ``seed=None`` (no reproducibility
-    requested) still draws uniformly at random, matching the local
-    (``use_rle=False``) recipe path's non-seeded episodes.
+    independently drawing a uniformly random one. A training client is
+    expected to call ``pick()`` with a run of consecutive integer seeds for
+    one epoch (``base_seed + i`` for ``i in range(num_examples)``), so
+    consecutive seeds now land on distinct permutation slots and therefore
+    distinct rows: a real traversal of the dataset for any
+    ``num_examples <= len(rows)``, wrapping around (and repeating the same
+    permutation order) past that -- instead of the "balls into bins"
+    behavior independent random draws would give, where roughly 1/e of rows
+    go unpicked and others are duplicated within what's meant to be one
+    epoch. ``seed=None`` (no reproducibility requested) still draws
+    uniformly at random.
     """
 
     def __init__(self, rows: list[dict]):
