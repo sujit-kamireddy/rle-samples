@@ -1,20 +1,20 @@
-"""Regenerate the ``data/train.jsonl.gz``/``validation.jsonl.gz`` snapshot for
+"""Regenerate the ``env_data/train.jsonl.gz``/``validation.jsonl.gz`` snapshot for
 the ``math_rl`` RLE world.
 
 This is a **maintainer tool**, not part of the Docker build: it needs a real
 Hugging Face/network connection, so it is run once, ahead of time, from a
 full checkout of this repository (where the
 ``examples.gym.openenv.math_rl.dataset_source`` import below resolves), and
-its output is gzip-compressed and checked into ``data/`` (see
-``data/NOTICE.md``). The image itself only ever reads that checked-in
+its output is gzip-compressed and checked into ``env_data/`` (see
+``env_data/NOTICE.md``). The image itself only ever reads that checked-in
 snapshot from local disk -- no network access or per-instance download, and
 no dependency on this script or ``dataset_source.py`` at build or run time.
 
 Usage (from the repository root)::
 
     python -m examples.gym.openenv.math_rl.build_dataset \\
-        --out-dir examples/gym/openenv/math_rl/data --max-train 4000 --max-validation 500
-    gzip examples/gym/openenv/math_rl/data/train.jsonl examples/gym/openenv/math_rl/data/validation.jsonl
+        --out-dir examples/gym/openenv/math_rl/env_data --max-train 4000 --max-validation 500
+    gzip examples/gym/openenv/math_rl/env_data/train.jsonl examples/gym/openenv/math_rl/env_data/validation.jsonl
 """
 
 from __future__ import annotations
@@ -68,14 +68,14 @@ def _row_to_record(row: dict) -> dict:
     }
 
 
-def _write_training_manifest(training_dir: Path, split_name: str, num_rows: int) -> None:
-    """Writes `training/<split>.jsonl`: one `reset()` task payload per row of
-    the baked `data/<split>.jsonl.gz` this snapshot produces -- never the
+def _write_job_data_manifest(job_data_dir: Path, split_name: str, num_rows: int) -> None:
+    """Writes `job_data/<split>.jsonl`: one `reset()` task payload per row of
+    the baked `env_data/<split>.jsonl.gz` this snapshot produces -- never the
     problem/solution content itself, just enough (`seed`, `split`) for a
     training job to reproducibly pick that row via `EpisodePicker.pick()`.
-    Must stay in lockstep with the row counts below; see `training/README.md`."""
-    training_dir.mkdir(parents=True, exist_ok=True)
-    path = training_dir / f"{split_name}.jsonl"
+    Must stay in lockstep with the row counts below; see `job_data/README.md`."""
+    job_data_dir.mkdir(parents=True, exist_ok=True)
+    path = job_data_dir / f"{split_name}.jsonl"
     with open(path, "w") as f:
         for seed in range(num_rows):
             f.write(json.dumps({"seed": seed, "split": split_name}) + "\n")
@@ -84,7 +84,7 @@ def _write_training_manifest(training_dir: Path, split_name: str, num_rows: int)
 
 def build(
     out_dir: Path,
-    training_dir: Path,
+    job_data_dir: Path,
     max_train: int | None,
     max_validation: int | None,
     seed: int,
@@ -103,22 +103,22 @@ def build(
             for row in ds:
                 f.write(json.dumps(_row_to_record(row)) + "\n")
         print(f"wrote {len(ds)} rows to {path}")
-        _write_training_manifest(training_dir, split_name, len(ds))
+        _write_job_data_manifest(job_data_dir, split_name, len(ds))
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--out-dir", type=Path, default=Path("."))
     parser.add_argument(
-        "--training-out-dir",
+        "--job-data-out-dir",
         type=Path,
         default=None,
-        help="Where to write training/train.jsonl + training/validation.jsonl "
-        "(defaults to --out-dir's sibling 'training' directory).",
+        help="Where to write job_data/train.jsonl + job_data/validation.jsonl "
+        "(defaults to --out-dir's sibling 'job_data' directory).",
     )
     parser.add_argument("--max-train", type=int, default=4000)
     parser.add_argument("--max-validation", type=int, default=500)
     parser.add_argument("--seed", type=int, default=0)
     args = parser.parse_args()
-    training_out_dir = args.training_out_dir or args.out_dir.parent / "training"
-    build(args.out_dir, training_out_dir, args.max_train, args.max_validation, args.seed)
+    job_data_out_dir = args.job_data_out_dir or args.out_dir.parent / "job_data"
+    build(args.out_dir, job_data_out_dir, args.max_train, args.max_validation, args.seed)

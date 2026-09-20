@@ -40,7 +40,7 @@ whom:
 | `server/sitecustomize.py` | Restores `collections.Mapping` and friends (removed in Python 3.10) so the 2016-era pinned `requests` checkout still imports — same fix as `examples/harness/byoh/rle`. |
 | `rle.toml` | Host-agnostic RLE identity and control-plane interface (`Gym` / `OpenEnv`). |
 | `fixtures/instance.json`, `fixtures/test_patch.diff` | The same real instance metadata and hidden regression-test patch used by the Harness examples. |
-| `training/` | Training-job input manifest (a single `{}` row, since `reset()` ignores all per-episode arguments for this single fixed instance). See `training/README.md`. |
+| `job_data/` | Training-job input manifest (a single `{}` row, since `reset()` ignores all per-episode arguments for this single fixed instance). See `job_data/README.md`. |
 | `Dockerfile` | Clones the pinned `psf/requests` checkout at build time and installs `openenv` + the instance's pinned `pytest==6.2.5`. No sandbox service or runtime egress — grading runs `pytest` as a local subprocess against the rollout's own working copy. |
 
 ## Grading

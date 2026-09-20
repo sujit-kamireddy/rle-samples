@@ -17,8 +17,9 @@ only covers what's specific to math.
 | `server/app.py` | FastAPI app (`create_fastapi_app(...)` from `openenv.core.env_server.http_server`), served with `uvicorn`. One environment instance, built at startup and shared by both handlers. |
 | `rle.toml` | Host-agnostic RLE identity and control-plane interface (`Gym` / `OpenEnv`). |
 | `dataset_source.py` | Vendored Hendrycks MATH loader (`HuggingFaceH4/MATH-500` for validation and the filtered Hendrycks MATH corpus for train). |
-| `build_dataset.py` | Downloads and bakes `train.jsonl`/`validation.jsonl` during `docker build`. Also (re)generates `training/train.jsonl`/`training/validation.jsonl` so the two stay in lockstep. |
-| `training/` | Training-job input manifests (`{"seed": ..., "split": ...}` per row) for a training loop to pass as `reset()` arguments -- distinct from, and not baked into, the server's own `data/` snapshot. See `training/README.md`. |
+| `env_data/` | Checked-in, gzip-compressed Hendrycks MATH snapshot (`train.jsonl.gz`/`validation.jsonl.gz`) the server reads at rollout time, plus provenance (`source.json`, `NOTICE.md`). |
+| `build_dataset.py` | Downloads and bakes `env_data/train.jsonl.gz`/`validation.jsonl.gz`. Also (re)generates `job_data/train.jsonl`/`job_data/validation.jsonl` so the two stay in lockstep. |
+| `job_data/` | Training-job input manifests (`{"seed": ..., "split": ...}` per row) for a training loop to pass as `reset()` arguments -- distinct from, and not baked into, the server's own `env_data/` snapshot. See `job_data/README.md`. |
 | `Dockerfile` | Two-stage build: the dataset stage downloads and bakes the data; the runtime stage installs only `openenv`, `sympy`, and `pylatexenc`. No `loom_cookbook` install or runtime dataset download. |
 
 ## Grading answers

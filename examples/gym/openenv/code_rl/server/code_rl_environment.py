@@ -131,7 +131,7 @@ class CodeRLEnvironment(Environment[CodeAction, CodeObservation, State]):
         validation_dataset_path: Optional[str] = None,
     ):
         super().__init__()
-        default_dataset_path = Path(__file__).resolve().parents[1] / "data" / "train.jsonl.gz"
+        default_dataset_path = Path(__file__).resolve().parents[1] / "env_data" / "train.jsonl.gz"
         dataset_path = dataset_path or os.environ.get("CODE_RL_DATASET_PATH", str(default_dataset_path))
         self._rows = EpisodePicker(load_jsonl(dataset_path))
         # Resolved lazily (see _validation_rows()), not loaded here: most

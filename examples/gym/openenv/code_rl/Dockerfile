@@ -58,8 +58,8 @@ RUN if [ -n "${PIP_FALLBACK_INDEX_URL}" ] && \
 
 COPY . /app/envs/code_rl
 
-ENV CODE_RL_DATASET_PATH=/app/envs/code_rl/data/train.jsonl.gz \
-    CODE_RL_VALIDATION_DATASET_PATH=/app/envs/code_rl/data/validation.jsonl.gz \
+ENV CODE_RL_DATASET_PATH=/app/envs/code_rl/env_data/train.jsonl.gz \
+    CODE_RL_VALIDATION_DATASET_PATH=/app/envs/code_rl/env_data/validation.jsonl.gz \
     PYTHONPATH=/app
 
 # Fail at build time, not at the first rollout. This also verifies the

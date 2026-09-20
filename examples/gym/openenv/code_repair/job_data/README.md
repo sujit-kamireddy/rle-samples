@@ -1,4 +1,4 @@
-# Training-job input
+# Job data (training-job input)
 
 This directory is **not** part of the Docker image (see `.dockerignore`) and
 is not read by the server at rollout time. It is the training job's own
@@ -18,5 +18,5 @@ task object:
 There is no `validation.jsonl`: with one instance there is no separate
 held-out split. A sample with several instances would instead give each
 line whatever field `reset()` uses to pick one (for example
-`{"instance_id": "..."}`) -- see `math_rl`/`code_rl`'s `training/README.md`
+`{"instance_id": "..."}`) -- see `math_rl`/`code_rl`'s `job_data/README.md`
 for the seed-based version of that.

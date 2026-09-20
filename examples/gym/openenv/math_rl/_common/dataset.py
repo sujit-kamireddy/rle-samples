@@ -2,7 +2,7 @@
 OpenEnv server.
 
 The sample ships a compact, gzip-compressed ``train.jsonl``/``validation.jsonl``
-snapshot (``data/``). At server start, the environment reads it from local
+snapshot (``env_data/``). At server start, the environment reads it from local
 disk -- no network access or per-instance download.
 """
 
