@@ -30,10 +30,9 @@ from openenv.core.env_server.http_server import create_fastapi_app
 
 try:
     from .code_rl_environment import CodeRLEnvironment
-    from ..models import CodeAction, CodeObservation
 except ImportError:  # pragma: no cover - standalone container import path
     from code_rl_environment import CodeRLEnvironment
-    from models import CodeAction, CodeObservation
+from .schema import CodeAction, CodeObservation
 
 app = create_fastapi_app(
     CodeRLEnvironment,

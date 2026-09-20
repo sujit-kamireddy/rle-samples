@@ -28,11 +28,7 @@ from openenv.core.env_server.types import State
 
 from .dataset import EpisodePicker, load_jsonl
 from .grading import extract_boxed, safe_grade
-
-try:
-    from ..models import MathAction, MathObservation
-except ImportError:  # pragma: no cover - standalone container import path
-    from models import MathAction, MathObservation
+from .schema import MathAction, MathObservation
 
 
 # Must equal loom_cookbook.rl.problem_env.ProblemEnv's format_coef default --
@@ -124,7 +120,7 @@ class MathRLEnvironment(Environment[MathAction, MathObservation, State]):
     ) -> MathObservation:
         if action.type == "list_tools":
             # Stand-in for OpenEnv's own ListToolsAction handling -- see
-            # MathAction's docstring in ../models.py for why this env has to answer
+            # MathAction's docstring in schema.py for why this env has to answer
             # this itself. This env exposes no tools, so the answer is just empty.
             return MathObservation(done=False, reward=None, messages=[], tools=[])
 

@@ -4,15 +4,16 @@ the ``math_rl`` RLE world.
 This is a **maintainer tool**, not part of the Docker build: it needs a real
 Hugging Face/network connection, so it is run once, ahead of time, from a
 full checkout of this repository (where the
-``examples.gym.openenv.math_rl.dataset_source`` import below resolves), and
-its output is gzip-compressed and checked into ``env_data/`` (see
-``env_data/NOTICE.md``). The image itself only ever reads that checked-in
-snapshot from local disk -- no network access or per-instance download, and
-no dependency on this script or ``dataset_source.py`` at build or run time.
+``examples.gym.openenv.math_rl.scripts.dataset_source`` import below
+resolves), and its output is gzip-compressed and checked into ``env_data/``
+(see ``env_data/NOTICE.md``). The image itself only ever reads that
+checked-in snapshot from local disk -- no network access or per-instance
+download, and no dependency on this script or ``dataset_source.py`` at
+build or run time.
 
 Usage (from the repository root)::
 
-    python -m examples.gym.openenv.math_rl.build_dataset \\
+    python -m examples.gym.openenv.math_rl.scripts.build_dataset \\
         --out-dir examples/gym/openenv/math_rl/env_data --max-train 4000 --max-validation 500
     gzip examples/gym/openenv/math_rl/env_data/train.jsonl examples/gym/openenv/math_rl/env_data/validation.jsonl
 """
@@ -23,7 +24,7 @@ import argparse
 import json
 from pathlib import Path
 
-from examples.gym.openenv.math_rl.dataset_source import (
+from examples.gym.openenv.math_rl.scripts.dataset_source import (
     _get_hendrycks_math_test,
     _get_hendrycks_math_train,
     question_suffix,

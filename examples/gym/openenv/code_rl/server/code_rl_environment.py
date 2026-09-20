@@ -46,11 +46,7 @@ from openenv.core.env_server.types import State
 
 from .code_grading import check_correctness, extract_code_from_model
 from .dataset import EpisodePicker, load_jsonl
-
-try:
-    from ..models import CodeAction, CodeObservation
-except ImportError:  # pragma: no cover - standalone container import path
-    from models import CodeAction, CodeObservation
+from .schema import CodeAction, CodeObservation
 
 # Must equal loom_cookbook.recipes.code_rl.deepcoder_tool.DeepcoderReward's
 # format_coef default -- see the module docstring.
@@ -90,7 +86,7 @@ CHECK_SOLUTION_TOOL_SPEC: dict[str, Any] = {
 }
 
 # Same tool, reshaped for RLE's Gym tool-discovery response (CodeObservation.tools --
-# see its field docstring in ../models.py): "parameters" -> "input_schema", matching
+# see its field docstring in schema.py): "parameters" -> "input_schema", matching
 # GymOpenEnvRolloutTargetInvoker.ParseChatCompletionTools's expected key name.
 CHECK_SOLUTION_TOOL_DISCOVERY: dict[str, Any] = {
     "name": CHECK_SOLUTION_TOOL_SPEC["name"],
@@ -237,7 +233,7 @@ class CodeRLEnvironment(Environment[CodeAction, CodeObservation, State]):
     ) -> CodeObservation:
         if action.type == "list_tools":
             # Stand-in for OpenEnv's own ListToolsAction handling -- see
-            # CodeAction's docstring in ../models.py. Echoes the same tool reset()
+            # CodeAction's docstring in schema.py. Echoes the same tool reset()
             # already hands back in metadata.tool_specs, reshaped for RLE's expected
             # top-level `tools` schema (see CHECK_SOLUTION_TOOL_DISCOVERY).
             return CodeObservation(

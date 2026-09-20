@@ -11,7 +11,7 @@ only covers what's specific to code.
 
 | File | Purpose |
 | --- | --- |
-| `models.py` | `CodeAction` (`code_text: str`), `CodeObservation` (`messages`, `starter_code`, `problem_id`). |
+| `server/schema.py` | `CodeAction` (`code_text: str`), `CodeObservation` (`messages`, `starter_code`, `problem_id`). |
 | `server/code_rl_environment.py` | `CodeRLEnvironment`: `reset()` picks a DeepCoder-style competitive-programming problem. `step()` supports `check_solution` tool calls, then grades a fenced ` ```python ``` ` final response with `code_grading.check_correctness`. |
 | `server/code_grading.py`, `server/lcb_utils.py` | Grading (`check_correctness`, `extract_code_from_model`), ported from the recipe and kept in sync by hand. |
 | `server/dataset.py` | JSONL loading + `EpisodePicker` (seed -> row, via a fixed shuffled permutation). |

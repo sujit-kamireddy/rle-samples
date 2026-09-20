@@ -34,7 +34,7 @@ whom:
 
 | File | Purpose |
 | --- | --- |
-| `models.py` | `CodeRepairAction` (`patch: str` — a unified diff), `CodeRepairObservation` (`messages`, `instance_id`). |
+| `server/schema.py` | `CodeRepairAction` (`patch: str` — a unified diff), `CodeRepairObservation` (`messages`, `instance_id`). |
 | `server/code_repair_environment.py` | `CodeRepairEnvironment`: `reset()` seeds a fresh checkout and returns the real GitHub issue as the observation. `step()` applies the submitted patch and grades it by running the real regression test — always `done=True`. |
 | `server/app.py` | FastAPI app (`create_fastapi_app(...)` from `openenv.core.env_server.http_server`), served with `uvicorn`. |
 | `server/sitecustomize.py` | Restores `collections.Mapping` and friends (removed in Python 3.10) so the 2016-era pinned `requests` checkout still imports — same fix as `examples/harness/byoh/rle`. |

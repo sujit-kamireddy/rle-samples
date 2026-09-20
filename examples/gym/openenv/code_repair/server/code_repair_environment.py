@@ -17,7 +17,7 @@ Reward is ``1.0`` if the patch applies cleanly and the test then passes,
 applies but doesn't fix the bug). The episode always ends here
 (``done=True``) -- there is no follow-up turn, unlike the multi-turn
 ``examples/harness/{byoh,hosted-agent}`` "code repair" example this mirrors
-for narrative parity (see ``models.py``'s module docstring for the
+for narrative parity (see ``schema.py``'s module docstring for the
 Gym-vs-Harness distinction).
 """
 
@@ -34,10 +34,7 @@ from uuid import uuid4
 from openenv.core.env_server.interfaces import Environment
 from openenv.core.env_server.types import State
 
-try:
-    from ..models import CodeRepairAction, CodeRepairObservation
-except ImportError:  # pragma: no cover - standalone container import path
-    from models import CodeRepairAction, CodeRepairObservation
+from .schema import CodeRepairAction, CodeRepairObservation
 
 FIXTURES_DIR = Path(__file__).resolve().parent.parent / "fixtures"
 BASE_REPO_DIR = Path(os.environ.get("CODE_REPAIR_BASE_REPO_DIR", "/opt/base-repo"))
@@ -104,7 +101,7 @@ class CodeRepairEnvironment(Environment[CodeRepairAction, CodeRepairObservation,
         workspace = self._workspace
         if workspace is None:
             # Plain HTTP /reset+/step build a fresh environment instance per
-            # request (see models.py's CodeRepairAction.episode_id docstring),
+            # request (see schema.py's CodeRepairAction.episode_id docstring),
             # so this instance never saw its own reset() -- fall back to the
             # workspace the client's echoed episode_id names. Both land on the
             # same on-disk directory either way, since ROLLOUTS_DIR is shared

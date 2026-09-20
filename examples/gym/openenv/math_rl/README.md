@@ -11,16 +11,16 @@ only covers what's specific to math.
 
 | File | Purpose |
 | --- | --- |
-| `models.py` | `MathAction` (`answer_text: str`), `MathObservation` (`messages`, `problem_id`). |
+| `server/schema.py` | `MathAction` (`answer_text: str`), `MathObservation` (`messages`, `problem_id`). |
 | `server/math_rl_environment.py` | `MathRLEnvironment`: `reset()` picks a Hendrycks MATH problem. `step()` grades one `\boxed{...}` answer with `grading.safe_grade` and ends the episode. |
 | `server/grading.py` | `safe_grade` (sympy by default) and `extract_boxed`, ported from `loom_cookbook/recipes/math_rl/` and kept in sync by hand. |
 | `server/dataset.py` | JSONL loading + `EpisodePicker` (seed -> row, via a fixed shuffled permutation). |
 | `server/app.py` | FastAPI app (`create_fastapi_app(...)` from `openenv.core.env_server.http_server`), served with `uvicorn`. One environment instance, built at startup and shared by both handlers. |
 | `rle.toml` | Host-agnostic RLE identity and control-plane interface (`Gym` / `OpenEnv`). |
-| `dataset_source.py` | Hendrycks MATH loader (`HuggingFaceH4/MATH-500` for validation and the filtered Hendrycks MATH corpus for train), ported from the recipe. |
 | `env_data/` | Checked-in, gzip-compressed Hendrycks MATH snapshot (`train.jsonl.gz`/`validation.jsonl.gz`) the server reads at rollout time, plus provenance (`source.json`, `NOTICE.md`). |
-| `build_dataset.py` | Downloads and bakes `env_data/train.jsonl.gz`/`validation.jsonl.gz`. Also (re)generates `job_data/train.jsonl`/`job_data/validation.jsonl` so the two stay in lockstep. |
 | `job_data/` | Training-job input manifests (`{"seed": ..., "split": ...}` per row) for a training loop to pass as `reset()` arguments -- distinct from, and not baked into, the server's own `env_data/` snapshot. See `job_data/README.md`. |
+| `scripts/dataset_source.py` | Hendrycks MATH loader (`HuggingFaceH4/MATH-500` for validation and the filtered Hendrycks MATH corpus for train), ported from the recipe. Maintainer-only, not part of the Docker build. |
+| `scripts/build_dataset.py` | Maintainer-only CLI that downloads and bakes `env_data/train.jsonl.gz`/`validation.jsonl.gz`. Also (re)generates `job_data/train.jsonl`/`job_data/validation.jsonl` so the two stay in lockstep. |
 | `Dockerfile` | Two-stage build: the dataset stage downloads and bakes the data; the runtime stage installs only `openenv`, `sympy`, and `pylatexenc`. No `loom_cookbook` install or runtime dataset download. |
 
 ## Grading answers

@@ -10,10 +10,10 @@
 # CUDA wheels) which the server never touches.
 #
 # The compact, checked-in `env_data/train.jsonl.gz`/`validation.jsonl.gz` snapshot
-# (see `env_data/NOTICE.md`) is baked in ahead of time by `build_dataset.py`, run
+# (see `env_data/NOTICE.md`) is baked in ahead of time by `scripts/build_dataset.py`, run
 # once against a real network/Hugging Face connection -- not at `docker
 # build` time -- so this build needs no Hugging Face/network access at all.
-# Re-run `build_dataset.py` and re-gzip its output into `env_data/` to refresh
+# Re-run `scripts/build_dataset.py` and re-gzip its output into `env_data/` to refresh
 # the snapshot.
 #
 # Grading defaults to the `sympy` backend, which is always installed. The

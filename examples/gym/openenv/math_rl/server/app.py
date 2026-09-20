@@ -26,10 +26,9 @@ from openenv.core.env_server.http_server import create_fastapi_app
 
 try:
     from .math_rl_environment import MathRLEnvironment
-    from ..models import MathAction, MathObservation
 except ImportError:  # pragma: no cover - standalone container import path
     from math_rl_environment import MathRLEnvironment
-    from models import MathAction, MathObservation
+from .schema import MathAction, MathObservation
 
 app = create_fastapi_app(
     MathRLEnvironment,

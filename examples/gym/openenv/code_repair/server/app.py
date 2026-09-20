@@ -23,10 +23,9 @@ from openenv.core.env_server.http_server import create_fastapi_app
 
 try:
     from .code_repair_environment import CodeRepairEnvironment
-    from ..models import CodeRepairAction, CodeRepairObservation
 except ImportError:  # pragma: no cover - standalone container import path
     from code_repair_environment import CodeRepairEnvironment
-    from models import CodeRepairAction, CodeRepairObservation
+from .schema import CodeRepairAction, CodeRepairObservation
 
 app = create_fastapi_app(
     CodeRepairEnvironment,
