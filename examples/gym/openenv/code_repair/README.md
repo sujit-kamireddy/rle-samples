@@ -33,7 +33,7 @@ checkouts. What differs is who calls whom:
 
 | File | Purpose |
 | --- | --- |
-| `server/schema.py` | `CodeRepairAction` (`patch: str` — a unified diff, plus `problem_id`/`episode_id` echoes), `CodeRepairObservation` (`messages`, `instance_id`, `problem_id`, `episode_id`). |
+| `server/schema.py` | `CodeRepairAction` (`patch: str` — a unified diff), `CodeRepairObservation` (`messages`, `instance_id`, `problem_id`, `episode_id`). |
 | `server/dataset.py` | `EpisodePicker`/`load_jsonl` — seed-based row selection over the baked `env_data/` snapshot, same as `math_rl`/`code_rl`. |
 | `server/code_repair_environment.py` | `CodeRepairEnvironment`: `reset(seed, split)` picks a row, checks out its `base_commit` into a fresh `git worktree`, and returns the real GitHub issue as the observation. `step()` applies the submitted patch and grades it by running the real regression test(s) with Django's own test runner — always `done=True`. |
 | `server/app.py` | FastAPI app (`create_fastapi_app(...)` from `openenv.core.env_server.http_server`), served with `uvicorn`. |
@@ -42,6 +42,35 @@ checkouts. What differs is who calls whom:
 | `env_data/` | Baked, checked-in snapshot of the 40 usable instances (`train.jsonl.gz`/`validation.jsonl.gz`, plus `source.json`/`NOTICE.md` provenance). Read from local disk at server start — no network access. |
 | `job_data/` | Training-job input manifests (`{"seed": .., "split": ..}` per row) — see `job_data/README.md`. |
 | `Dockerfile` | Clones the full `django/django` repository at build time (so every instance's commit is a local, network-free `git worktree` checkout) and installs `openenv` + Django's own trimmed test dependencies. No sandbox service or runtime egress — grading runs `tests/runtests.py` as a local subprocess against the rollout's own worktree. |
+
+## How RLE drives this environment
+
+RLE reads the action vocabulary from `CodeRepairAction`'s JSON Schema at
+`GET /schema`. `CodeRepairAction` declares one action, so the model is offered
+no tools: every completion becomes a single graded step, and `step()` always
+ends the episode. `rle.toml` names the field that receives the completion
+text verbatim:
+
+```toml
+[defaults.gym_openenv]
+model_response_field = "patch"
+```
+
+The model's whole completion lands in `patch`, so the prompt asks for a
+unified diff and nothing else.
+
+RLE sets no `max_tokens` of its own on this path — it is the harness here — so
+`rle.toml` also states the per-turn output budget. Left unset the request
+inherits the sampler's default (1024 tokens today), which stops a reasoning
+model mid-thought and submits a truncated answer that still grades:
+
+```toml
+[defaults.reinforcement]
+max_completion_tokens = 8192
+```
+
+RLE sends the smaller of that and its own ceiling, and the capture proxy applies
+its own cap on top — 8192 today, which is why nothing here asks for more.
 
 ## Grading
 
@@ -85,12 +114,17 @@ printed URL, and opens a local playground.
 ### Copy-paste smoke test
 
 After `azd ai rle run` opens the `rle>` shell, enter the following two
-commands separately. Do not type the `rle>` prompt itself.
+commands separately. Do not type the `rle>` prompt itself. This environment
+is served over `/ws` only (one environment instance for the life of the
+connection), so `step()` always grades against the row/workspace the
+preceding `reset()` set up -- there is no `problem_id`/`episode_id` to echo
+back, and no fallback for a stateless-HTTP runner that sends `reset` and
+`step` as separate requests.
 
 ```text
 reset {"seed": 0, "split": "train"}
 
-step {"patch": "diff --git a/django/db/models/sql/compiler.py b/django/db/models/sql/compiler.py\n--- a/django/db/models/sql/compiler.py\n+++ b/django/db/models/sql/compiler.py\n@@ -727,7 +727,12 @@ def find_ordering_name(self, name, opts, alias=None, default_order='ASC',\n         # If we get to this point and the field is a relation to another model,\n         # append the default ordering for that model unless it is the pk\n         # shortcut or the attribute name of the field that is specified.\n-        if field.is_relation and opts.ordering and getattr(field, 'attname', None) != name and name != 'pk':\n+        if (\n+            field.is_relation and\n+            opts.ordering and\n+            getattr(field, 'attname', None) != pieces[-1] and\n+            name != 'pk'\n+        ):\n             # Firstly, avoid infinite loops.\n             already_seen = already_seen or set()\n             join_tuple = tuple(getattr(self.query.alias_map[j], 'join_cols', None) for j in joins)\n", "problem_id": "3"}
+step {"patch": "diff --git a/django/db/models/sql/compiler.py b/django/db/models/sql/compiler.py\n--- a/django/db/models/sql/compiler.py\n+++ b/django/db/models/sql/compiler.py\n@@ -727,7 +727,12 @@ def find_ordering_name(self, name, opts, alias=None, default_order='ASC',\n         # If we get to this point and the field is a relation to another model,\n         # append the default ordering for that model unless it is the pk\n         # shortcut or the attribute name of the field that is specified.\n-        if field.is_relation and opts.ordering and getattr(field, 'attname', None) != name and name != 'pk':\n+        if (\n+            field.is_relation and\n+            opts.ordering and\n+            getattr(field, 'attname', None) != pieces[-1] and\n+            name != 'pk'\n+        ):\n             # Firstly, avoid infinite loops.\n             already_seen = already_seen or set()\n             join_tuple = tuple(getattr(self.query.alias_map[j], 'join_cols', None) for j in joins)\n"}
 ```
 
 The patch above is the real upstream fix for `django__django-13033`
@@ -103,7 +137,8 @@ that fails to apply, or applies but doesn't fix the test, grades
 `reward: 0.0`.
 
 Needs Docker running and the `azd` RLE extension (see
-[`../../../README.md`](../../../README.md)).
+[`../../../README.md`](../../../README.md)). Requires a runner/shell that
+keeps one `/ws` connection open across both commands.
 
 The checked-in manifest declares this release as version `2.0.0` (bumped
 from the single-instance `1.0.0` design). Update its name when copying this

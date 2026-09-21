@@ -21,7 +21,7 @@ from uuid import uuid4
 from openenv.core.env_server.interfaces import Environment
 from openenv.core.env_server.types import State
 
-from .dataset import EpisodePicker, load_jsonl
+from .dataset import EpisodePicker, load_jsonl, reject_unknown_selectors
 from .grading import extract_boxed, safe_grade
 from .schema import MathAction, MathObservation
 
@@ -93,6 +93,7 @@ class MathRLEnvironment(Environment[MathAction, MathObservation, State]):
         split: str = "train",
         **kwargs: Any,
     ) -> MathObservation:
+        reject_unknown_selectors(kwargs)
         index, row = self._rows_for_split(split).pick(seed)
         self._current_row = row
         self._state = State(
@@ -113,17 +114,15 @@ class MathRLEnvironment(Environment[MathAction, MathObservation, State]):
         timeout_s: Optional[float] = None,
         **kwargs: Any,
     ) -> MathObservation:
-        if action.type == "list_tools":
-            # Stand-in for OpenEnv's own ListToolsAction handling -- see
-            # MathAction's docstring in schema.py for why this env has to answer
-            # this itself. This env exposes no tools, so the answer is just empty.
-            return MathObservation(done=False, reward=None, messages=[], tools=[])
-
         self._state.step_count += 1
-        row = self._rows.row_for_episode(action.problem_id, self._current_row)
+        if self._current_row is None:
+            # Only reachable if step() is called before reset() -- this env is only
+            # served over /ws, so the row reset() picked is always still on self.
+            raise ValueError("step() called before reset(): no row to grade against.")
+        row = self._current_row
 
         try:
-            given = extract_boxed(action.answer_text or "")
+            given = extract_boxed(action.answer_text)
             has_format = True
         except ValueError:
             # No \boxed{} in the submission -- treat it as automatically

@@ -10,7 +10,7 @@ and formatted, 0.0 if formatted but wrong, -FORMAT_COEF if unformatted).
 
 from __future__ import annotations
 
-from typing import Any, Literal, Optional
+from typing import Any, Optional
 
 from pydantic import Field
 
@@ -20,38 +20,23 @@ from openenv.core.env_server.types import Action, Observation
 class MathAction(Action):
     """The policy's submitted answer for the current problem.
 
-    ``type`` defaults to ``"submit_answer"`` (a normal grading step). A
-    ``type="list_tools"`` action is accepted too -- see
-    ``examples/gym/openenv/math_rl/server/math_rl_environment.py``'s ``step()`` -- as a
-    stand-in for OpenEnv's own MCP-style ``ListToolsAction`` (rfcs/003-mcp-support.md),
-    which RLE's rollout pipeline probes for on every Gym/OpenEnv target before the first
-    real step, tools or not. OpenEnv only auto-recognizes that probe when ``action_cls``
-    is exactly ``Action`` or an MCP action type (``serialization.py``'s
-    ``_deserialize_mcp_action``), not for a custom subclass like this one, so without this
-    field the probe fails Pydantic validation (extra field + missing ``answer_text``)
-    before ``step()`` is ever called. This env has no tools, so it just answers with an
-    empty tool list instead of erroring.
+    This environment has exactly one action, so this class is a plain
+    ``Action`` subclass rather than a discriminated union (compare
+    ``code_rl``, which adds a ``check_solution`` tool alongside its final
+    answer). Foundry RLE reads the action vocabulary from this class's JSON
+    Schema, served at ``GET /schema``, and ``rle.toml``'s
+    ``model_response_field = "answer_text"`` names the property below that
+    receives the model's completion text.
+
+    No ``problem_id`` field: Foundry RLE's rollout pipeline only drives Gym/OpenEnv
+    targets over ``/ws`` (one environment instance for the life of the connection), so
+    ``step()`` can always resolve the episode's row from what ``reset()`` stored on
+    ``self`` -- there is no stateless-HTTP case here to work around.
     """
 
-    type: Literal["submit_answer", "list_tools"] = Field(
-        default="submit_answer",
-        description="'submit_answer' (default) grades answer_text; 'list_tools' is a no-tools discovery probe.",
-    )
-
-    answer_text: Optional[str] = Field(
-        default=None,
-        description="Free-text answer, ideally containing \\boxed{...} (see MathObservation.system_prompt).",
-    )
-
-    problem_id: str = Field(
+    answer_text: str = Field(
         default="",
-        description=(
-            "Optional echo of the observation's problem_id, naming the row to grade "
-            "against. The server remembers the row reset() picked, so this is only "
-            "needed to grade some other row -- or to keep working behind a transport "
-            "that does not preserve state between calls (see "
-            "examples/gym/openenv/math_rl/server/math_rl_environment.py)."
-        ),
+        description="Free-text answer, ideally containing \\boxed{...} (see MathObservation.system_prompt).",
     )
 
 
@@ -64,11 +49,3 @@ class MathObservation(Observation):
         description="Chat messages to append to the conversation (system+user prompt on reset, empty on step).",
     )
     problem_id: Optional[str] = None
-
-    # Only populated on the ``type="list_tools"`` step (see MathAction's
-    # docstring): RLE's GymOpenEnvRolloutTargetInvoker.ParseChatCompletionTools
-    # reads this as a top-level ``tools`` array directly on the observation
-    # (each entry needing ``name``/``description``/``input_schema``), not
-    # nested under ``metadata`` -- so it must be its own declared field here.
-    # This env has no tools, so it's always empty.
-    tools: list[dict[str, Any]] = Field(default_factory=list)

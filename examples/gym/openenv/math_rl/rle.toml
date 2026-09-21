@@ -11,3 +11,17 @@ subtype = "OpenEnv"
 # done=True after the first step), so one step per episode is all it uses.
 [defaults.reinforcement]
 max_episode_steps = 1
+
+# Room for one model turn. Left unset the request inherits whatever the sampler
+# defaults to (1024 tokens today), which stops a reasoning model mid-thought and
+# submits a truncated answer. The budget is dominated by the reasoning, not by the
+# answer, so a two-digit result still needs thousands of tokens: measured against
+# Qwen3-32B, 4096 truncated 2 of 3 sampled problems, while the longest run that
+# finished on its own used 6252.
+max_completion_tokens = 8192
+
+# Names the MathAction property that receives the model's completion text.
+# Every other action property RLE finds in GET /schema is offered to the model
+# as a tool; math_rl declares only this one, so it has no tools.
+[defaults.gym_openenv]
+model_response_field = "answer_text"

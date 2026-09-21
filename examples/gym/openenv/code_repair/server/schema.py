@@ -30,7 +30,21 @@ from openenv.core.env_server.types import Action, Observation
 
 
 class CodeRepairAction(Action):
-    """The policy's whole proposed fix for the current instance."""
+    """The policy's whole proposed fix for the current instance.
+
+    This environment has exactly one action, so this class is a plain
+    ``Action`` subclass rather than a discriminated union (compare ``code_rl``,
+    which adds a ``check_solution`` tool alongside its final answer). Foundry
+    RLE reads the action vocabulary from this class's JSON Schema, served at
+    ``GET /schema``, and ``rle.toml``'s ``model_response_field = "patch"``
+    names the property below that receives the model's completion text.
+
+    No ``problem_id``/``episode_id`` fields: Foundry RLE's rollout pipeline only
+    drives Gym/OpenEnv targets over ``/ws`` (one environment instance for the
+    life of the connection), so ``step()`` can always resolve the episode's
+    row and on-disk workspace from what ``reset()`` stored on ``self`` -- there
+    is no stateless-HTTP case here to work around.
+    """
 
     patch: str = Field(
         default="",
@@ -38,29 +52,6 @@ class CodeRepairAction(Action):
             "Unified diff (as produced by e.g. `git diff`) to apply to the "
             "instance's checkout. Graded in full on this single step() call -- "
             "there is no follow-up turn to revise it."
-        ),
-    )
-
-    problem_id: str = Field(
-        default="",
-        description=(
-            "Optional echo of the observation's problem_id, naming which row to "
-            "grade against. The server remembers the row reset() picked, so this "
-            "is only needed to grade some other row -- or to keep working behind "
-            "a transport that does not preserve state between calls (see "
-            "examples/gym/openenv/code_repair/server/code_repair_environment.py)."
-        ),
-    )
-
-    episode_id: str | None = Field(
-        default=None,
-        description=(
-            "Optional echo of the observation's episode_id, naming which "
-            "rollout's on-disk workspace to grade against. Only needed over "
-            "OpenEnv's plain HTTP /reset+/step routes, which build a fresh "
-            "environment instance per request -- so step() cannot rely on the "
-            "instance that served reset() still being around. Not needed over "
-            "/ws, where one instance serves the whole connection."
         ),
     )
 
@@ -80,9 +71,9 @@ class CodeRepairObservation(Observation):
     instance_id: str | None = None
     problem_id: str | None = Field(
         default=None,
-        description="Echoed back by reset() -- see CodeRepairAction.problem_id.",
+        description="The row index reset() picked, for logging/debugging.",
     )
     episode_id: str | None = Field(
         default=None,
-        description="Echoed back by reset() -- see CodeRepairAction.episode_id.",
+        description="The on-disk rollout workspace's id, for logging/debugging.",
     )

@@ -11,3 +11,14 @@ subtype = "OpenEnv"
 # done=True after the first step), so one step per episode is all it uses.
 [defaults.reinforcement]
 max_episode_steps = 1
+
+# Room for one model turn: the reasoning plus a unified diff, the longest answer of
+# the three samples. Left unset the request inherits the sampler default (1024
+# tokens today), which truncates the patch and fails the diff format check.
+max_completion_tokens = 8192
+
+# Names the CodeRepairAction property that receives the model's completion text.
+# Every other action property RLE finds in GET /schema is offered to the model
+# as a tool; code_repair declares only this one, so it has no tools.
+[defaults.gym_openenv]
+model_response_field = "patch"

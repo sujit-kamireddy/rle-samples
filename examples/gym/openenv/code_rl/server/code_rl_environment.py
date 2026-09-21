@@ -38,8 +38,8 @@ from openenv.core.env_server.interfaces import Environment
 from openenv.core.env_server.types import State
 
 from .code_grading import check_correctness, extract_code_from_model
-from .dataset import EpisodePicker, load_jsonl
-from .schema import CodeAction, CodeObservation
+from .dataset import EpisodePicker, load_jsonl, reject_unknown_selectors
+from .schema import CheckSolutionAction, CodeAction, CodeObservation
 
 # Format-penalty coefficient -- see the module docstring.
 FORMAT_COEF = 0.1
@@ -47,41 +47,6 @@ FORMAT_COEF = 0.1
 # Default number of check_solution turns allowed before a final answer is
 # required.
 DEFAULT_MAX_TURNS = 2
-
-# The check_solution tool's spec, as a literal dict rather than generated
-# from a decorator. Handed back in ``reset()``'s observation metadata (see
-# ``CodeRLEnvironment.reset()``) rather than a separate schema fetch, so a
-# training client never needs its own copy of this spec -- OpenEnv's ``/ws``
-# protocol has no distinct "schema" message type.
-CHECK_SOLUTION_TOOL_SPEC: dict[str, Any] = {
-    "name": "check_solution",
-    "description": (
-        "Execute the proposed solution against the task's test cases.\n\n"
-        "Use this to test your code before providing your final answer."
-    ),
-    "parameters": {
-        "properties": {
-            "code": {
-                "description": "Python code implementing the solution.",
-                "title": "Code",
-                "type": "string",
-            }
-        },
-        "required": ["code"],
-        "title": "check_solution_params",
-        "type": "object",
-    },
-}
-
-# Same tool, reshaped for RLE's Gym tool-discovery response (CodeObservation.tools --
-# see its field docstring in schema.py): "parameters" -> "input_schema", matching
-# GymOpenEnvRolloutTargetInvoker.ParseChatCompletionTools's expected key name.
-CHECK_SOLUTION_TOOL_DISCOVERY: dict[str, Any] = {
-    "name": CHECK_SOLUTION_TOOL_SPEC["name"],
-    "description": CHECK_SOLUTION_TOOL_SPEC["description"],
-    "input_schema": CHECK_SOLUTION_TOOL_SPEC["parameters"],
-}
-
 
 class CodeRLEnvironment(Environment[CodeAction, CodeObservation, State]):
     """One-shot code-grading environment: reset -> problem, step -> reward.
@@ -135,6 +100,7 @@ class CodeRLEnvironment(Environment[CodeAction, CodeObservation, State]):
         self._max_turns = int(os.environ.get("CODE_RL_MAX_TURNS", max_turns))
         self._state = State(episode_id=None, step_count=0)
         self._current_row: Optional[dict] = None
+        self._tool_calls_used = 0
 
     def _rows_for_split(self, split: str) -> EpisodePicker:
         """Resolve which baked dataset file a ``reset()`` picks from.
@@ -159,8 +125,10 @@ class CodeRLEnvironment(Environment[CodeAction, CodeObservation, State]):
         split: str = "train",
         **kwargs: Any,
     ) -> CodeObservation:
+        reject_unknown_selectors(kwargs)
         index, row = self._rows_for_split(split).pick(seed)
         self._current_row = row
+        self._tool_calls_used = 0
         self._state = State(
             episode_id=episode_id or str(uuid4()),
             step_count=0,
@@ -172,10 +140,6 @@ class CodeRLEnvironment(Environment[CodeAction, CodeObservation, State]):
             messages=row["messages"],
             starter_code=row.get("starter_code"),
             problem_id=str(index),
-            # See CHECK_SOLUTION_TOOL_SPEC's comment: handed back here
-            # rather than over a separate schema call, since OpenEnv's
-            # ``/ws`` protocol has no such call.
-            metadata={"tool_specs": [CHECK_SOLUTION_TOOL_SPEC]},
         )
 
     def step(
@@ -219,20 +183,14 @@ class CodeRLEnvironment(Environment[CodeAction, CodeObservation, State]):
         timeout_s: Optional[float] = None,
         **kwargs: Any,
     ) -> CodeObservation:
-        if action.type == "list_tools":
-            # Stand-in for OpenEnv's own ListToolsAction handling -- see
-            # CodeAction's docstring in schema.py. Echoes the same tool reset()
-            # already hands back in metadata.tool_specs, reshaped for RLE's expected
-            # top-level `tools` schema (see CHECK_SOLUTION_TOOL_DISCOVERY).
-            return CodeObservation(
-                done=False,
-                reward=None,
-                messages=[],
-                tools=[CHECK_SOLUTION_TOOL_DISCOVERY],
-            )
+        inner = action.root
 
-        self._state.step_count += 1
-        row = self._rows.row_for_episode(action.problem_id, self._current_row)
+        if self._current_row is None:
+            # Only reachable if step() is called before reset() -- this env is
+            # only served over /ws, so the row reset() picked is always still
+            # on self.
+            raise ValueError("step() called before reset(): no row to grade against.")
+        row = self._current_row
 
         tests = row.get("tests")
 
@@ -247,34 +205,11 @@ class CodeRLEnvironment(Environment[CodeAction, CodeObservation, State]):
                 metadata={"error": "row has no 'tests' field to grade against"},
             )
 
-        tool_calls = action.tool_calls or []
-        no_tool_calls = len(tool_calls) == 0
-        max_turns_reached = self._state.step_count >= self._max_turns
-        done = no_tool_calls or max_turns_reached
+        if isinstance(inner, CheckSolutionAction):
+            return await self._check_solution(inner, tests)
 
-        tool_messages: list[dict[str, Any]] = []
-        if tool_calls:
-            try:
-                tool_messages = [
-                    await self._run_check_solution_call(tc, tests) for tc in tool_calls
-                ]
-            except Exception as exc:  # pragma: no cover - defensive
-                # A malformed tool call shouldn't take down a rollout batch
-                # any more than a malformed final submission does.
-                return CodeObservation(
-                    done=True,
-                    reward=0.0,
-                    messages=[],
-                    metadata={"error": f"tool call failed: {exc}"},
-                )
-
-        if not done:
-            # Episode continues: hand back the tool result(s), don't grade
-            # yet -- only the episode's final step grades and assigns
-            # reward.
-            return CodeObservation(done=False, reward=0.0, messages=tool_messages)
-
-        code = extract_code_from_model(action.code_text)
+        self._state.step_count += 1
+        code = extract_code_from_model(inner.code_text)
         has_code_block = code is not None
 
         passed = False
@@ -302,49 +237,63 @@ class CodeRLEnvironment(Environment[CodeAction, CodeObservation, State]):
         correct_score = 1.0 if passed else 0.0
         reward = FORMAT_COEF * (format_score - 1.0) + correct_score
 
-        metadata: dict[str, Any] = {"passed": passed, "format": has_code_block, "details": details}
-        if max_turns_reached and not no_tool_calls:
-            metadata["max_turns"] = True
-
         return CodeObservation(
             done=True,
             reward=reward,
-            # Tool result(s) from this same turn are included in the message
-            # history even though the episode ends here, so the transcript
-            # shows the full final turn.
-            messages=tool_messages,
-            metadata=metadata,
+            messages=[],
+            metadata={"passed": passed, "format": has_code_block, "details": details},
         )
 
-    async def _run_check_solution_call(self, tool_call: dict[str, Any], tests: Any) -> dict[str, Any]:
-        """Run one ``check_solution`` tool call for real and return its
-        ``"tool"``-role result message.
+    async def _check_solution(self, action: CheckSolutionAction, tests: Any) -> CodeObservation:
+        """Run one ``check_solution`` call and hand its result back as the
+        observation's single message, leaving the episode open.
+
+        The tool's own budget is this environment's, separate from the
+        ``max_episode_steps`` budget Foundry RLE enforces over the whole
+        episode: past ``max_turns`` calls the tool stops running code and says
+        so, which is the policy's cue to submit. ``rle.toml`` leaves room for
+        that final ``submit_answer`` on top of ``max_turns`` tool calls.
         """
-        call_id = tool_call.get("id") or ""
-        name = tool_call.get("name") or "check_solution"
-        try:
-            arguments = json.loads(tool_call.get("arguments") or "{}")
-            code = arguments.get("code", "")
-        except (TypeError, ValueError) as exc:
-            return {
-                "role": "tool",
-                "content": json.dumps({"error": f"invalid arguments: {exc}", "passed": False}),
-                "tool_call_id": call_id,
-                "name": name,
-            }
+        self._tool_calls_used += 1
+        if self._tool_calls_used > self._max_turns:
+            return CodeObservation(
+                done=False,
+                reward=0.0,
+                messages=[
+                    {
+                        "role": "tool",
+                        "content": json.dumps(
+                            {
+                                "error": (
+                                    f"check_solution budget exhausted after "
+                                    f"{self._max_turns} call(s). Submit your final "
+                                    f"answer now."
+                                ),
+                                "passed": False,
+                            }
+                        ),
+                    }
+                ],
+            )
 
         try:
             passed, details = await check_correctness(
                 tests,
-                code,
+                action.code,
                 timeout=self._grading_timeout,
                 overall_timeout=self._grading_overall_timeout,
             )
             content = json.dumps({"passed": passed, "details": details}, ensure_ascii=False)
         except Exception as exc:  # pragma: no cover - defensive
+            # A failing tool call shouldn't take down a rollout batch any more
+            # than a wrong final submission does -- report it and keep going.
             content = json.dumps({"error": str(exc), "passed": False})
 
-        return {"role": "tool", "content": content, "tool_call_id": call_id, "name": name}
+        return CodeObservation(
+            done=False,
+            reward=0.0,
+            messages=[{"role": "tool", "content": content}],
+        )
 
     @property
     def state(self) -> State:

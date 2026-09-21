@@ -37,7 +37,7 @@ from uuid import uuid4
 from openenv.core.env_server.interfaces import Environment
 from openenv.core.env_server.types import State
 
-from .dataset import EpisodePicker, load_jsonl
+from .dataset import EpisodePicker, load_jsonl, reject_unknown_selectors
 from .schema import CodeRepairAction, CodeRepairObservation
 
 BASE_REPO_DIR = Path(os.environ.get("CODE_REPAIR_BASE_REPO_DIR", "/opt/base-repo"))
@@ -122,7 +122,7 @@ class CodeRepairEnvironment(Environment[CodeRepairAction, CodeRepairObservation,
         split: str = "train",
         **kwargs: Any,
     ) -> CodeRepairObservation:
-        del kwargs
+        reject_unknown_selectors(kwargs)
         index, row = self._rows_for_split(split).pick(seed)
         self._current_row = row
         episode_id = episode_id or str(uuid4())
@@ -145,24 +145,15 @@ class CodeRepairEnvironment(Environment[CodeRepairAction, CodeRepairObservation,
     ) -> CodeRepairObservation:
         del timeout_s, kwargs
         self._state.step_count += 1
-        row = self._rows.row_for_episode(action.problem_id, self._current_row)
+        row = self._current_row
         workspace = self._workspace
-        if workspace is None or not workspace.is_dir():
-            # Plain HTTP /reset+/step build a fresh environment instance per
-            # request (see schema.py's CodeRepairAction.episode_id docstring),
-            # so this instance never saw its own reset() -- fall back to the
-            # workspace the client's echoed episode_id names.
-            if not action.episode_id:
-                raise RuntimeError(
-                    "No active rollout for this instance and no episode_id "
-                    "was given; call reset() first and echo its episode_id "
-                    "in step()'s action."
-                )
-            workspace = ROLLOUTS_DIR / action.episode_id
-            if not workspace.is_dir():
-                raise RuntimeError(f"No rollout workspace for episode_id={action.episode_id!r}.")
+        if row is None or workspace is None or not workspace.is_dir():
+            # Only reachable if step() is called before reset() -- this env is
+            # only served over /ws, so the row/workspace reset() set up are
+            # always still on self.
+            raise RuntimeError("step() called before reset(): no active rollout for this instance.")
 
-        episode_id = action.episode_id or self._state.episode_id
+        episode_id = self._state.episode_id
         try:
             apply_result = subprocess.run(
                 ["git", "apply", "-"],
@@ -177,7 +168,7 @@ class CodeRepairEnvironment(Environment[CodeRepairAction, CodeRepairObservation,
                     reward=0.0,
                     messages=[],
                     instance_id=row["instance_id"],
-                    problem_id=str(action.problem_id or ""),
+                    problem_id=str(self._state.extra.get("row_index", "")),
                     episode_id=episode_id,
                     metadata={"applied": False, "error": apply_result.stderr},
                 )
@@ -203,7 +194,7 @@ class CodeRepairEnvironment(Environment[CodeRepairAction, CodeRepairObservation,
                 reward=1.0 if passed else 0.0,
                 messages=[],
                 instance_id=row["instance_id"],
-                problem_id=str(action.problem_id or ""),
+                problem_id=str(self._state.extra.get("row_index", "")),
                 episode_id=episode_id,
                 metadata={
                     "applied": True,

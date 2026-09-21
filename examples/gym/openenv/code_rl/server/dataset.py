@@ -26,6 +26,31 @@ def load_jsonl(path: str | Path) -> list[dict]:
     return rows
 
 
+def reject_unknown_selectors(selectors: dict) -> None:
+    """Raise if ``reset`` was handed a selector this environment does not understand.
+
+    Call this from ``reset`` with its trailing ``**kwargs``. The signature has to end in
+    ``**kwargs`` for this to see anything: OpenEnv's ``ResetRequest`` is ``extra="allow"``
+    and its server then filters the payload down to the parameters ``reset`` actually
+    declares (``_get_valid_kwargs`` in ``core/env_server/http_server.py``), so a selector
+    this environment never declared is dropped twice over before ``reset`` is entered.
+
+    Dropping it is the dangerous outcome, which is why this is loud. RLE passes the job's
+    task through to ``reset`` verbatim and cannot validate it -- ``GET /schema`` describes
+    actions, observations and state, never the reset signature -- so a job that names its
+    episode some other way (``{"instance_id": ...}`` rather than ``{"seed": ...}``) leaves
+    ``seed`` at ``None``, and ``EpisodePicker.pick`` then draws a RANDOM episode. The
+    rollout completes, the grade is real, and it belongs to a different episode than the
+    one the job asked for. Nothing in the response marks it wrong.
+    """
+    if selectors:
+        raise ValueError(
+            f"Unknown reset selector(s): {sorted(selectors)}. This environment selects an "
+            f"episode with 'seed' and 'split'; pass the episode's identity as a seed, not "
+            f"as its content."
+        )
+
+
 class EpisodePicker:
     """Picks the next dataset row for a ``reset()`` call.
 
@@ -64,35 +89,3 @@ class EpisodePicker:
         else:
             index = self._permutation[seed % len(self._rows)]
         return index, self._rows[index]
-
-    def by_index(self, index: int) -> dict:
-        return self._rows[index % len(self._rows)]
-
-    def row_for_episode(self, problem_id: str | None, fallback: dict | None = None) -> dict:
-        """Resolve the episode's row, preferring the one the action names.
-
-        ``fallback`` is what ``reset()`` stored on the environment, and is
-        the normal path: ``openenv``'s own ``/ws`` route keeps one
-        environment instance for the life of a connection (see
-        ``examples/gym/openenv/code_rl/server/code_rl_environment.py``), so ``step()``
-        already knows which row it is grading.
-
-        ``problem_id`` overrides it. Passing it lets a caller grade against
-        a specific row, and keeps these environments correct behind any
-        transport that does *not* carry state between calls -- the
-        ``openenv`` package's HTTP surface builds a fresh ``Environment``
-        per request, so an environment served that way reaches ``step()``
-        with ``fallback=None``.
-        """
-        if problem_id is not None and str(problem_id) != "":
-            try:
-                return self.by_index(int(problem_id))
-            except (TypeError, ValueError):
-                raise ValueError(f"problem_id must be a row index, got {problem_id!r}") from None
-        if fallback is not None:
-            return fallback
-        raise ValueError(
-            "step() could not resolve the episode's row: the action carried no problem_id "
-            "and this environment instance never served the matching reset(). Echo the "
-            "observation's problem_id back in the action -- see examples/gym/openenv/README.md."
-        )

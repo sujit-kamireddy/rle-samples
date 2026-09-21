@@ -12,7 +12,7 @@ only covers what's specific to code.
 
 | File | Purpose |
 | --- | --- |
-| `server/schema.py` | `CodeAction` (`code_text: str`), `CodeObservation` (`messages`, `starter_code`, `problem_id`). |
+| `server/schema.py` | `CheckSolutionAction`/`SubmitAnswerAction` and the `CodeAction` union over them; `CodeObservation` (`messages`, `starter_code`, `problem_id`). |
 | `server/code_rl_environment.py` | `CodeRLEnvironment`: `reset()` picks a DeepCoder-style competitive-programming problem. `step()` supports `check_solution` tool calls, then grades a fenced ` ```python ``` ` final response with `code_grading.check_correctness`. |
 | `server/code_grading.py`, `server/lcb_utils.py` | Grading (`check_correctness`, `extract_code_from_model`): runs each submission's test cases in an isolated subprocess. |
 | `server/dataset.py` | JSONL loading + `EpisodePicker` (seed -> row, via a fixed shuffled permutation). |
@@ -21,6 +21,44 @@ only covers what's specific to code.
 | `env_data/` | Checked-in, gzip-compressed snapshot with 900 training tasks and 100 validation tasks, plus provenance. Each task retains at most three complete test cases and 12 KiB of test input/output. |
 | `job_data/` | Training-job input manifests (`{"seed": ..., "split": ...}` per row) for a training loop to pass as `reset()` arguments -- distinct from, and not baked into, the server's own `env_data/` snapshot. See `job_data/README.md`. |
 | `Dockerfile` | Runtime-only image that copies the compact snapshot and installs only what the server imports (`openenv`, `numpy`). No Hugging Face data download, sandbox service, or runtime egress. |
+
+## How RLE drives this environment
+
+RLE reads the action vocabulary from `CodeAction`'s JSON Schema at
+`GET /schema` — there is no runtime discovery call and no tool spec to
+maintain. The union member declaring `rle.toml`'s `model_response_field`
+(`code_text`, on `SubmitAnswerAction`) receives the model's completion text;
+every other member is offered to the model as a tool named after its
+discriminator. `check_solution` is therefore a tool purely by virtue of being
+a second union member.
+
+```toml
+[defaults.gym_openenv]
+model_response_field = "code_text"
+```
+
+Each member's non-`const` fields become that tool's parameters, and its
+docstring becomes the tool description — so the tool the model sees is
+`check_solution(code: str)`, described as "Execute the proposed solution
+against the task's test cases." The inherited OpenEnv `metadata` field and the
+`type` discriminator are never shown to the model: RLE supplies the
+discriminator itself when it builds the action.
+
+RLE owns each tool call's `tool_call_id` and pairs the result with it, so
+`CodeObservation.messages` only needs to carry the text of the result.
+
+RLE sets no `max_tokens` of its own on this path — it is the harness here — so
+`rle.toml` also states the per-turn output budget. Left unset the request
+inherits the sampler's default (1024 tokens today), which stops a reasoning
+model mid-thought and submits a truncated answer that still grades:
+
+```toml
+[defaults.reinforcement]
+max_completion_tokens = 8192
+```
+
+RLE sends the smaller of that and its own ceiling, and the capture proxy applies
+its own cap on top — 8192 today, which is why nothing here asks for more.
 
 ## Executing submitted code
 
@@ -75,21 +113,25 @@ After `azd ai rle run` opens the `rle>` shell, enter the following two
 commands separately. Do not type the `rle>` prompt itself.
 
 The checked-in compact snapshot makes `seed: 0` deterministic: it selects
-the pancake-stack task at `problem_id` `"316"`. The value below is intentional,
-not a placeholder. Including it also makes the command work with local runners
-that send `reset` and `step` as separate HTTP requests.
+the pancake-stack task at `problem_id` `"316"`. This environment is served
+over `/ws` only (one environment instance for the life of the connection),
+so `step()` always grades against the row the preceding `reset()` picked --
+there is no `problem_id` field to echo back.
 
 ````text
 reset {"seed":0}
 
-step {"problem_id":"316","code_text":"```python\nimport sys\n\nMOD = 1_000_000_007\nvalues = list(map(int, sys.stdin.read().split()))\nif values:\n    queries = values[1:1 + values[0]]\n    max_n = max(queries, default=0)\n\n    bell = [0] * (max_n + 1)\n    row = [1]\n    for n in range(1, max_n + 1):\n        next_row = [row[-1]]\n        for k in range(1, n + 1):\n            next_row.append((next_row[-1] + row[k - 1]) % MOD)\n        row = next_row\n        bell[n] = row[0]\n\n    sys.stdout.write(chr(10).join(str(bell[n]) if n > 0 else '0' for n in queries))\n```"}
+step {"type":"submit_answer","code_text":"```python\nimport sys\n\nMOD = 1_000_000_007\nvalues = list(map(int, sys.stdin.read().split()))\nif values:\n    queries = values[1:1 + values[0]]\n    max_n = max(queries, default=0)\n\n    bell = [0] * (max_n + 1)\n    row = [1]\n    for n in range(1, max_n + 1):\n        next_row = [row[-1]]\n        for k in range(1, n + 1):\n            next_row.append((next_row[-1] + row[k - 1]) % MOD)\n        row = next_row\n        bell[n] = row[0]\n\n    sys.stdout.write(chr(10).join(str(bell[n]) if n > 0 else '0' for n in queries))\n```"}
 ````
 
 The final response has `done: true`, `reward: 1.0`, and
 `metadata.passed: true`.
 
 Needs Docker running and the `azd` RLE extension (see
-[`../../../README.md`](../../../README.md)).
+[`../../../README.md`](../../../README.md)). Requires a runner/shell that
+keeps one `/ws` connection open across both commands -- a runner that sends
+`reset` and `step` as separate stateless HTTP requests will not work, since
+there is no `problem_id` for `step()` to fall back on.
 
 The checked-in manifest declares the initial `code_rl` release as version
 `1.0.0`. Update its name when copying this source outside `azd ai rle init`,
@@ -98,10 +140,12 @@ and update its version before publishing a subsequent release.
 ## Iterate with your agent, run, publish, and invoke
 
 Your agent can use the same OpenEnv lifecycle as the local playground:
-send `reset`, use the returned `messages`, `starter_code`, and `problem_id`
-to construct a `CodeAction`, then send that action to `step`. `CodeAction`
-accepts a fenced Python `code_text`, plus optional `tool_calls` and
-`problem_id`.
+send `reset`, use the returned `messages` and `starter_code` to construct a
+`CodeAction`, then send that action to `step`. `CodeAction` is a discriminated
+union, so every action carries its `type`: `{"type": "check_solution", "code":
+...}` to test a candidate, `{"type": "submit_answer", "code_text": ...}` to
+submit a fenced Python solution and end the episode. Requires `/ws` (this
+environment keeps no `problem_id` fallback for stateless HTTP transports).
 
 1. **Iterate locally with your agent.** Edit the environment or your agent,
    then start the local runtime with `--watch`. Point your
@@ -185,13 +229,11 @@ async def collect_rollout(openenv_client, policy, seed):
         reset = await instance.reset(seed=seed, split="train")
         observation = reset.observation
         messages = list(observation["messages"])
-        problem_id = observation["problem_id"]
         starter_code = observation.get("starter_code")
         trajectory = []
 
         while True:
             action = await policy.next_code_action(messages, starter_code)
-            action["problem_id"] = problem_id
             result = await instance.step(action)
             trajectory.append(
                 {
