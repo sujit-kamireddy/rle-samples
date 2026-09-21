@@ -44,8 +44,16 @@ RUN if [ -n "${PIP_FALLBACK_INDEX_URL}" ] && \
         export PIP_INDEX_URL="${PIP_FALLBACK_INDEX_URL}"; \
     fi; \
     rm -rf /tmp/idxprobe; \
-    pip install --no-cache-dir --index-url "${PIP_INDEX_URL}" -e /opt/base-repo \
-    && pip install --no-cache-dir --index-url "${PIP_INDEX_URL}" pytest==6.2.5 openenv
+    pip install --no-cache-dir --index-url "${PIP_INDEX_URL}" pytest==6.2.5 openenv
+
+# The checkout under /opt/base-repo is deliberately NOT pip-installed. It is
+# requests 2.10, and openenv requires requests>=2.25, so installing it would
+# only be undone moments later when pip resolves openenv and replaces it with a
+# modern wheel -- leaving an install that looks pinned but is not. Nothing needs
+# it on sys.path anyway: every rollout grades a *copy* of this checkout, and
+# /grade points PYTHONPATH at that copy so the code under test wins the import.
+# requests 2.10 vendors its own dependencies under requests/packages/, so the
+# copy is self-contained.
 
 WORKDIR /app
 COPY fixtures/ /app/fixtures/

@@ -41,8 +41,17 @@ from openenv.core.env_server.types import (
 )
 
 FIXTURES_DIR = Path(__file__).resolve().parent.parent / "fixtures"
-BASE_REPO_DIR = Path("/opt/base-repo")
-ROLLOUTS_DIR = Path("/tmp/rollouts")
+# Overridable so this sample can be exercised outside its image -- where the
+# checkout and scratch space live wherever the caller put them -- without
+# editing the file. Inside the image the defaults are the paths the Dockerfile
+# creates, so a deployed rollout is unaffected. `examples/gym/openenv/code_repair`
+# exposes the same three knobs under the same names.
+BASE_REPO_DIR = Path(os.environ.get("CODE_REPAIR_BASE_REPO_DIR", "/opt/base-repo"))
+ROLLOUTS_DIR = Path(os.environ.get("CODE_REPAIR_ROLLOUTS_DIR", "/tmp/rollouts"))
+# `/grade` runs a test suite the agent has just edited, and a bad patch can
+# leave it hanging rather than failing. Nothing else bounds that, so without a
+# timeout one rollout waits forever instead of scoring zero.
+GRADING_TIMEOUT_S = float(os.environ.get("CODE_REPAIR_GRADING_TIMEOUT_S", "120"))
 
 INSTANCE: dict[str, Any] = json.loads((FIXTURES_DIR / "instance.json").read_text())
 TEST_PATCH = (FIXTURES_DIR / "test_patch.diff").read_text()
@@ -214,32 +223,56 @@ async def grade_rollout(rollout: dict[str, Any]) -> dict[str, Any]:
     """Runs the real regression test against the harness's edited checkout."""
     del rollout
     workspace = _current_workspace()
-    result = subprocess.run(
-        ["python", "-m", "pytest", *INSTANCE["fail_to_pass"], "-q"],
-        cwd=workspace,
-        capture_output=True,
-        text=True,
-        env={
-            **os.environ,
-            # Third-party setuptools-entry-point pytest plugins (for example
-            # anyio's, pulled in transitively by openenv/starlette) target
-            # newer pytest internals than the fail_to_pass test's pinned
-            # pytest==6.2.5 and crash it on collection. This project's own
-            # test suite needs no such plugin, so disable autoloading them;
-            # pytest's own built-in plugins are unaffected.
-            "PYTEST_DISABLE_PLUGIN_AUTOLOAD": "1",
-        },
-    )
-    tests_passed = result.returncode == 0
+    try:
+        result = subprocess.run(
+            ["python", "-m", "pytest", *INSTANCE["fail_to_pass"], "-q"],
+            cwd=workspace,
+            capture_output=True,
+            text=True,
+            timeout=GRADING_TIMEOUT_S,
+            env={
+                **os.environ,
+                # The image also carries a modern `requests` (openenv depends on
+                # one), so the 2016 checkout under test has to win the import.
+                # `python -m` already puts cwd first, but that is incidental;
+                # naming the workspace makes the precedence explicit and matches
+                # `examples/gym/openenv/code_repair`.
+                "PYTHONPATH": str(workspace),
+                # Third-party setuptools-entry-point pytest plugins (for example
+                # anyio's, pulled in transitively by openenv/starlette) target
+                # newer pytest internals than the fail_to_pass test's pinned
+                # pytest==6.2.5 and crash it on collection. This project's own
+                # test suite needs no such plugin, so disable autoloading them;
+                # pytest's own built-in plugins are unaffected.
+                "PYTEST_DISABLE_PLUGIN_AUTOLOAD": "1",
+            },
+        )
+        tests_passed = result.returncode == 0
+        test_output = (result.stdout + result.stderr)[-2000:]
+    except subprocess.TimeoutExpired:
+        # A patch that hangs the suite is a failed fix, not a broken grader, so
+        # it scores zero here instead of faulting the rollout.
+        tests_passed = False
+        test_output = f"fail_to_pass tests timed out after {GRADING_TIMEOUT_S}s."
     opened_pull_request = len(_current_environment._pull_requests) > 0
     reward = 0.8 * float(tests_passed) + 0.2 * float(opened_pull_request)
+    # RLE's grader contract is `{reward, is_success, info}`. Only `reward` is
+    # required; `is_success` is optional and reported here because it carries
+    # signal the shaped reward does not -- it tracks the tests alone, which are
+    # what decide whether the reported issue is actually fixed, while the pull
+    # request is the harness's second tool call and earns its own slice of the
+    # reward above. RLE surfaces `info` as the caller's `result`, so anything
+    # reported outside `info` is dropped.
     return {
         "reward": reward,
-        "reason": (
-            f"fail_to_pass tests {'passed' if tests_passed else 'failed'}; "
-            f"pull request {'opened' if opened_pull_request else 'missing'}."
-        ),
-        "test_output": (result.stdout + result.stderr)[-2000:],
+        "is_success": tests_passed,
+        "info": {
+            "reason": (
+                f"fail_to_pass tests {'passed' if tests_passed else 'failed'}; "
+                f"pull request {'opened' if opened_pull_request else 'missing'}."
+            ),
+            "test_output": test_output,
+        },
     }
 
 
