@@ -11,7 +11,9 @@ the same way ``math_rl``/``code_rl`` do, then materializes that row's
 already has every commit's blobs local. It then applies the instance's
 hidden regression-test patch (``test_patch`` -- never shown to the policy,
 only used for grading) and returns the real GitHub issue text
-(``problem_statement``) as the episode's only observation message.
+(``problem_statement``), followed by the unified-diff output contract the
+policy is graded against (``PATCH_FORMAT_INSTRUCTION``), as the episode's
+only observation message.
 
 ``step(action)`` applies ``action.patch`` (the policy's whole proposed fix,
 as a unified diff) to that same working directory via ``git apply``, then
@@ -50,6 +52,33 @@ ROLLOUTS_DIR = Path(os.environ.get("CODE_REPAIR_ROLLOUTS_DIR", "/tmp/rollouts"))
 # start than the single pytest-collected test this replaces, hence the
 # larger default than other samples in this repo.
 GRADING_TIMEOUT_S = float(os.environ.get("CODE_REPAIR_GRADING_TIMEOUT_S", "120"))
+
+# step() feeds the completion straight to ``git apply``, so the episode's only
+# observation message has to carry the output contract itself. Nothing else in
+# the prompt can: ``model_response_field = "patch"`` means that property
+# receives the completion verbatim and is never offered to the model as a tool,
+# so the ``patch`` field's own JSON-Schema description never reaches the policy.
+# Without this, a model answers a GitHub issue the way a person would -- prose,
+# or a fenced code block -- and ``git apply`` rejects it with "No valid patches
+# in input", scoring 0 for a formatting reason rather than for an incorrect fix.
+# ``math_rl`` carries the equivalent contract ("Write your answer in \\boxed{}
+# format", plus a worked example) in its own dataset rows.
+PATCH_FORMAT_INSTRUCTION = """\
+Reply with a unified diff and nothing else.
+
+- Output only the diff: no explanation, no commentary, no Markdown code fences.
+- Use the form `git diff` produces, with `a/` and `b/` path prefixes and `@@` hunk headers.
+- Paths must be relative to the repository root.
+- The diff must apply cleanly with `git apply`.
+
+Expected shape:
+
+--- a/pkg/module.py
++++ b/pkg/module.py
+@@ -10,7 +10,7 @@ def example(value):
+-    return value * 2
++    return value * 3
+"""
 
 
 class CodeRepairEnvironment(Environment[CodeRepairAction, CodeRepairObservation, State]):
@@ -131,7 +160,12 @@ class CodeRepairEnvironment(Environment[CodeRepairAction, CodeRepairObservation,
         return CodeRepairObservation(
             done=False,
             reward=None,
-            messages=[{"role": "user", "content": row["problem_statement"]}],
+            messages=[
+                {
+                    "role": "user",
+                    "content": f"{row['problem_statement']}\n\n{PATCH_FORMAT_INSTRUCTION}",
+                }
+            ],
             instance_id=row["instance_id"],
             problem_id=str(index),
             episode_id=episode_id,

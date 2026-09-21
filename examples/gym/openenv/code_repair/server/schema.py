@@ -57,8 +57,9 @@ class CodeRepairAction(Action):
 
 
 class CodeRepairObservation(Observation):
-    """What the policy sees. ``messages`` is the issue's problem statement on
-    ``reset()``; empty on ``step()``, since the episode always ends there."""
+    """What the policy sees. ``messages`` is the issue's problem statement plus
+    the unified-diff output contract on ``reset()``; empty on ``step()``, since
+    the episode always ends there."""
 
     messages: list[dict[str, Any]] = Field(
         default_factory=list,
