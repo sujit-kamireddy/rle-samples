@@ -140,7 +140,7 @@ Needs Docker running and the `azd` RLE extension (see
 [`../../../README.md`](../../../README.md)). Requires a runner/shell that
 keeps one `/ws` connection open across both commands.
 
-The checked-in manifest declares this release as version `2.0.0` (bumped
+The checked-in manifest declares this release as version `2.0.1` (bumped
 from the single-instance `1.0.0` design). Update its name when copying this
 source outside `azd ai rle init`, and update its version before publishing
 a subsequent release.
@@ -164,7 +164,7 @@ azd ai rle rollout --model Qwen/Qwen3-32B --task '{"seed": 0, "split": "train"}'
 
 # 4. Start a training job from the job_data subfolder:
 cd job_data
-azd ai rle train --rle-name code_repair --rle-version 2.0.0 --model qwen3-32b-1 --suffix rle-cli-smoke-20260918 --training-file ./training.jsonl
+azd ai rle train --rle-name code_repair --rle-version 2.0.1 --model qwen3-32b-1 --suffix rle-cli-smoke-20260918 --training-file ./training.jsonl
 ```
 
 `azd ai rle init` downloads `training.jsonl` into the initialized RLE
