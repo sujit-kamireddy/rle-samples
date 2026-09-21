@@ -180,6 +180,15 @@ environment keeps no `problem_id` fallback for stateless HTTP transports).
     azd ai rle rollout --model Qwen/Qwen3-32B --task '{"split": "train"}'
    ```
 
+4. **Start a training job.** `azd ai rle init` downloads `training.jsonl`
+    into the initialized RLE folder's `job_data` subfolder. Run the training
+    command from that subfolder so the relative training-file path resolves:
+
+    ```powershell
+    cd .\job_data
+    azd ai rle train --rle-name code_rl --rle-version 1.0.0 --model qwen3-32b-1 --suffix rle-cli-smoke-20260918 --training-file .\training.jsonl
+    ```
+
 ## Use the published environment in a trainer loop
 
 `azd ai rle run` is for iterating on the environment. A trainer connects only
