@@ -39,6 +39,19 @@ model_response_field = "answer_text"
 This is the sample to copy when an environment needs no tools. Adding one
 means adding a second action variant — see `code_rl`.
 
+RLE sets no `max_tokens` of its own on this path — it is the harness here — so
+`rle.toml` also states the per-turn output budget. Left unset the request
+inherits the sampler's default (1024 tokens today), which stops a reasoning
+model mid-thought and submits a truncated answer that still grades:
+
+```toml
+[defaults.reinforcement]
+max_completion_tokens = 8192
+```
+
+RLE sends the smaller of that and its own ceiling, and the capture proxy applies
+its own cap on top — 8192 today, which is why nothing here asks for more.
+
 ## Grading answers
 
 `step()` extracts `\boxed{...}` from the submitted answer and the reference,

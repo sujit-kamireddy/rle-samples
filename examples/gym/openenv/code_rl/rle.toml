@@ -12,6 +12,14 @@ subtype = "OpenEnv"
 [defaults.reinforcement]
 max_episode_steps = 3
 
+# Room for one model turn: the reasoning plus the whole function it produces. Left
+# unset the request inherits the sampler default (1024 tokens today) and the model
+# is cut off mid-thought. Applies per turn, so each of the three steps gets this.
+# 8192 is also what the capture proxy allows, so asking for more changes nothing;
+# an untrained Qwen3-32B still overruns it on some problems and is graded as a
+# failed turn, which is the signal that teaches it to answer inside the budget.
+max_completion_tokens = 8192
+
 # Names the CodeAction variant property that receives the model's completion
 # text. That makes SubmitAnswerAction the graded final response, and every
 # other variant -- here just check_solution -- a tool offered to the model.

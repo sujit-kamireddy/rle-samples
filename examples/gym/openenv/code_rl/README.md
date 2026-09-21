@@ -47,6 +47,19 @@ discriminator itself when it builds the action.
 RLE owns each tool call's `tool_call_id` and pairs the result with it, so
 `CodeObservation.messages` only needs to carry the text of the result.
 
+RLE sets no `max_tokens` of its own on this path — it is the harness here — so
+`rle.toml` also states the per-turn output budget. Left unset the request
+inherits the sampler's default (1024 tokens today), which stops a reasoning
+model mid-thought and submits a truncated answer that still grades:
+
+```toml
+[defaults.reinforcement]
+max_completion_tokens = 8192
+```
+
+RLE sends the smaller of that and its own ceiling, and the capture proxy applies
+its own cap on top — 8192 today, which is why nothing here asks for more.
+
 ## Executing submitted code
 
 `step()` grades by calling `run_test` (from `server/lcb_utils.py`) directly,
