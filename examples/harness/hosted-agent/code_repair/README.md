@@ -39,12 +39,6 @@ Install the Azure CLI, `azd`, and the RLE extension, then choose a runtime:
   only if no machine exists, then `podman machine start` if it is stopped.
   Native Linux does not need a Podman machine.
 
-> **Native Podman prerequisite:** Use an RLE CLI build with
-> [`AZD_CONTAINER_RUNTIME` support](https://github.com/sujit-kamireddy/azure-dev/tree/fix/rle-podman-runtime/cli/azd/extensions/azure.ai.rle).
-> Unpatched `0.8.10-preview` ignores this setting. Docker-compatibility mode
-> is an alternative for older builds, but build/export compatibility varies;
-> the instructions below use native Podman instead.
-
 Select the runtime in the **same terminal** used for `run` and `publish`.
 Use `podman` below, or replace it with `docker` for Docker Desktop:
 
@@ -60,10 +54,10 @@ export AZD_CONTAINER_RUNTIME=podman
 export DOCKER_COMMAND="$AZD_CONTAINER_RUNTIME"
 ```
 
-`AZD_CONTAINER_RUNTIME` selects the RLE container executable in compatible
-builds; `DOCKER_COMMAND` separately selects the executable used by
+`AZD_CONTAINER_RUNTIME` selects the container runtime for RLE.
+`DOCKER_COMMAND` selects the runtime used by
 [`az acr login`](https://learn.microsoft.com/azure/container-registry/container-registry-authentication#sign-in-by-using-an-alternative-container-tool-instead-of-docker).
-The native Podman path does not need Docker Desktop, `DOCKER_HOST`, or Buildx.
+Docker Desktop is not required when using Podman.
 
 ### Before the first publish
 
