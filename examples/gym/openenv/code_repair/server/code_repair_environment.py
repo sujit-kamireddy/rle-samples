@@ -45,7 +45,7 @@ ROLLOUTS_DIR = Path(os.environ.get("CODE_REPAIR_ROLLOUTS_DIR", "/tmp/rollouts"))
 
 # Bounds how long a single grading step() may run -- comfortably below the
 # RLE gateway's own request timeout, same rationale as the harness sample's
-# /grade endpoint (see examples/harness/byoh/rle/server/env.py). Django's
+# /grade endpoint (see examples/harness/byoh/code_repair/rle/server/env.py). Django's
 # test runner (migrations + app loading on every invocation) is slower to
 # start than the single pytest-collected test this replaces, hence the
 # larger default than other samples in this repo.

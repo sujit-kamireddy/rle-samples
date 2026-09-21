@@ -1,6 +1,6 @@
 # HostedAgent example: code-repair agent
 
-Same real SWE-bench-Lite instance as [`../byoh`](../byoh): `psf/requests`
+Same real SWE-bench-Lite instance as [`../../byoh/code_repair`](../../byoh/code_repair): `psf/requests`
 issue `psf__requests-3362` ("`iter_content(decode_unicode=True)` can return
 bytes"), pinned at base commit `36453b95b1`. See
 [`rle/fixtures/instance.json`](./rle/fixtures/instance.json) for the exact
@@ -14,7 +14,7 @@ Two independent pieces make up this `Harness`/`HostedAgent` RLE:
   version. It reads the RLE-supplied request headers to become rollout-aware;
   otherwise it behaves exactly as it does in production.
 - [`rle/`](./rle) — the RLE container: byte-for-byte the same environment as
-  [`../byoh/rle`](../byoh/rle) — a real, pinned `requests` checkout baked
+  [`../../byoh/code_repair/rle`](../../byoh/code_repair/rle) — a real, pinned `requests` checkout baked
   into the image, the hidden regression test patch, mock
   `workspace.apply_patch`/`github.create_pull_request` tools, and a grader
   that runs the real test. RLE does not care which harness subtype invokes
@@ -25,7 +25,7 @@ Two independent pieces make up this `Harness`/`HostedAgent` RLE:
   empty placeholder for a harness you already built and deployed yourself).
 
 `agent/main.py`'s `run_agent_loop` is the same agent loop as
-[`../byoh/agent/app.py`](../byoh/agent/app.py)'s. Only the invocation
+[`../../byoh/code_repair/agent/app.py`](../../byoh/code_repair/agent/app.py)'s. Only the invocation
 transport differs — this one reads runtime context from request headers on
 an existing Responses API; BYOH instead adds an HTTP invocation endpoint.
 
@@ -58,11 +58,11 @@ exposes incoming request headers to your handler.
 ## 3. Author and iterate the RLE side
 
 ```bash
-cd examples/harness/hosted-agent/rle
+cd examples/harness/hosted-agent/code_repair/rle
 azd ai rle run
 ```
 
-Identical to the [BYOH example](../byoh)'s RLE side — adapt
+Identical to the [BYOH example](../../byoh/code_repair)'s RLE side — adapt
 `rle/server/env.py`'s `reset()`, mock tool routes, and `/grade` for your own
 repo, mocks, and reward function.
 
@@ -86,7 +86,7 @@ configurations resolved per rollout.
 
 ## 5. Invoke a rollout
 
-Run this from `examples/harness/hosted-agent/rle` (where this sample's
+Run this from `examples/harness/hosted-agent/code_repair/rle` (where this sample's
 `rle.toml` lives) against whichever published name/version you registered.
 `invoke` reads `rle.name`/`rle.version` from `rle.toml`, provisions a real
 Loom training session and sampler checkpoint for `--model`, calls Execute
@@ -96,7 +96,7 @@ enough, but the agent requires `agent_input.issue`; pull the real SWE-bench
 issue text out of the bundled fixture so the command stays copy/paste-ready:
 
 ```bash
-cd examples/harness/hosted-agent/rle
+cd examples/harness/hosted-agent/code_repair/rle
 AGENT_INPUT=$(python3 -c "import json; print(json.dumps({'issue': json.load(open('fixtures/instance.json'))['problem_statement']}))")
 azd ai rle invoke --model Qwen/Qwen3-32B --task '{}' --agent-input "$AGENT_INPUT"
 ```

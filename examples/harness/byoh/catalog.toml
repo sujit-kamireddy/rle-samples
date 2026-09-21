@@ -1,0 +1,17 @@
+# catalog.toml controls which BYOH sample directories in this folder are shown
+# by `azd ai rle init`'s interactive picker and accepted as an explicit
+# `--sample <name>` value.
+#
+# Samples with no [[sample]] entry here default to visible = true, so new
+# sample directories are discoverable automatically unless explicitly hidden.
+#
+# To stage a new or in-progress sample without exposing it to users yet, add
+# an entry with visible = false. The azd CLI's AZD_AI_RLE_ENABLE_ALL
+# environment variable bypasses this filter for internal testing.
+#
+# When a subtype has exactly one visible sample, `azd ai rle init` scaffolds it
+# without prompting.
+
+[[sample]]
+name = "code_repair"
+visible = true

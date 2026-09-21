@@ -11,7 +11,7 @@ rollout-scoped runtime context:
   x-client-rle-model-api-key           # capture proxy session key
   x-client-rle-sandbox-tools-endpoint  # sandbox tool routes for this rollout
 
-This file and ``../../byoh/agent/app.py`` share the same ``run_agent_loop``:
+This file and ``../../../byoh/code_repair/agent/app.py`` share the same ``run_agent_loop``:
 the harness's native agent loop is unchanged between the two RLE subtypes.
 Only how ``model`` and tool calls are constructed differs -- BYOH reads them
 from its invocation request body, this reads them from headers, falling back
@@ -64,7 +64,7 @@ async def run_agent_loop(headers: dict[str, str], agent_input: dict[str, Any]) -
 
     Unchanged between RLE subtypes apart from how ``model`` and tool calls
     are routed -- see this module's header-driven ``create_model_client``/
-    ``call_tool`` versus ``../../byoh/agent/app.py``'s equivalents.
+    ``call_tool`` versus ``../../../byoh/code_repair/agent/app.py``'s equivalents.
     """
     model = create_model_client(headers)
     issue = agent_input["issue"]
