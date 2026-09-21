@@ -78,6 +78,33 @@ async def call_tool(rollout_context: RolloutContext, tool_name: str, arguments: 
         return response.json()
 
 
+# A harness's output contract belongs in its own system prompt. Unlike the
+# Gym/OpenEnv subtype -- where RLE drives the model and the environment's
+# observation carries the instruction -- here the harness owns the model call
+# and the environment never sees the prompt. `/reset` hands over the raw
+# GitHub issue, and a real issue does not tell you to answer in unified-diff
+# form. Without this, a model answers the way a person would -- prose, or a
+# fenced code block -- and the `workspace.apply_patch` mock's real `git apply`
+# rejects it with "No valid patches in input", so the loop below returns early
+# and the rollout scores 0 for a formatting reason rather than for a wrong fix.
+PATCH_FORMAT_INSTRUCTION = """\
+Reply with a unified diff and nothing else.
+
+- Output only the diff: no explanation, no commentary, no Markdown code fences.
+- Use the form `git diff` produces, with `a/` and `b/` path prefixes and `@@` hunk headers.
+- Paths must be relative to the repository root.
+- The diff must apply cleanly with `git apply`.
+
+Expected shape:
+
+--- a/pkg/module.py
++++ b/pkg/module.py
+@@ -10,7 +10,7 @@ def example(value):
+-    return value * 2
++    return value * 3
+"""
+
+
 async def run_agent_loop(model: AsyncOpenAI, rollout_context: RolloutContext, agent_input: dict[str, Any]) -> str:
     """The harness's native agent loop: read the issue, propose a patch, open a PR.
 
@@ -92,7 +119,7 @@ async def run_agent_loop(model: AsyncOpenAI, rollout_context: RolloutContext, ag
         messages=[
             {
                 "role": "system",
-                "content": "You fix reported issues in this repository. Reply with only a unified diff patch.",
+                "content": f"You fix reported issues in this repository.\n\n{PATCH_FORMAT_INSTRUCTION}",
             },
             {"role": "user", "content": issue},
         ],
