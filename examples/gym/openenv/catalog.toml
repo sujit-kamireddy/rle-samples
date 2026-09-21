@@ -11,7 +11,7 @@
 
 [[sample]]
 name = "code_rl"
-visible = true
+visible = false
 
 [[sample]]
 name = "math_rl"

@@ -12,6 +12,10 @@
 # When a subtype has exactly one visible sample, `azd ai rle init` scaffolds it
 # without prompting.
 
+# code_repair is staged for internal use only. The Harness RLE type is itself
+# gated behind AZD_AI_RLE_ENABLE_ALL, which also bypasses this filter, so this
+# entry is redundant today and exists to keep the sample hidden if the type is
+# ever exposed on its own.
 [[sample]]
 name = "code_repair"
-visible = true
+visible = false
