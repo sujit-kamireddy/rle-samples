@@ -16,12 +16,17 @@ CLI templates automatically.
 
 Two harness subtypes exist:
 
-| Subtype | Where the agent runs | Example |
+| Subtype | Where the agent runs | Samples |
 | --- | --- | --- |
 | `HostedAgent` | A Foundry Hosted Agent version | [`hosted-agent/`](./hosted-agent) |
 | `BYOH` (Bring Your Own Harness) | Anywhere you register a base URL | [`byoh/`](./byoh) |
 
-Each example ships two independent pieces that get deployed and published
+Each subtype directory holds one directory per named sample — today each holds
+a single `code_repair/` — alongside a `catalog.toml` listing which samples
+`azd ai rle init` offers. Pick one with `--sample <name>`; when a subtype has
+only one visible sample the CLI scaffolds it without prompting.
+
+Each sample ships two independent pieces that get deployed and published
 separately:
 
 - `agent/` — the harness/agent code. For `BYOH` this is a small service you
@@ -31,9 +36,9 @@ separately:
   scaffolds, filled in with a concrete task setup, mock tools, and grader
   (`rle/server/env.py`), plus `rle/rle.toml` and `rle/Dockerfile`.
 
-Both examples wrap the same real SWE-bench-Lite instance
+Both `code_repair` samples wrap the same real SWE-bench-Lite instance
 (`psf__requests-3362`, a real `psf/requests` issue, pinned repo checkout, and
-real regression test — see either example's README for details), and are
+real regression test — see either sample's README for details), and are
 intentionally near-identical at the code level: `rle/` is byte-for-byte the
 same in both, since RLE does not care which harness subtype invokes it, and
 each `agent/`'s core `run_agent_loop` is the same agent loop. `BYOH` differs
@@ -41,5 +46,5 @@ only by adding an HTTP invocation endpoint for RLE to call; `HostedAgent`
 instead reads rollout context from request headers on its existing Responses
 API.
 
-See each example's own README for the deploy → wire → register → publish
+See each sample's own README for the deploy → wire → register → publish
 flow.
