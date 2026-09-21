@@ -31,17 +31,87 @@ is the same agent loop in both. Only the invocation transport differs — this
 one adds an HTTP invocation endpoint; [`hosted-agent`](../../hosted-agent/code_repair)
 instead reads request headers on an existing Responses API.
 
+## Container and registry setup
+
+Choose a container runtime to build, run, and publish this environment:
+
+- **Docker Desktop:** start it in Linux-container mode and check `docker info`.
+- **Podman:** install Podman (Podman Desktop is optional) and check `podman info`.
+  On Windows/macOS, first run `podman machine list`; run `podman machine init`
+  only if no machine exists, then `podman machine start` if it is stopped.
+  Native Linux does not need a Podman machine.
+
+Select the runtime in the **same terminal** used for `run` and `publish`.
+Use `podman` below, or replace it with `docker` for Docker Desktop:
+
+```powershell
+$env:AZD_CONTAINER_RUNTIME = "podman"
+$env:DOCKER_COMMAND = $env:AZD_CONTAINER_RUNTIME
+```
+
+Bash equivalent:
+
+```bash
+export AZD_CONTAINER_RUNTIME=podman
+export DOCKER_COMMAND="$AZD_CONTAINER_RUNTIME"
+```
+
+`AZD_CONTAINER_RUNTIME` selects the container runtime for RLE.
+`DOCKER_COMMAND` selects the runtime used by
+[`az acr login`](https://learn.microsoft.com/azure/container-registry/container-registry-authentication#sign-in-by-using-an-alternative-container-tool-instead-of-docker).
+Docker Desktop is not required when using Podman.
+
+### Before the first publish
+
+Sign in and authenticate the selected runtime to ACR (use the registry
+**name**, without `.azurecr.io`). Your user needs push permission:
+`AcrPush`, or `Container Registry Repository Writer` on an ABAC-enabled registry.
+
+```text
+az login
+azd auth login
+az acr login --name "<registry>"
+```
+
+Local login does **not** grant the RLE service permission to pull your image.
+An administrator must grant that separately to the Foundry **project's
+system-assigned managed identity**, not your user or the parent account identity.
+Find the project's ARM resource ID in Azure portal (it ends in
+`/accounts/<account>/projects/<project>`, not the project's HTTPS endpoint).
+Ensure the project's system-assigned identity is enabled, then get its
+principal ID and the registry scope:
+
+```text
+az resource show --ids "<project-arm-resource-id>" --query identity.principalId --output tsv
+az acr show --name "<registry>" --query id --output tsv
+az role assignment create --assignee-object-id "<project-principal-id>" --assignee-principal-type ServicePrincipal --role AcrPull --scope "<registry-resource-id>"
+```
+
+Replace the last command's placeholders with the preceding outputs.
+For registries using **RBAC Registry + ABAC Repository Permissions**, replace
+`AcrPull` with `"Container Registry Repository Reader"`; `AcrPull` is for
+RBAC-only registries. The person assigning the role needs role-assignment
+permission at the registry scope. Allow time for propagation before publishing.
+
+After publishing, run `azd ai rle show --output json` and wait for the published
+version's `diskImageConversionStatus` to be `Ready` before rollout.
+If conversion fails, inspect its error; after fixing the cause, increment
+`rle.version` before republishing because registered versions are immutable.
+
 ## 1. Deploy the agent (harness) anywhere
 
 `agent/` is a plain FastAPI service with no Foundry or Azure dependency. Run
 it wherever you already run the rest of your stack — a container in your own
-cluster, an App Service, a VM, or `docker run` locally:
+cluster, an App Service, a VM, or a local container. From the initialized
+sample folder, use either Docker Desktop or Podman:
 
 ```bash
-cd examples/harness/byoh/code_repair/agent
+cd agent
 docker build -t code-repair-agent:latest .
 docker run --rm -p 8080:8080 code-repair-agent:latest
 ```
+
+For Podman, replace `docker` with `podman` in both commands.
 
 Put it behind HTTPS (a reverse proxy, App Gateway, or your platform's TLS
 termination). Since RLE never attaches caller, workspace, or identity
@@ -81,8 +151,11 @@ The agent must respond with `{"output_text": "..."}`.
 
 ## 3. Author and iterate the RLE side
 
+From the initialized sample folder, with [container setup](#container-and-registry-setup)
+complete:
+
 ```bash
-cd examples/harness/byoh/code_repair/rle
+cd rle
 azd ai rle run
 ```
 
@@ -96,7 +169,16 @@ and reward function the same way you'd iterate on a Gym sample.
 ## 4. Register the base URL and publish
 
 Once your deployed agent URL is stable, scaffold (or update) the manifest
-with it and publish a version:
+with it and publish a version. Complete [registry setup](#before-the-first-publish)
+and set `FOUNDRY_PROJECT_ENDPOINT` and `AZURE_CONTAINER_REGISTRY_ENDPOINT`
+in the same terminal first:
+
+```powershell
+$env:FOUNDRY_PROJECT_ENDPOINT = "https://<account>.services.ai.azure.com/api/projects/<project>"
+$env:AZURE_CONTAINER_REGISTRY_ENDPOINT = "<registry>.azurecr.io"
+```
+
+In Bash, use `export NAME="value"` instead of `$env:NAME = "value"`.
 
 ```bash
 azd ai rle init code_repair_byoh \
@@ -114,7 +196,7 @@ your deployed agent for every rollout.
 
 ## 5. Run a rollout
 
-Run this from `examples/harness/byoh/code_repair/rle` (where this sample's `rle.toml`
+Run this from the initialized sample's `rle` folder (where this sample's `rle.toml`
 lives) against whichever published name/version you registered. `rollout`
 reads `rle.name`/`rle.version` from `rle.toml`, provisions a real Loom
 training session and sampler checkpoint for `--model`, calls Execute Rollout
@@ -122,10 +204,10 @@ training session and sampler checkpoint for `--model`, calls Execute Rollout
 prints the resulting reward. This sample's `reset()` ignores `--task`, so
 `{}` is enough, but the agent requires `agent_input.issue`; pull the real
 SWE-bench issue text out of the bundled fixture so the command stays
-copy/paste-ready:
+copy/paste-ready. Starting from the initialized sample folder:
 
 ```bash
-cd examples/harness/byoh/code_repair/rle
+cd rle
 AGENT_INPUT=$(python3 -c "import json; print(json.dumps({'issue': json.load(open('fixtures/instance.json'))['problem_statement']}))")
 azd ai rle rollout --model Qwen/Qwen3-32B --task '{}' --agent-input "$AGENT_INPUT"
 ```

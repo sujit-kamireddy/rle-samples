@@ -91,10 +91,79 @@ state and is only safe in the throwaway subprocess it was designed for.
 }
 ```
 
-## Build and run locally
+## Container and registry setup
+
+Choose a container runtime to build, run, and publish this environment:
+
+- **Docker Desktop:** start it in Linux-container mode and check `docker info`.
+- **Podman:** install Podman (Podman Desktop is optional) and check `podman info`.
+  On Windows/macOS, first run `podman machine list`; run `podman machine init`
+  only if no machine exists, then `podman machine start` if it is stopped.
+  Native Linux does not need a Podman machine.
+
+Select the runtime in the **same terminal** used for `run` and `publish`.
+Use `podman` below, or replace it with `docker` for Docker Desktop:
+
+```powershell
+$env:AZD_CONTAINER_RUNTIME = "podman"
+$env:DOCKER_COMMAND = $env:AZD_CONTAINER_RUNTIME
+```
+
+Bash equivalent:
 
 ```bash
-cd examples/gym/openenv/code_rl
+export AZD_CONTAINER_RUNTIME=podman
+export DOCKER_COMMAND="$AZD_CONTAINER_RUNTIME"
+```
+
+`AZD_CONTAINER_RUNTIME` selects the container runtime for RLE.
+`DOCKER_COMMAND` selects the runtime used by
+[`az acr login`](https://learn.microsoft.com/azure/container-registry/container-registry-authentication#sign-in-by-using-an-alternative-container-tool-instead-of-docker).
+Docker Desktop is not required when using Podman.
+
+### Before the first publish
+
+Sign in and authenticate the selected runtime to ACR (use the registry
+**name**, without `.azurecr.io`). Your user needs push permission:
+`AcrPush`, or `Container Registry Repository Writer` on an ABAC-enabled registry.
+
+```text
+az login
+azd auth login
+az acr login --name "<registry>"
+```
+
+Local login does **not** grant the RLE service permission to pull your image.
+An administrator must grant that separately to the Foundry **project's
+system-assigned managed identity**, not your user or the parent account identity.
+Find the project's ARM resource ID in Azure portal (it ends in
+`/accounts/<account>/projects/<project>`, not the project's HTTPS endpoint).
+Ensure the project's system-assigned identity is enabled, then get its
+principal ID and the registry scope:
+
+```text
+az resource show --ids "<project-arm-resource-id>" --query identity.principalId --output tsv
+az acr show --name "<registry>" --query id --output tsv
+az role assignment create --assignee-object-id "<project-principal-id>" --assignee-principal-type ServicePrincipal --role AcrPull --scope "<registry-resource-id>"
+```
+
+Replace the last command's placeholders with the preceding outputs.
+For registries using **RBAC Registry + ABAC Repository Permissions**, replace
+`AcrPull` with `"Container Registry Repository Reader"`; `AcrPull` is for
+RBAC-only registries. The person assigning the role needs role-assignment
+permission at the registry scope. Allow time for propagation before publishing.
+
+After publishing, run `azd ai rle show --output json` and wait for the published
+version's `diskImageConversionStatus` to be `Ready` before rollout.
+If conversion fails, inspect its error; after fixing the cause, increment
+`rle.version` before republishing because registered versions are immutable.
+
+## Build and run locally
+
+Complete [container setup](#container-and-registry-setup), then run from the
+folder containing `rle.toml` (the folder created by `azd ai rle init`):
+
+```bash
 azd ai rle run
 ```
 
@@ -127,8 +196,7 @@ step {"type":"submit_answer","code_text":"```python\nimport sys\n\nMOD = 1_000_0
 The final response has `done: true`, `reward: 1.0`, and
 `metadata.passed: true`.
 
-Needs Docker running and the `azd` RLE extension (see
-[`../../../README.md`](../../../README.md)). Requires a runner/shell that
+Requires the selected container runtime to be running and a runner/shell that
 keeps one `/ws` connection open across both commands -- a runner that sends
 `reset` and `step` as separate stateless HTTP requests will not work, since
 there is no `problem_id` for `step()` to fall back on.
@@ -158,10 +226,12 @@ environment keeps no `problem_id` fallback for stateless HTTP transports).
    azd ai rle run --watch
    ```
 
-2. **Publish an immutable version.** Set your Foundry project endpoint and
+2. **Publish an immutable version.** Complete [registry setup](#before-the-first-publish).
+   Set your Foundry project endpoint and
    Azure Container Registry endpoint, then publish the name and version from
    `rle.toml`. The command builds the image, pushes it to the registry, and
-   registers the environment.
+   registers the environment. The snippet below uses Bash; in PowerShell,
+   replace `export NAME="value"` with `$env:NAME = "value"`.
 
    ```bash
    export FOUNDRY_PROJECT_ENDPOINT="https://<account>.services.ai.azure.com/api/projects/<project>"
