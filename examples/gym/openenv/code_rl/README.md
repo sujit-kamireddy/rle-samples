@@ -137,7 +137,7 @@ The checked-in manifest declares the initial `code_rl` release as version
 `1.0.0`. Update its name when copying this source outside `azd ai rle init`,
 and update its version before publishing a subsequent release.
 
-## Iterate with your agent, run, publish, and invoke
+## Iterate with your agent, run, publish, and rollout
 
 Your agent can use the same OpenEnv lifecycle as the local playground:
 send `reset`, use the returned `messages` and `starter_code` to construct a
@@ -170,14 +170,14 @@ environment keeps no `problem_id` fallback for stateless HTTP transports).
    ```
 
 3. **Execute one rollout of the published environment.** With
-   `FOUNDRY_PROJECT_ENDPOINT` still set, `invoke` reads `rle.name` and
+    `FOUNDRY_PROJECT_ENDPOINT` still set, `rollout` reads `rle.name` and
    `rle.version` from `rle.toml`, provisions a model session and sampler
    checkpoint for `--model`, calls Execute Rollout with `--task`, and prints
    the resulting reward — no interactive shell, and no session or
    checkpoint identifiers for you to manage.
 
    ```bash
-   azd ai rle invoke --model Qwen/Qwen3-32B --task '{"split": "train"}'
+    azd ai rle rollout --model Qwen/Qwen3-32B --task '{"split": "train"}'
    ```
 
 ## Use the published environment in a trainer loop

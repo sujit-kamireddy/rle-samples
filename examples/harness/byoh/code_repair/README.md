@@ -112,10 +112,10 @@ azd ai rle publish
 Training, evaluation, and optimization jobs against this RLE will now invoke
 your deployed agent for every rollout.
 
-## 5. Invoke a rollout
+## 5. Run a rollout
 
 Run this from `examples/harness/byoh/code_repair/rle` (where this sample's `rle.toml`
-lives) against whichever published name/version you registered. `invoke`
+lives) against whichever published name/version you registered. `rollout`
 reads `rle.name`/`rle.version` from `rle.toml`, provisions a real Loom
 training session and sampler checkpoint for `--model`, calls Execute Rollout
 (which forwards `--agent-input` to your deployed agent's `--base-url`), and
@@ -127,5 +127,5 @@ copy/paste-ready:
 ```bash
 cd examples/harness/byoh/code_repair/rle
 AGENT_INPUT=$(python3 -c "import json; print(json.dumps({'issue': json.load(open('fixtures/instance.json'))['problem_statement']}))")
-azd ai rle invoke --model Qwen/Qwen3-32B --task '{}' --agent-input "$AGENT_INPUT"
+azd ai rle rollout --model Qwen/Qwen3-32B --task '{}' --agent-input "$AGENT_INPUT"
 ```

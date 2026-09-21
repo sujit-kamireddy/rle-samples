@@ -145,9 +145,9 @@ from the single-instance `1.0.0` design). Update its name when copying this
 source outside `azd ai rle init`, and update its version before publishing
 a subsequent release.
 
-## Iterate, publish, and invoke
+## Iterate, publish, and rollout
 
-Same lifecycle as [`code_rl`](../code_rl/README.md#iterate-with-your-agent-run-publish-and-invoke):
+Same lifecycle as [`code_rl`](../code_rl/README.md#iterate-with-your-agent-run-publish-and-rollout):
 
 ```bash
 # 1. Iterate locally, rebuilding on source changes:
@@ -160,7 +160,7 @@ azd ai rle publish
 
 # 3. Execute one rollout of the published environment, picking a row by seed
 #    (see server/dataset.py's EpisodePicker):
-azd ai rle invoke --model Qwen/Qwen3-32B --task '{"seed": 0, "split": "train"}'
+azd ai rle rollout --model Qwen/Qwen3-32B --task '{"seed": 0, "split": "train"}'
 ```
 
 ## Use the published environment in a trainer loop
