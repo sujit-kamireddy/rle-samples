@@ -75,7 +75,7 @@ penalty and is not graded as a raw answer.
 
 ## Container and registry setup
 
-Install the Azure CLI, `azd`, and the RLE extension, then choose a runtime:
+Choose a container runtime to build, run, and publish this environment:
 
 - **Docker Desktop:** start it in Linux-container mode and check `docker info`.
 - **Podman:** install Podman (Podman Desktop is optional) and check `podman info`.
