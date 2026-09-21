@@ -3,98 +3,90 @@
 One episode = one LiveCodeBench-style competitive programming problem
 (DeepCoder-Preview). ``reset()`` hands back the problem (+ starter code),
 and the policy may call the ``check_solution`` tool up to ``max_turns``
-times (see ``CODE_RL_MAX_TURNS``) before submitting a final answer via
-``step()``. Only the final step -- either because the response has no
-tool call, or ``max_turns`` was reached -- grades the submission and ends
-the episode (``done=True``) with a reward from running the submitted code
-against the problem's hidden tests, shaped by ``FORMAT_COEF`` (1.0 if
-correct and fenced, 0.0 if fenced but failing, -FORMAT_COEF if unfenced),
-grading only the last assistant message of the completed episode.
+times (see ``CODE_RL_MAX_TURNS``) before submitting a final answer. Only a
+``submit_answer`` action grades the submission and ends the episode
+(``done=True``) with a reward from running the submitted code against the
+problem's hidden tests, shaped by ``FORMAT_COEF`` (1.0 if correct and
+fenced, 0.0 if fenced but failing, -FORMAT_COEF if unfenced).
+
+This is the sample to copy when an environment needs tools. Foundry RLE
+reads the action vocabulary from ``CodeAction``'s JSON Schema, served at
+``GET /schema``: the variant declaring ``rle.toml``'s
+``model_response_field`` (``code_text``) is the one that receives the
+model's completion text, and every other variant is offered to the model
+as a tool named after its discriminator. So ``check_solution`` below is a
+tool purely by virtue of being a second union member -- there is no
+separate tool spec to write, hand back, or keep in sync.
 """
 
 from __future__ import annotations
 
-from typing import Any, Literal, Optional
+from typing import Annotated, Any, Literal, Optional, Union
 
-from pydantic import Field
+from pydantic import Field, RootModel
 
 from openenv.core.env_server.types import Action, Observation
 
 
-class CodeAction(Action):
-    """The policy's submitted solution for the current problem.
+class CheckSolutionAction(Action):
+    """Execute the proposed solution against the task's test cases.
 
-    ``type`` defaults to ``"submit_answer"`` (a normal grading/tool-call step). A
-    ``type="list_tools"`` action is accepted too -- see
-    ``examples/gym/openenv/code_rl/server/code_rl_environment.py``'s ``step()`` -- as a
-    stand-in for OpenEnv's own MCP-style ``ListToolsAction`` (rfcs/003-mcp-support.md),
-    which RLE's rollout pipeline probes for on every Gym/OpenEnv target before the first
-    real step. OpenEnv only auto-recognizes that probe when ``action_cls`` is exactly
-    ``Action`` or an MCP action type (``serialization.py``'s ``_deserialize_mcp_action``),
-    not for a custom subclass like this one, so without this field the probe fails
-    Pydantic validation (extra field + missing ``code_text``) before ``step()`` is ever
-    called. This env already hands its one real tool (``check_solution``) back via
-    ``reset()``'s ``metadata.tool_specs`` (see ``CHECK_SOLUTION_TOOL_SPEC``), so the probe
-    just echoes that same spec back instead of an empty list.
+    Use this to test your code before providing your final answer.
     """
 
-    type: Literal["submit_answer", "list_tools"] = Field(
-        default="submit_answer",
-        description="'submit_answer' (default) grades code_text/tool_calls; 'list_tools' is a discovery probe.",
-    )
+    type: Literal["check_solution"] = "check_solution"
 
-    code_text: Optional[str] = Field(
-        default=None,
+    code: str = Field(description="Python code implementing the solution.")
+
+
+class SubmitAnswerAction(Action):
+    """Submit the final solution. This ends the episode and grades the answer."""
+
+    type: Literal["submit_answer"] = "submit_answer"
+
+    code_text: str = Field(
+        default="",
         description="Free-text response, ideally containing a ```python ...``` fenced solution.",
     )
 
-    tool_calls: Optional[list[dict[str, Any]]] = Field(
-        default=None,
-        description=(
-            "The response's parsed tool calls, if any -- each shaped like "
-            "``{'id': str, 'name': str, 'arguments': <JSON string>}``. "
-            "Populated by the training client's own tool-call parsing "
-            "whenever the conversation prefix declared the "
-            "``check_solution`` tool. "
-            "A response with a non-empty ``tool_calls`` keeps the episode "
-            "going (see module docstring) instead of grading ``code_text``."
-        ),
-    )
 
-    problem_id: str = Field(
-        default="",
-        description=(
-            "Optional echo of the observation's problem_id, naming the row to grade "
-            "against. The server remembers the row reset() picked, so this is only "
-            "needed to grade some other row -- or to keep working behind a transport "
-            "that does not preserve state between calls (see "
-            "examples/gym/openenv/code_rl/server/code_rl_environment.py)."
-        ),
-    )
+class CodeAction(
+    RootModel[
+        Annotated[
+            Union[CheckSolutionAction, SubmitAnswerAction],
+            Field(discriminator="type"),
+        ]
+    ]
+):
+    """Everything the policy may do, as a Pydantic discriminated union.
+
+    A ``RootModel`` union is what turns ``GET /schema``'s ``action`` into a
+    ``oneOf`` with a ``discriminator``, which is how Foundry RLE tells one
+    action apart from another. Reach the concrete action through ``.root``
+    (see ``CodeRLEnvironment._step_impl``).
+
+    No ``problem_id`` field on either member: Foundry RLE's rollout pipeline only
+    drives Gym/OpenEnv targets over ``/ws`` (one environment instance for the life
+    of the connection), so ``step()`` can always resolve the episode's row from
+    what ``reset()`` stored on ``self`` -- there is no stateless-HTTP case here to
+    work around.
+    """
 
 
 class CodeObservation(Observation):
     """What the policy sees. ``messages`` is the system+user prompt on
-    ``reset()``; on ``step()`` it holds the ``check_solution`` tool result
-    message(s) if the episode is continuing (``done=False``), or is empty
-    once the episode has ended."""
+    ``reset()``; on a ``check_solution`` step it holds the tool result, and
+    it is empty once the episode has ended."""
 
     messages: list[dict[str, Any]] = Field(
         default_factory=list,
         description=(
             "Chat messages to append to the conversation: system+user prompt on "
-            "reset(), tool-result message(s) on a step() that keeps the episode "
-            "going, empty once done=True."
+            "reset(), the tool result on a check_solution step, empty once "
+            "done=True. Foundry RLE reads only the text of these messages when "
+            "answering a tool call, since it -- not this environment -- owns the "
+            "tool call's id."
         ),
     )
     starter_code: Optional[str] = None
     problem_id: Optional[str] = None
-
-    # Only populated on the ``type="list_tools"`` step (see CodeAction's
-    # docstring): RLE's GymOpenEnvRolloutTargetInvoker.ParseChatCompletionTools
-    # reads this as a top-level ``tools`` array directly on the observation
-    # (each entry needing ``name``/``description``/``input_schema``), not
-    # nested under ``metadata`` -- so it must be its own declared field here,
-    # shaped like CHECK_SOLUTION_TOOL_SPEC (name/description/parameters ->
-    # name/description/input_schema).
-    tools: list[dict[str, Any]] = Field(default_factory=list)

@@ -24,6 +24,21 @@ file only covers what's specific to math.
 | `scripts/build_dataset.py` | Maintainer-only CLI that downloads and bakes `env_data/train.jsonl.gz`/`validation.jsonl.gz`. Also (re)generates `job_data/train.jsonl`/`job_data/validation.jsonl` so the two stay in lockstep. |
 | `Dockerfile` | Two-stage build: the dataset stage downloads and bakes the data; the runtime stage installs only `openenv`, `sympy`, and `pylatexenc`. No runtime dataset download. |
 
+## How RLE drives this environment
+
+RLE reads the action vocabulary from `MathAction`'s JSON Schema at
+`GET /schema`. `MathAction` declares one action, so the model is offered no
+tools at all: every completion becomes a single graded step. `rle.toml` names
+the field that receives the completion text verbatim:
+
+```toml
+[defaults.gym_openenv]
+model_response_field = "answer_text"
+```
+
+This is the sample to copy when an environment needs no tools. Adding one
+means adding a second action variant — see `code_rl`.
+
 ## Grading answers
 
 `step()` extracts `\boxed{...}` from the submitted answer and the reference,
@@ -66,21 +81,25 @@ After `azd ai rle run` opens the `rle>` shell, enter the following two
 commands separately. Do not type the `rle>` prompt itself.
 
 With the default build data, `seed: 0` selects the modular-arithmetic problem
-at `problem_id` `"2314"`. The value below is intentional, not a placeholder.
-Including it also makes the command work with local runners that send `reset`
-and `step` as separate HTTP requests.
+at `problem_id` `"2314"`. This environment is served over `/ws` only (one
+environment instance for the life of the connection), so `step()` always
+grades against the row the preceding `reset()` picked -- there is no
+`problem_id` field to echo back.
 
 ```text
 reset {"seed":0}
 
-step {"problem_id":"2314","answer_text":"\\boxed{30}"}
+step {"answer_text":"\\boxed{30}"}
 ```
 
 The final response has `done: true`, `reward: 1.0`, and
 `metadata.correct: true`.
 
 Needs Docker running and the `azd` RLE extension (see
-[`../../../README.md`](../../../README.md)).
+[`../../../README.md`](../../../README.md)). Requires a runner/shell that
+keeps one `/ws` connection open across both commands -- a runner that sends
+`reset` and `step` as separate stateless HTTP requests will not work, since
+there is no `problem_id` for `step()` to fall back on.
 
 The checked-in manifest declares the initial `math_rl` release as version
 `1.0.0`. Update its name when copying this source outside `azd ai rle init`,
@@ -89,9 +108,10 @@ and update its version before publishing a subsequent release.
 ## Iterate with your agent, run, publish, and invoke
 
 Your agent can use the same OpenEnv lifecycle as the local playground:
-send `reset`, use the returned `messages` and `problem_id` to construct a
-`MathAction`, then send that action to `step`. `MathAction` accepts a
-`\boxed{...}` `answer_text` and an optional `problem_id`.
+send `reset`, use the returned `messages` to construct a `MathAction`, then
+send that action to `step`. `MathAction` accepts a `\boxed{...}` `answer_text`.
+Requires `/ws` (this environment keeps no `problem_id` fallback for stateless
+HTTP transports).
 
 1. **Iterate locally with your agent.** Edit the environment or your agent,
    then start the local runtime with `--watch`. Point your
@@ -174,10 +194,7 @@ async def collect_rollout(openenv_client, policy, seed):
         reset = await instance.reset(seed=seed, split="train")
         observation = reset.observation
         answer_text = await policy.answer(observation["messages"])
-        action = {
-            "problem_id": observation["problem_id"],
-            "answer_text": answer_text,
-        }
+        action = {"answer_text": answer_text}
         result = await instance.step(action)
         return {
             "messages": observation["messages"],

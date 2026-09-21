@@ -11,3 +11,9 @@ subtype = "OpenEnv"
 # done=True after the first step), so one step per episode is all it uses.
 [defaults.reinforcement]
 max_episode_steps = 1
+
+# Names the MathAction property that receives the model's completion text.
+# Every other action property RLE finds in GET /schema is offered to the model
+# as a tool; math_rl declares only this one, so it has no tools.
+[defaults.gym_openenv]
+model_response_field = "answer_text"

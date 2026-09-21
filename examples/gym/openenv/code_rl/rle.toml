@@ -7,7 +7,13 @@ type = "Gym"
 subtype = "OpenEnv"
 
 # Required for Execute Rollout to treat this as an enabled Gym/OpenEnv target.
-# Matches DEFAULT_MAX_TURNS in server/code_rl_environment.py, the server's own
-# per-episode step() cap.
+# DEFAULT_MAX_TURNS check_solution calls (see server/code_rl_environment.py)
+# plus the one submit_answer step that grades them.
 [defaults.reinforcement]
-max_episode_steps = 2
+max_episode_steps = 3
+
+# Names the CodeAction variant property that receives the model's completion
+# text. That makes SubmitAnswerAction the graded final response, and every
+# other variant -- here just check_solution -- a tool offered to the model.
+[defaults.gym_openenv]
+model_response_field = "code_text"
