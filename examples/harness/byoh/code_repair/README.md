@@ -24,11 +24,11 @@ Two independent pieces make up this `Harness`/`BYOH` RLE:
   `--harness-source existing` default instead scaffolds a generic,
   empty placeholder for a harness you already built and deployed yourself).
 
-This example and [`../hosted-agent`](../hosted-agent) are intentionally
+This example and [`../../hosted-agent/code_repair`](../../hosted-agent/code_repair) are intentionally
 close to identical: `rle/` is byte-for-byte the same environment (RLE does
 not care which harness subtype invokes it), and `agent/`'s `run_agent_loop`
 is the same agent loop in both. Only the invocation transport differs — this
-one adds an HTTP invocation endpoint; [`hosted-agent`](../hosted-agent)
+one adds an HTTP invocation endpoint; [`hosted-agent`](../../hosted-agent/code_repair)
 instead reads request headers on an existing Responses API.
 
 ## 1. Deploy the agent (harness) anywhere
@@ -38,7 +38,7 @@ it wherever you already run the rest of your stack — a container in your own
 cluster, an App Service, a VM, or `docker run` locally:
 
 ```bash
-cd examples/harness/byoh/agent
+cd examples/harness/byoh/code_repair/agent
 docker build -t code-repair-agent:latest .
 docker run --rm -p 8080:8080 code-repair-agent:latest
 ```
@@ -82,7 +82,7 @@ The agent must respond with `{"output_text": "..."}`.
 ## 3. Author and iterate the RLE side
 
 ```bash
-cd examples/harness/byoh/rle
+cd examples/harness/byoh/code_repair/rle
 azd ai rle run
 ```
 
@@ -114,7 +114,7 @@ your deployed agent for every rollout.
 
 ## 5. Invoke a rollout
 
-Run this from `examples/harness/byoh/rle` (where this sample's `rle.toml`
+Run this from `examples/harness/byoh/code_repair/rle` (where this sample's `rle.toml`
 lives) against whichever published name/version you registered. `invoke`
 reads `rle.name`/`rle.version` from `rle.toml`, provisions a real Loom
 training session and sampler checkpoint for `--model`, calls Execute Rollout
@@ -125,7 +125,7 @@ SWE-bench issue text out of the bundled fixture so the command stays
 copy/paste-ready:
 
 ```bash
-cd examples/harness/byoh/rle
+cd examples/harness/byoh/code_repair/rle
 AGENT_INPUT=$(python3 -c "import json; print(json.dumps({'issue': json.load(open('fixtures/instance.json'))['problem_statement']}))")
 azd ai rle invoke --model Qwen/Qwen3-32B --task '{}' --agent-input "$AGENT_INPUT"
 ```

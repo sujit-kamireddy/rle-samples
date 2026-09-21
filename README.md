@@ -34,12 +34,20 @@ for the `Harness` type, where RLE wraps a production agent that owns its own
 loop: [`examples/harness/hosted-agent/`](./examples/harness/hosted-agent)
 for agents running as a Foundry Hosted Agent version, and
 [`examples/harness/byoh/`](./examples/harness/byoh) for bring-your-own
-harnesses deployed anywhere and registered by base URL. Each includes both
-the agent/harness code and the paired RLE code (task setup, mock tools,
-grader), plus a README covering deploy → wire → publish. Because the agent
-side is always specific to your own harness, `azd ai rle init --type Harness`
-scaffolds only the RLE side for you — these folders show how to build and
-wire the other half.
+harnesses deployed anywhere and registered by base URL. Each subtype holds
+one directory per sample — today
+[`code_repair`](./examples/harness/byoh/code_repair) under both — and each
+sample includes the agent/harness code and the paired RLE code (task setup,
+mock tools, grader), plus a README covering deploy → wire → publish. Because
+the agent side is always specific to your own harness,
+`azd ai rle init --type Harness` scaffolds only the RLE side for you — these
+folders show how to build and wire the other half.
+
+Each subtype has its own
+[`catalog.toml`](./examples/harness/byoh/catalog.toml), with the same
+visibility rules as the Gym/OpenEnv one. Pick a sample with
+`azd ai rle init --sample <name>`; with only one visible sample, that subtype
+scaffolds it without prompting.
 
 When a sample is initialized through `azd ai rle init <folder-name>`, the CLI
 updates `rle.name` to the target folder name. Before publishing another

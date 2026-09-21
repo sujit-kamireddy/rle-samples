@@ -21,7 +21,7 @@ RLE never attaches caller, workspace, or identity headers to this request, so
 protect the endpoint yourself (for example, require a shared secret header
 and validate it before dispatching to the agent loop).
 
-This file and ``../../hosted-agent/agent/main.py`` share the same
+This file and ``../../../hosted-agent/code_repair/agent/main.py`` share the same
 ``run_agent_loop``: the harness's native agent loop is unchanged between the
 two RLE subtypes. Only how ``model`` and ``call_tool`` are constructed
 differs -- see ``create_model_client``/``call_tool`` here versus the
@@ -83,7 +83,7 @@ async def run_agent_loop(model: AsyncOpenAI, rollout_context: RolloutContext, ag
 
     Unchanged between RLE subtypes apart from how `model` and tool calls are
     routed -- see this module's ``create_model_client``/``call_tool`` versus
-    ``../../hosted-agent/agent/main.py``'s header-driven equivalents.
+    ``../../../hosted-agent/code_repair/agent/main.py``'s header-driven equivalents.
     """
     issue = agent_input["issue"]
 

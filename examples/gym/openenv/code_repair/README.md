@@ -1,8 +1,8 @@
 # `code_repair` OpenEnv environment
 
 The Gym/OpenEnv sibling of the
-[`examples/harness/byoh`](../../harness/byoh) and
-[`examples/harness/hosted-agent`](../../harness/hosted-agent) "code repair"
+[`examples/harness/byoh/code_repair`](../../harness/byoh/code_repair) and
+[`examples/harness/hosted-agent/code_repair`](../../harness/hosted-agent/code_repair) "code repair"
 examples: same real-GitHub-issue task shape, but a `Gym`/`OpenEnv` RLE rather
 than a `Harness` one, and with real task diversity -- 40 real
 SWE-bench-Verified instances (`django/django`, version `3.2` -- the largest
