@@ -4,21 +4,50 @@ Wraps `psf/requests` at its pinned base commit (see `fixtures/instance.json`,
 sourced from `princeton-nlp/SWE-bench_Lite`). The harness (`../agent`) is
 given the real GitHub issue text and must edit a disposable checkout to fix
 it, then open a pull request, exactly like the "code repair agent" example
-in the RLE design docs -- but grounded in a real repo, real issue, and real
+in the RLE design docs, but grounded in a real repo, real issue, and real
 regression test rather than synthetic data.
 
+This is a Harness container, so RLE calls exactly four things on it and
+nothing else:
+
+    GET  /health   readiness, polled before /reset
+    POST /reset    the caller's task, verbatim
+    POST /tools/*  the harness's tool calls, proxied per rollout
+    POST /grade    {"rollout": ..., "agent_response": "..."} -> a reward
+
+There is deliberately no `/step` and no OpenEnv `Environment`, `Action`, or
+`Observation` here. Those belong to the Gym: OpenEnv subtype, where RLE drives
+the model through the environment step by step; see
+`examples/gym/openenv/code_repair`. In a Harness RLE the harness owns its own
+loop, so the only thing the environment does is set the task up, serve the
+tools, and score the result. RLE checks `/reset` for a success status and
+reads nothing from its body, so returning an `Observation` here would be
+returning a value nobody looks at.
+
 Each rollout gets its own working copy of the repo under `/tmp/rollouts/`.
-`reset()` seeds it from the read-only `/opt/base-repo` reference clone baked
+`/reset` seeds it from the read-only `/opt/base-repo` reference clone baked
 into the image, then applies the hidden test patch (`fixtures/test_patch.diff`)
-that adds the regression test the real fix must satisfy -- this patch is
-never shown to the harness, only used for grading. `workspace.apply_patch`
-mocks the production tool the harness uses to edit the checkout;
+that adds the regression test the real fix must satisfy. That patch is never
+shown to the harness, only used for grading. `workspace.apply_patch` mocks the
+production tool the harness uses to edit the checkout;
 `github.create_pull_request` mocks submitting the fix for review.
+
+## Where the taskset lives
+
+Not in this image. A taskset is the caller's: every Execute Rollout call
+carries its own task, and RLE posts that task to `/reset` exactly as the
+calling job supplied it. `fixtures/instance.json` is a single instance baked
+in so the sample is runnable on its own, and `/reset` below checks the task it
+receives against it rather than ignoring the task, so a caller that sends a
+different `instance_id` gets told why the container cannot serve it instead of
+silently grading the wrong repo. Scaling this to a real taskset means making
+the checkout follow `instance_id`, not changing the protocol.
 """
 
 from __future__ import annotations
 
 import json
+import logging
 import os
 import shutil
 import subprocess
@@ -26,23 +55,11 @@ from pathlib import Path
 from typing import Any, Optional
 from uuid import uuid4
 
-from fastapi import Body
-from pydantic import Field
-
-from openenv.core.env_server.http_server import create_app
-from openenv.core.env_server.interfaces import Environment
-from openenv.core.env_server.types import (
-    Action,
-    EnvironmentMetadata,
-    Observation,
-    ResetRequest,
-    ResetResponse,
-    State,
-)
+from fastapi import Body, FastAPI, Header, HTTPException
 
 FIXTURES_DIR = Path(__file__).resolve().parent.parent / "fixtures"
-# Overridable so this sample can be exercised outside its image -- where the
-# checkout and scratch space live wherever the caller put them -- without
+# Overridable so this sample can be exercised outside its image, where the
+# checkout and scratch space live wherever the caller put them, without
 # editing the file. Inside the image the defaults are the paths the Dockerfile
 # creates, so a deployed rollout is unaffected. `examples/gym/openenv/code_repair`
 # exposes the same three knobs under the same names.
@@ -56,139 +73,92 @@ GRADING_TIMEOUT_S = float(os.environ.get("CODE_REPAIR_GRADING_TIMEOUT_S", "120")
 INSTANCE: dict[str, Any] = json.loads((FIXTURES_DIR / "instance.json").read_text())
 TEST_PATCH = (FIXTURES_DIR / "test_patch.diff").read_text()
 
-_current_environment: Optional["CodeRepairEnvironment"] = None
+logger = logging.getLogger("code-repair-rle")
+
+app = FastAPI(title="code-repair-rle")
 
 
-class CodeRepairAction(Action):
-    """Final agent response supplied to `/grade` at the end of a rollout."""
+class Rollout:
+    """The one attempt this container is currently hosting.
 
-    message: str = Field(default="", description="The harness's final output_text.")
-
-
-class CodeRepairObservation(Observation):
-    """Rollout-visible messages returned by `/reset`."""
-
-    messages: list[dict[str, Any]] = Field(default_factory=list)
-
-
-class CodeRepairEnvironment(Environment[CodeRepairAction, CodeRepairObservation, State]):
-    """One isolated attempt to fix `INSTANCE["instance_id"]`."""
+    A sandbox serves a single rollout at a time, so one module-level record is
+    enough and every route below reads this. A container that served several at
+    once would key all of this by the `x-rle-rollout-id` header instead.
+    """
 
     def __init__(self) -> None:
-        super().__init__()
-        self._state = State(episode_id=None, step_count=0)
-        self._workspace: Optional[Path] = None
-        self._pull_requests: dict[str, dict[str, Any]] = {}
-        # max_concurrent_envs=1 below means this container ever hosts one
-        # live instance at a time, so the module-level routes below can
-        # reach this rollout's state through this singleton reference.
-        global _current_environment
-        _current_environment = self
+        self.rollout_id: Optional[str] = None
+        self.workspace: Optional[Path] = None
+        self.pull_requests: dict[str, dict[str, Any]] = {}
 
-    def reset(
-        self,
-        seed: Optional[int] = None,
-        episode_id: Optional[str] = None,
-        **task_data: Any,
-    ) -> CodeRepairObservation:
-        del seed, task_data
-        episode_id = episode_id or str(uuid4())
-        self._state = State(episode_id=episode_id, step_count=0)
-        self._workspace = ROLLOUTS_DIR / episode_id
-        if self._workspace.exists():
-            shutil.rmtree(self._workspace)
-        shutil.copytree(BASE_REPO_DIR, self._workspace)
-        # The hidden regression test is applied here, not shipped to the
-        # harness: /reset receives task-specific grading data that the
-        # harness never sees, only the agent-visible task input below does.
-        subprocess.run(
-            ["git", "apply", "-"],
-            input=TEST_PATCH,
-            cwd=self._workspace,
-            text=True,
-            check=True,
-        )
-        self._pull_requests = {}
-        return CodeRepairObservation(
-            done=False,
-            reward=None,
-            messages=[{"role": "user", "content": INSTANCE["problem_statement"]}],
-        )
+    def start(self, rollout_id: str, workspace: Path) -> None:
+        self.rollout_id = rollout_id
+        self.workspace = workspace
+        self.pull_requests = {}
 
-    def step(
-        self,
-        action: CodeRepairAction,
-        timeout_s: Optional[float] = None,
-        **kwargs: Any,
-    ) -> CodeRepairObservation:
-        """Unused by real invocations: the harness calls `/tools/*` and RLE
-        calls `/grade` directly. Kept only so OpenEnv's schema can still
-        exercise this environment."""
-        del action, timeout_s, kwargs
-        self._state.step_count += 1
-        return CodeRepairObservation(done=True, reward=None, messages=[])
-
-    @property
-    def state(self) -> State:
-        return self._state
-
-    def get_metadata(self) -> EnvironmentMetadata:
-        return EnvironmentMetadata(
-            name="code_repair_agent",
-            description=f"RLE harness for {INSTANCE['instance_id']}.",
-            version="0.1.0",
-        )
+    def require_workspace(self) -> Path:
+        if self.workspace is None:
+            raise HTTPException(status_code=409, detail="No active rollout; call /reset first.")
+        return self.workspace
 
 
-app = create_app(
-    CodeRepairEnvironment,
-    CodeRepairAction,
-    CodeRepairObservation,
-    env_name="code_repair_agent",
-    max_concurrent_envs=1,
-)
+ROLLOUT = Rollout()
 
 
-def _current_workspace() -> Path:
-    if _current_environment is None or _current_environment._workspace is None:
-        raise RuntimeError("No active rollout; call /reset first.")
-    return _current_environment._workspace
-
-
-# RLE's Harness rollout proxy is being migrated off the `_env/`-prefixed
-# paths onto these same plain ones (`/health`, `/reset`, `/grade`). Until
-# every deployed RLE region has that change, keep both: the aliases below
-# forward to the exact same handlers so neither generation of RLE breaks.
-@app.get("/_env/health")
-async def env_health() -> dict[str, str]:
-    """Alias for `/health` at the literal path older RLE deployments'
-    rollout-scoped proxy forwards to (`.../rollouts/{rolloutId}/_env/health`),
-    distinct from the sandbox-scoped `/health` OpenEnv's `create_app()`
-    already registers. Remove once all regions call the plain path."""
+@app.get("/health")
+async def health() -> dict[str, str]:
+    """Readiness probe. RLE polls this before `/reset`, because a sandbox
+    reports Running once the container is scheduled, which is well before
+    uvicorn has bound its port."""
     return {"status": "healthy"}
 
 
-def _registered_endpoint(path: str, method: str):
-    """Looks up the callable `create_app()` already registered for `path`,
-    so the `_env/`-prefixed aliases below reuse its exact request handling
-    (including OpenEnv's per-rollout concurrency bookkeeping) instead of
-    reimplementing it."""
-    method = method.upper()
-    for route in app.routes:
-        if getattr(route, "path", None) == path and method in getattr(route, "methods", set()):
-            return route.endpoint
-    raise RuntimeError(f"No {method} route registered for {path!r}")
+@app.post("/reset")
+async def reset(
+    task: dict[str, Any] = Body(default_factory=dict),
+    rollout_id: Optional[str] = Header(default=None, alias="x-rle-rollout-id"),
+) -> dict[str, Any]:
+    """Prepares a fresh checkout for one rollout.
 
+    The body is the caller's task exactly as the calling job supplied it. RLE
+    does not wrap it and does not read this response beyond its status code.
+    """
+    requested = task.get("instance_id")
+    if requested is not None and requested != INSTANCE["instance_id"]:
+        # Failing here is the point. A container that quietly graded its own
+        # baked-in instance against a task asking for another one would report
+        # a reward for work the caller never requested.
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"This environment version serves {INSTANCE['instance_id']!r}, "
+                f"but the task requested {requested!r}. Publish a version whose "
+                f"image carries that instance, or send a task for this one."
+            ),
+        )
+    if requested is None:
+        logger.info(
+            "Task carried no instance_id; serving the bundled instance %s.",
+            INSTANCE["instance_id"],
+        )
 
-_reset_endpoint = _registered_endpoint("/reset", "POST")
-
-
-@app.post("/_env/reset")
-async def env_reset(request: ResetRequest = Body(default_factory=ResetRequest)) -> ResetResponse:
-    """Alias for `/reset` at the literal path older RLE deployments'
-    rollout-scoped proxy forwards to (`HttpRolloutSandboxClient.cs` calls
-    `POST _env/reset`). Same rationale as `/_env/health` above."""
-    return await _reset_endpoint(request)
+    rollout_id = rollout_id or str(uuid4())
+    workspace = ROLLOUTS_DIR / rollout_id
+    if workspace.exists():
+        shutil.rmtree(workspace)
+    shutil.copytree(BASE_REPO_DIR, workspace)
+    # The hidden regression test is applied here, not shipped to the harness:
+    # /reset receives task-specific grading data that the harness never sees,
+    # only the agent-visible task input does.
+    subprocess.run(
+        ["git", "apply", "-"],
+        input=TEST_PATCH,
+        cwd=workspace,
+        text=True,
+        check=True,
+    )
+    ROLLOUT.start(rollout_id, workspace)
+    return {"instance_id": INSTANCE["instance_id"], "rollout_id": rollout_id}
 
 
 @app.post("/tools/workspace.apply_patch")
@@ -198,7 +168,7 @@ async def workspace_apply_patch(arguments: dict[str, Any]) -> dict[str, Any]:
         subprocess.run(
             ["git", "apply", "-"],
             input=arguments["patch"],
-            cwd=_current_workspace(),
+            cwd=ROLLOUT.require_workspace(),
             text=True,
             check=True,
             capture_output=True,
@@ -211,18 +181,27 @@ async def workspace_apply_patch(arguments: dict[str, Any]) -> dict[str, Any]:
 @app.post("/tools/github.create_pull_request")
 async def github_create_pull_request(arguments: dict[str, Any]) -> dict[str, Any]:
     """Mocks the production `github.create_pull_request` tool the harness calls."""
-    _current_environment._pull_requests[arguments["branch"]] = {
+    ROLLOUT.require_workspace()
+    ROLLOUT.pull_requests[arguments["branch"]] = {
         "title": arguments.get("title", ""),
         "body": arguments.get("body", ""),
     }
-    return {"number": len(_current_environment._pull_requests)}
+    return {"number": len(ROLLOUT.pull_requests)}
 
 
 @app.post("/grade")
-async def grade_rollout(rollout: dict[str, Any]) -> dict[str, Any]:
-    """Runs the real regression test against the harness's edited checkout."""
-    del rollout
-    workspace = _current_workspace()
+async def grade(payload: dict[str, Any] = Body(default_factory=dict)) -> dict[str, Any]:
+    """Runs the real regression test against the harness's edited checkout.
+
+    RLE sends `{"rollout": <sanitized rollout>, "agent_response": "<final
+    answer>"}`. The reward comes from the workspace rather than from
+    `agent_response`, because in this task the answer is the patch the harness
+    already applied and the claim it makes about that patch proves nothing. The
+    answer is still recorded below, so a reward can be read back against what
+    the harness said it did.
+    """
+    agent_response = payload.get("agent_response")
+    workspace = ROLLOUT.require_workspace()
     try:
         result = subprocess.run(
             ["python", "-m", "pytest", *INSTANCE["fail_to_pass"], "-q"],
@@ -232,15 +211,15 @@ async def grade_rollout(rollout: dict[str, Any]) -> dict[str, Any]:
             timeout=GRADING_TIMEOUT_S,
             env={
                 **os.environ,
-                # The image also carries a modern `requests` (openenv depends on
-                # one), so the 2016 checkout under test has to win the import.
-                # `python -m` already puts cwd first, but that is incidental;
-                # naming the workspace makes the precedence explicit and matches
+                # The 2016 checkout under test has to win the import over any
+                # other `requests` on the path. `python -m` already puts cwd
+                # first, but that is incidental; naming the workspace makes the
+                # precedence explicit and matches
                 # `examples/gym/openenv/code_repair`.
                 "PYTHONPATH": str(workspace),
                 # Third-party setuptools-entry-point pytest plugins (for example
-                # anyio's, pulled in transitively by openenv/starlette) target
-                # newer pytest internals than the fail_to_pass test's pinned
+                # anyio's, pulled in transitively by starlette) target newer
+                # pytest internals than the fail_to_pass test's pinned
                 # pytest==6.2.5 and crash it on collection. This project's own
                 # test suite needs no such plugin, so disable autoloading them;
                 # pytest's own built-in plugins are unaffected.
@@ -254,11 +233,11 @@ async def grade_rollout(rollout: dict[str, Any]) -> dict[str, Any]:
         # it scores zero here instead of faulting the rollout.
         tests_passed = False
         test_output = f"fail_to_pass tests timed out after {GRADING_TIMEOUT_S}s."
-    opened_pull_request = len(_current_environment._pull_requests) > 0
+    opened_pull_request = len(ROLLOUT.pull_requests) > 0
     reward = 0.8 * float(tests_passed) + 0.2 * float(opened_pull_request)
     # RLE's grader contract is `{reward, is_success, info}`. Only `reward` is
     # required; `is_success` is optional and reported here because it carries
-    # signal the shaped reward does not -- it tracks the tests alone, which are
+    # signal the shaped reward does not. It tracks the tests alone, which are
     # what decide whether the reported issue is actually fixed, while the pull
     # request is the harness's second tool call and earns its own slice of the
     # reward above. RLE surfaces `info` as the caller's `result`, so anything
@@ -271,15 +250,8 @@ async def grade_rollout(rollout: dict[str, Any]) -> dict[str, Any]:
                 f"fail_to_pass tests {'passed' if tests_passed else 'failed'}; "
                 f"pull request {'opened' if opened_pull_request else 'missing'}."
             ),
+            "instance_id": INSTANCE["instance_id"],
+            "agent_response": agent_response,
             "test_output": test_output,
         },
     }
-
-
-@app.post("/_env/grade")
-async def env_grade_rollout(rollout: dict[str, Any]) -> dict[str, Any]:
-    """Alias for `/grade` at the literal path older RLE deployments'
-    rollout-scoped proxy forwards to (`HttpRolloutSandboxClient.cs` calls
-    `POST _env/grade`). Same rationale as `/_env/reset` above."""
-    return await grade_rollout(rollout)
-
