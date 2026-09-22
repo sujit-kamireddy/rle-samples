@@ -14,7 +14,7 @@ Two independent pieces make up this `Harness`/`BYOH` RLE:
 
 - [`agent/`](./agent) — the production agent (harness), deployable anywhere
   you can reach over HTTPS. Unmodified except for how it builds its model
-  client and tools (see "Wire the harness" below).
+  client and tools (see "How RLE invokes your harness" below).
 - [`rle/`](./rle) — the RLE container: a real, pinned `requests` checkout
   baked into the image, the hidden regression test patch, mock
   `workspace.apply_patch`/`github.create_pull_request` tools, and a grader
@@ -39,7 +39,7 @@ Choose a container runtime to build, run, and publish this environment:
   only if no machine exists, then `podman machine start` if it is stopped.
   Native Linux does not need a Podman machine.
 
-Select the runtime in the **same terminal** used for `run` and `publish`.
+Select the runtime in the **same terminal** used for `publish`.
 Use `podman` below, or replace it with `docker` for Docker Desktop:
 
 ```powershell
@@ -117,10 +117,78 @@ headers to its invocation requests, protect the endpoint yourself — for
 example, require a shared secret header and validate it in `agent/app.py`
 before dispatching to the agent loop.
 
-## 2. Wire the harness
+## 2. Author and iterate the RLE side
 
-Per the harness contract, only the construction of the agent's model client
-and tools becomes RLE-aware — its native agent loop is unchanged:
+`rle/server/env.py`'s `reset()` copies the pinned `requests` checkout baked
+into the image, applies the hidden test patch, and returns the real issue
+text. `/tools/workspace.apply_patch` and `/tools/github.create_pull_request`
+mock the harness's real tools; `/grade` runs the real regression test and
+checks for a recorded pull request. Adapt these for your own repo, mocks,
+and reward function.
+
+`azd ai rle run` is supported only for `Gym: OpenEnv` environments, so iterate
+here by publishing a version and running a rollout (steps 3 and 4).
+
+## 3. Register the base URL and publish
+
+Once your deployed agent URL is stable, point the manifest at it and publish
+a version. Complete [registry setup](#before-the-first-publish) and set
+`FOUNDRY_PROJECT_ENDPOINT` and `AZURE_CONTAINER_REGISTRY_ENDPOINT` in the
+same terminal first:
+
+```powershell
+$env:FOUNDRY_PROJECT_ENDPOINT = "https://<account>.services.ai.azure.com/api/projects/<project>"
+$env:AZURE_CONTAINER_REGISTRY_ENDPOINT = "<registry>.azurecr.io"
+```
+
+In Bash, use `export NAME="value"` instead of `$env:NAME = "value"`.
+
+Set `baseUrl` in `rle/rle.toml` to your deployed agent's invocation URL:
+
+```toml
+[rle]
+name = "code_repair_byoh"
+version = "1.1.0"
+type = "Harness"
+subtype = "BYOH"
+baseUrl = "https://<your-deployed-agent-host>/invoke"
+```
+
+Then publish from the folder that holds `rle.toml`:
+
+```bash
+cd rle
+azd ai rle publish
+```
+
+Registered versions are immutable, so bump `version` before republishing.
+
+Training, evaluation, and optimization jobs against this RLE will now invoke
+your deployed agent for every rollout.
+
+## 4. Run a rollout
+
+Run this from the initialized sample's `rle` folder (where this sample's `rle.toml`
+lives) against whichever published name/version you registered. `rollout`
+reads `rle.name`/`rle.version` from `rle.toml`, provisions a real Loom
+training session and sampler checkpoint for `--model`, calls Execute Rollout
+(which forwards `--agent-input` to your deployed agent's `--base-url`), and
+prints the resulting reward. This sample's `reset()` ignores `--task`, so
+`{}` is enough, but the agent requires `agent_input.issue`; pull the real
+SWE-bench issue text out of the bundled fixture so the command stays
+copy/paste-ready. Starting from the initialized sample folder:
+
+```bash
+cd rle
+AGENT_INPUT=$(python3 -c "import json; print(json.dumps({'issue': json.load(open('fixtures/instance.json'))['problem_statement']}))")
+azd ai rle rollout --model Qwen/Qwen3-32B --task '{}' --agent-input "$AGENT_INPUT"
+```
+
+## Reference: how RLE invokes your harness
+
+The sample already does this wiring. Only the construction of the agent's
+model client and tools becomes RLE-aware — its native agent loop is
+unchanged:
 
 ```python
 model = create_model_client(request.rollout_context)   # -> capture proxy, not prod model endpoint
@@ -186,65 +254,3 @@ DELETE <base-url>/invoke/rollouts/{operation_id}
 which is the smallest thing that demonstrates the contract. A harness that runs more than one replica
 needs shared state instead: the poll can land on any replica, and a replica that
 has never heard of the rollout cannot answer for it.
-
-## 3. Author and iterate the RLE side
-
-From the initialized sample folder, with [container setup](#container-and-registry-setup)
-complete:
-
-```bash
-cd rle
-azd ai rle run
-```
-
-`rle/server/env.py`'s `reset()` copies the pinned `requests` checkout baked
-into the image, applies the hidden test patch, and returns the real issue
-text. `/tools/workspace.apply_patch` and `/tools/github.create_pull_request`
-mock the harness's real tools; `/grade` runs the real regression test and
-checks for a recorded pull request. Adapt these for your own repo, mocks,
-and reward function the same way you'd iterate on a Gym sample.
-
-## 4. Register the base URL and publish
-
-Once your deployed agent URL is stable, scaffold (or update) the manifest
-with it and publish a version. Complete [registry setup](#before-the-first-publish)
-and set `FOUNDRY_PROJECT_ENDPOINT` and `AZURE_CONTAINER_REGISTRY_ENDPOINT`
-in the same terminal first:
-
-```powershell
-$env:FOUNDRY_PROJECT_ENDPOINT = "https://<account>.services.ai.azure.com/api/projects/<project>"
-$env:AZURE_CONTAINER_REGISTRY_ENDPOINT = "<registry>.azurecr.io"
-```
-
-In Bash, use `export NAME="value"` instead of `$env:NAME = "value"`.
-
-```bash
-azd ai rle init code_repair_byoh \
-  --type Harness --subtype BYOH \
-  --base-url https://<your-deployed-agent-host>/invoke \
-  --no-prompt
-
-cd code_repair_byoh/rle
-azd ai rle publish
-```
-
-Training, evaluation, and optimization jobs against this RLE will now invoke
-your deployed agent for every rollout.
-
-## 5. Run a rollout
-
-Run this from the initialized sample's `rle` folder (where this sample's `rle.toml`
-lives) against whichever published name/version you registered. `rollout`
-reads `rle.name`/`rle.version` from `rle.toml`, provisions a real Loom
-training session and sampler checkpoint for `--model`, calls Execute Rollout
-(which forwards `--agent-input` to your deployed agent's `--base-url`), and
-prints the resulting reward. This sample's `reset()` ignores `--task`, so
-`{}` is enough, but the agent requires `agent_input.issue`; pull the real
-SWE-bench issue text out of the bundled fixture so the command stays
-copy/paste-ready. Starting from the initialized sample folder:
-
-```bash
-cd rle
-AGENT_INPUT=$(python3 -c "import json; print(json.dumps({'issue': json.load(open('fixtures/instance.json'))['problem_statement']}))")
-azd ai rle rollout --model Qwen/Qwen3-32B --task '{}' --agent-input "$AGENT_INPUT"
-```
