@@ -50,7 +50,9 @@ async def call_tool(headers: dict[str, str], tool_name: str, arguments: dict[str
     if sandbox_tools_endpoint is None:
         return await call_production_tool(tool_name, arguments)
     async with httpx.AsyncClient() as client:
-        response = await client.post(f"{sandbox_tools_endpoint}/tools/{tool_name}", json=arguments)
+        # The header's value already ends in /tools, so the tool name is all
+        # that is appended. Adding another /tools yielded /tools/tools/<name>.
+        response = await client.post(f"{sandbox_tools_endpoint}/{tool_name}", json=arguments)
         response.raise_for_status()
         return response.json()
 
