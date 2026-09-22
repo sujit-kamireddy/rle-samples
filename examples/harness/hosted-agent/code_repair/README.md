@@ -19,10 +19,8 @@ Two independent pieces make up this `Harness`/`HostedAgent` RLE:
   `workspace.apply_patch`/`github.create_pull_request` tools, and a grader
   that runs the real test. RLE does not care which harness subtype invokes
   it, so this piece never changes between subtypes. Running
-  `azd ai rle init --type Harness --subtype HostedAgent --harness-source sample`
-  copies this exact `agent/` + `rle/` pair as your starting point (the
-  `--harness-source existing` default instead scaffolds a generic,
-  empty placeholder for a harness you already built and deployed yourself).
+  `azd ai rle init --type Harness --subtype HostedAgent` copies this exact
+  `agent/` + `rle/` pair as your starting point.
 
 `agent/main.py`'s `run_agent_loop` is the same agent loop as
 [`../../byoh/code_repair/agent/app.py`](../../byoh/code_repair/agent/app.py)'s. Only the invocation
@@ -157,7 +155,6 @@ In Bash, use `export NAME="value"` instead of `$env:NAME = "value"`.
 ```bash
 azd ai rle init code_repair_hosted_agent \
   --type Harness --subtype HostedAgent \
-  --harness-source sample \
   --agent-name code-repair-agent --agent-version 1 \
   --no-prompt
 
