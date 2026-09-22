@@ -16,6 +16,33 @@ The `type` and `subtype` values match the RLE control plane. The manifest
 intentionally does not contain Foundry project endpoints, registry
 locations, service IDs, or credentials.
 
+## `.agents/skills/` and `.claude/skills/` — the authoring skills
+
+The skills carry the RLE authoring contract: the server surface, the action
+vocabulary behind `GET /schema`, the manifest fields, grading and step budget,
+and the failure modes worth recognizing. A coding agent working in a project
+that has them can author or extend an environment without being told the
+contract first.
+
+They ship twice because no single directory reaches every agent:
+
+| Agent          | Reads                                              |
+| -------------- | -------------------------------------------------- |
+| Claude Code    | `.claude/skills/` only                             |
+| OpenAI Codex   | `.agents/skills/`                                  |
+| GitHub Copilot | `.github/skills/`, `.claude/skills/`, `.agents/skills/` |
+
+The two trees must stay byte-identical. `.agents/skills/` is the source of
+truth and `.github/workflows/skills-parity.yml` fails the build if they
+diverge, so after editing a skill mirror it across:
+
+```bash
+rm -rf .claude/skills && cp -R .agents/skills .claude/skills
+```
+
+`azd ai rle init` copies both trees into a new environment, and
+`azd ai rle skill install` refreshes them in place from this repository.
+
 ## `examples/gym/openenv/` — Gym/OpenEnv samples
 
 [`examples/gym/openenv/`](./examples/gym/openenv) holds `Gym`/`OpenEnv`

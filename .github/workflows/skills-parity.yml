@@ -1,0 +1,50 @@
+name: skills-parity
+
+# The same skills ship twice because no single directory reaches every agent:
+# Codex reads .agents/skills, Claude Code reads only .claude/skills, and Copilot
+# reads either. The two trees must stay byte-identical, so a change to one that
+# misses the other fails here instead of silently reaching half the agents.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    paths:
+      - ".agents/skills/**"
+      - ".claude/skills/**"
+      - ".github/workflows/skills-parity.yml"
+
+jobs:
+  parity:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: .agents/skills and .claude/skills are identical
+        run: |
+          if ! diff -r --no-dereference .agents/skills .claude/skills; then
+            echo
+            echo "::error::.agents/skills and .claude/skills have diverged."
+            echo "Copy your change across both trees, for example:"
+            echo "  rm -rf .claude/skills && cp -R .agents/skills .claude/skills"
+            exit 1
+          fi
+          echo "skills trees are identical"
+
+      - name: every skill declares a name matching its directory
+        run: |
+          status=0
+          for skill in .agents/skills/*/; do
+            name=$(basename "$skill")
+            if [ ! -f "$skill/SKILL.md" ]; then
+              echo "::error::$skill has no SKILL.md"
+              status=1
+              continue
+            fi
+            declared=$(sed -n 's/^name:[[:space:]]*//p' "$skill/SKILL.md" | head -1)
+            if [ "$declared" != "$name" ]; then
+              echo "::error::$skill/SKILL.md declares name '$declared', expected '$name'"
+              status=1
+            fi
+          done
+          exit $status
