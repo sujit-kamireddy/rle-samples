@@ -12,12 +12,13 @@ rollout-scoped runtime context:
   x-client-rle-sandbox-tools-endpoint  # sandbox tool routes for this rollout
   x-client-rle-sandbox-tools-token     # bearer token authorizing those routes
 
-This file and ``../../../byoh/code_repair/agent/app.py`` share the same ``run_agent_loop``:
+This file and the ``BYOH`` code-repair sample share the same ``run_agent_loop``:
 the harness's native agent loop is unchanged between the two RLE subtypes.
-Only how ``model`` and tool calls are constructed differs -- BYOH reads them
+Only how ``model`` and tool calls are constructed differs -- ``BYOH`` reads them
 from its invocation request body, this reads them from headers, falling back
 to the agent's normal production model endpoint and tools when absent
-(ordinary, non-rollout traffic).
+(ordinary, non-rollout traffic). Scaffold that sample with
+``azd ai rle init --type Harness --subtype BYOH``.
 """
 
 from __future__ import annotations
@@ -102,8 +103,9 @@ async def run_agent_loop(headers: dict[str, str], agent_input: dict[str, Any]) -
     """The harness's native agent loop: read the issue, propose a patch, open a PR.
 
     Unchanged between RLE subtypes apart from how ``model`` and tool calls
-    are routed -- see this module's header-driven ``create_model_client``/
-    ``call_tool`` versus ``../../../byoh/code_repair/agent/app.py``'s equivalents.
+    are routed -- this module builds them with header-driven
+    ``create_model_client``/``call_tool``, while the ``BYOH`` sample builds
+    them from its invocation request body.
     """
     model = create_model_client(headers)
     issue = agent_input["issue"]

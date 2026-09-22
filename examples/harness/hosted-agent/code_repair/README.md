@@ -1,6 +1,6 @@
 # HostedAgent example: code-repair agent
 
-Same real SWE-bench-Lite instance as [`../../byoh/code_repair`](../../byoh/code_repair): `psf/requests`
+Same real SWE-bench-Lite instance as the `BYOH` code-repair sample: `psf/requests`
 issue `psf__requests-3362` ("`iter_content(decode_unicode=True)` can return
 bytes"), pinned at base commit `36453b95b1`. See
 [`rle/fixtures/instance.json`](./rle/fixtures/instance.json) for the exact
@@ -13,8 +13,8 @@ Two independent pieces make up this `Harness`/`HostedAgent` RLE:
 - [`agent/`](./agent) — the agent code that runs as a Foundry Hosted Agent
   version. It reads the RLE-supplied request headers to become rollout-aware;
   otherwise it behaves exactly as it does in production.
-- [`rle/`](./rle) — the RLE container: byte-for-byte the same environment as
-  [`../../byoh/code_repair/rle`](../../byoh/code_repair/rle) — a real, pinned `requests` checkout baked
+- [`rle/`](./rle) — the RLE container: byte-for-byte the same environment the
+  `BYOH` sample ships — a real, pinned `requests` checkout baked
   into the image, the hidden regression test patch, mock
   `workspace.apply_patch`/`github.create_pull_request` tools, and a grader
   that runs the real test. RLE does not care which harness subtype invokes
@@ -22,10 +22,11 @@ Two independent pieces make up this `Harness`/`HostedAgent` RLE:
   `azd ai rle init --type Harness --subtype HostedAgent` copies this exact
   `agent/` + `rle/` pair as your starting point.
 
-`agent/main.py`'s `run_agent_loop` is the same agent loop as
-[`../../byoh/code_repair/agent/app.py`](../../byoh/code_repair/agent/app.py)'s. Only the invocation
-transport differs — this one reads runtime context from request headers on
-an existing Responses API; BYOH instead adds an HTTP invocation endpoint.
+`agent/main.py`'s `run_agent_loop` is the same agent loop the `BYOH` sample
+runs. Only the invocation transport differs: this one reads runtime context
+from request headers on an existing Responses API, while `BYOH` adds an HTTP
+invocation endpoint. Scaffold it with
+`azd ai rle init --type Harness --subtype BYOH`.
 
 ## Container and registry setup
 
@@ -119,8 +120,7 @@ through the environment step by step. In a harness RLE the harness owns its
 own loop, so the environment only sets the task up, serves the tools, and
 scores the result.
 
-The RLE side is identical to the
-[BYOH example](../../byoh/code_repair)'s: adapt `rle/server/env.py`'s
+The RLE side is identical to the `BYOH` sample's: adapt `rle/server/env.py`'s
 `/reset`, mock tool routes, and `/grade` for your own repo, mocks, and
 reward function. The taskset is not in the image either. Every Execute
 Rollout call carries its own task and RLE posts it to `/reset` unchanged;
