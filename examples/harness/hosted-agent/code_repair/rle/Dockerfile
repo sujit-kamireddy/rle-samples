@@ -3,11 +3,11 @@
 # ../../../gym/openenv/README.md.
 ARG PIP_INDEX_URL=https://pypi.org/simple
 
-# Index to fall back to when the one above cannot be reached. `azd ai rle run`
-# and `azd ai rle publish` take no --build-arg, so a build that needs a
-# different index has no way to be told about one -- without this fallback the
-# local-iteration path the READMEs document is unusable wherever public PyPI is
-# blocked. Set it empty to disable the fallback and fail on the primary index.
+# Index to fall back to when the one above cannot be reached. `azd ai rle
+# publish` takes no --build-arg, so a build that needs a different index has no
+# way to be told about one -- without this fallback, publishing is unusable
+# wherever public PyPI is blocked. Set it empty to disable the fallback and
+# fail on the primary index.
 ARG PIP_FALLBACK_INDEX_URL=https://packagefeedproxy.microsoft.io/pypi/simple/
 
 FROM python:3.10-slim

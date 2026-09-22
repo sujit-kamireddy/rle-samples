@@ -122,8 +122,8 @@ class CodeRepairEnvironment(Environment[CodeRepairAction, CodeRepairObservation,
         **kwargs: Any,
     ) -> CodeRepairObservation:
         """Unused by real invocations: the harness calls `/tools/*` and RLE
-        calls `/grade` directly. Kept only so the local `azd ai rle run`
-        shell and OpenEnv's schema can still exercise this environment."""
+        calls `/grade` directly. Kept only so OpenEnv's schema can still
+        exercise this environment."""
         del action, timeout_s, kwargs
         self._state.step_count += 1
         return CodeRepairObservation(done=True, reward=None, messages=[])
