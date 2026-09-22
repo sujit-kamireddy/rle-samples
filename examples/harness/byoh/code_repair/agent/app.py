@@ -58,13 +58,14 @@ RLE never attaches caller, workspace, or identity headers to these requests, so
 protect the endpoint yourself (for example, require a shared secret header and
 validate it before dispatching to the agent loop).
 
-This file and ``../../../hosted-agent/code_repair/agent/main.py`` share the same
+This file and the ``HostedAgent`` code-repair sample share the same
 ``run_agent_loop``: the harness's native agent loop is unchanged between the
 two RLE subtypes. Only how ``model`` and ``call_tool`` are constructed
-differs -- see ``create_model_client``/``call_tool`` here versus the
-header-driven equivalents there. The context field names match too: each one is
-its hosted-agent header minus the ``x-client-rle-`` prefix, with hyphens written
-as underscores.
+differs -- this one builds them from its invocation request body, while
+``HostedAgent`` builds them from request headers. The context field names
+match too: each one is its hosted-agent header minus the ``x-client-rle-``
+prefix, with hyphens written as underscores. Scaffold that sample with
+``azd ai rle init --type Harness --subtype HostedAgent``.
 """
 
 from __future__ import annotations
@@ -214,8 +215,9 @@ async def run_agent_loop(model: AsyncOpenAI, rollout_context: RolloutContext, ag
     """The harness's native agent loop: read the issue, propose a patch, open a PR.
 
     Unchanged between RLE subtypes apart from how `model` and tool calls are
-    routed -- see this module's ``create_model_client``/``call_tool`` versus
-    ``../../../hosted-agent/code_repair/agent/main.py``'s header-driven equivalents.
+    routed -- this module builds them with ``create_model_client``/``call_tool``
+    from the invocation request body, while the ``HostedAgent`` sample builds
+    them from request headers.
     """
     issue = agent_input["issue"]
 

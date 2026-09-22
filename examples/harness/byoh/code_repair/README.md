@@ -22,12 +22,13 @@ Two independent pieces make up this `Harness`/`BYOH` RLE:
   `azd ai rle init --type Harness --subtype BYOH` copies this exact
   `agent/` + `rle/` pair as your starting point.
 
-This example and [`../../hosted-agent/code_repair`](../../hosted-agent/code_repair) are intentionally
+This example and the `HostedAgent` code-repair sample are intentionally
 close to identical: `rle/` is byte-for-byte the same environment (RLE does
 not care which harness subtype invokes it), and `agent/`'s `run_agent_loop`
-is the same agent loop in both. Only the invocation transport differs — this
-one adds an HTTP invocation endpoint; [`hosted-agent`](../../hosted-agent/code_repair)
-instead reads request headers on an existing Responses API.
+is the same agent loop in both. Only the invocation transport differs: this
+one adds an HTTP invocation endpoint, while `HostedAgent` reads request
+headers on an existing Responses API. Scaffold it with
+`azd ai rle init --type Harness --subtype HostedAgent`.
 
 ## Container and registry setup
 

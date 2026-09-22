@@ -1,7 +1,7 @@
 """RLE harness container for a real SWE-bench-Lite instance.
 
 Wraps `psf/requests` at its pinned base commit (see `fixtures/instance.json`,
-sourced from `princeton-nlp/SWE-bench_Lite`). The harness (`../agent`) is
+sourced from `princeton-nlp/SWE-bench_Lite`). The harness (`agent/`) is
 given the real GitHub issue text and must edit a disposable checkout to fix
 it, then open a pull request, exactly like the "code repair agent" example
 in the RLE design docs, but grounded in a real repo, real issue, and real
@@ -17,11 +17,10 @@ nothing else:
 
 There is deliberately no `/step` and no OpenEnv `Environment`, `Action`, or
 `Observation` here. Those belong to the Gym: OpenEnv subtype, where RLE drives
-the model through the environment step by step; see
-`examples/gym/openenv/code_repair`. In a Harness RLE the harness owns its own
-loop, so the only thing the environment does is set the task up, serve the
-tools, and score the result. RLE checks `/reset` for a success status and
-reads nothing from its body, so returning an `Observation` here would be
+the model through the environment step by step. In a Harness RLE the harness
+owns its own loop, so the only thing the environment does is set the task up,
+serve the tools, and score the result. RLE checks `/reset` for a success status
+and reads nothing from its body, so returning an `Observation` here would be
 returning a value nobody looks at.
 
 Each rollout gets its own working copy of the repo under `/tmp/rollouts/`.
@@ -61,8 +60,7 @@ FIXTURES_DIR = Path(__file__).resolve().parent.parent / "fixtures"
 # Overridable so this sample can be exercised outside its image, where the
 # checkout and scratch space live wherever the caller put them, without
 # editing the file. Inside the image the defaults are the paths the Dockerfile
-# creates, so a deployed rollout is unaffected. `examples/gym/openenv/code_repair`
-# exposes the same three knobs under the same names.
+# creates, so a deployed rollout is unaffected.
 BASE_REPO_DIR = Path(os.environ.get("CODE_REPAIR_BASE_REPO_DIR", "/opt/base-repo"))
 ROLLOUTS_DIR = Path(os.environ.get("CODE_REPAIR_ROLLOUTS_DIR", "/tmp/rollouts"))
 # `/grade` runs a test suite the agent has just edited, and a bad patch can
@@ -214,8 +212,7 @@ async def grade(payload: dict[str, Any] = Body(default_factory=dict)) -> dict[st
                 # The 2016 checkout under test has to win the import over any
                 # other `requests` on the path. `python -m` already puts cwd
                 # first, but that is incidental; naming the workspace makes the
-                # precedence explicit and matches
-                # `examples/gym/openenv/code_repair`.
+                # precedence explicit.
                 "PYTHONPATH": str(workspace),
                 # Third-party setuptools-entry-point pytest plugins (for example
                 # anyio's, pulled in transitively by starlette) target newer

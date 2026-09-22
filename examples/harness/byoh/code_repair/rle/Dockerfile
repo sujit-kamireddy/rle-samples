@@ -1,6 +1,7 @@
 # Package index for this build. Defaults to public PyPI; override it where that
-# is unreachable -- see "Build fails downloading Python packages" in
-# ../../../gym/openenv/README.md.
+# is unreachable. A TLS handshake failure reaching files.pythonhosted.org
+# means the network blocks public PyPI: build with
+# --build-arg PIP_INDEX_URL=<your mirror>, or let the fallback below take over.
 ARG PIP_INDEX_URL=https://pypi.org/simple
 
 # Index to fall back to when the one above cannot be reached. `azd ai rle
