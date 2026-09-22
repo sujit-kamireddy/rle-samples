@@ -229,13 +229,14 @@ HTTP transports).
     azd ai rle rollout --model Qwen/Qwen3-32B --task '{"split": "train"}'
    ```
 
-4. **Start a training job.** `azd ai rle init` downloads `training.jsonl`
-    into the initialized RLE folder's `job_data` subfolder. Run the training
-    command from that subfolder so the relative training-file path resolves:
+4. **Start a training job.** Run this from the environment folder: `train`
+    reads `rle.name` and `rle.version` from `rle.toml`, and `job_data` holds
+    the task rows the job replays. Add
+    `--validation-file .\job_data\validation.jsonl` to score a validation
+    split as well.
 
     ```powershell
-    cd .\job_data
-    azd ai rle train --rle-name math_rl --rle-version 1.0.0 --model qwen3-32b-1 --suffix rle-cli-smoke-20260918 --training-file .\training.jsonl
+    azd ai rle train --model qwen3-32b-1 --suffix rle-cli-smoke-20260918 --training-file .\job_data\train.jsonl
     ```
 
 ## Use the published environment in a trainer loop
