@@ -187,3 +187,58 @@ cd rle
 AGENT_INPUT=$(python3 -c "import json; print(json.dumps({'issue': json.load(open('fixtures/instance.json'))['problem_statement']}))")
 azd ai rle rollout --model Qwen/Qwen3-32B --task '{}' --agent-input "$AGENT_INPUT"
 ```
+
+### What reward to expect
+
+`rollout` scores whatever the model produces, and this is a real
+SWE-bench-Lite instance: the model has to emit a patch that both applies
+cleanly under `git apply` *and* actually fixes
+`stream_decode_response_unicode`. A single-shot agent loop fails that fairly
+often. When the patch does not apply, `agent/main.py` returns before calling
+`github.create_pull_request`, so the rollout scores `0.0` — the reward is
+`0.8 * fail_to_pass_passed + 0.2 * pull_request_opened`, and a failed patch
+forfeits both terms.
+
+So a `0.0` here usually means the model failed the task, not that your
+environment is misconfigured. Use the reference solution below to tell the
+two apart.
+
+## 6. Verify the environment with the reference solution
+
+To confirm the environment, tools, and grader are wired correctly —
+independently of model quality — drive them directly with the known-good fix
+in [`rle/fixtures/reference_solution.patch`](./rle/fixtures/reference_solution.patch)
+— the instance's gold patch, copied verbatim from the `patch` field of
+`princeton-nlp/SWE-bench_Lite` record `psf__requests-3362`, the same dataset
+record [`rle/fixtures/instance.json`](./rle/fixtures/instance.json) is drawn
+from. It is the real upstream fix, not a solution written for this sample.
+From the initialized sample's `rle` folder:
+
+```bash
+docker build -t code-repair-rle:latest .
+docker run --rm -d --name code-repair-rle -p 8000:8000 code-repair-rle:latest
+
+# /reset returns the issue text; silenced here to keep the output readable.
+curl -sX POST localhost:8000/reset -H 'Content-Type: application/json' -d '{}' > /dev/null
+PATCH=$(python3 -c "import json;print(json.dumps({'patch':open('fixtures/reference_solution.patch').read()}))")
+curl -sX POST localhost:8000/tools/workspace.apply_patch -H 'Content-Type: application/json' -d "$PATCH"
+curl -sX POST localhost:8000/tools/github.create_pull_request -H 'Content-Type: application/json' \
+  -d '{"branch":"fix/reported-issue","title":"Fix reported issue","body":"Reference solution."}'
+curl -sX POST localhost:8000/grade -H 'Content-Type: application/json' -d '{}'
+```
+
+Expected output (the grader also returns a long `test_output`, elided here):
+
+```text
+{"applied":true}
+{"number":1}
+{"reward": 1.0, "is_success": true, "info": {"reason": "fail_to_pass tests passed; pull request opened.", ...}}
+```
+
+`reward` of `1.0` confirms both components: the hidden regression test passes
+and a pull request was recorded. Anything less points at the environment
+rather than the model. Clean up with `docker rm -f code-repair-rle`, and
+replace `docker` with `podman` throughout if that is your selected runtime.
+
+This check exercises the RLE container only, so it is identical for both
+code-repair samples — `rle/` is the same environment in each.
