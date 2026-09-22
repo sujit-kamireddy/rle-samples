@@ -119,12 +119,36 @@ before dispatching to the agent loop.
 
 ## 2. Author and iterate the RLE side
 
-`rle/server/env.py`'s `reset()` copies the pinned `requests` checkout baked
-into the image, applies the hidden test patch, and returns the real issue
-text. `/tools/workspace.apply_patch` and `/tools/github.create_pull_request`
-mock the harness's real tools; `/grade` runs the real regression test and
-checks for a recorded pull request. Adapt these for your own repo, mocks,
-and reward function.
+RLE calls exactly four things on a harness container:
+
+| Endpoint | Purpose |
+| --- | --- |
+| `GET /health` | Readiness, polled before `/reset` |
+| `POST /reset` | The caller's task, verbatim |
+| `POST /tools/*` | The harness's tool calls, proxied per rollout |
+| `POST /grade` | `{"rollout": ..., "agent_response": "..."}` to a reward |
+
+There is no `/step` and no OpenEnv `Environment`, `Action`, or `Observation`
+here. Those belong to the `Gym: OpenEnv` subtype, where RLE drives the model
+through the environment step by step. In a harness RLE the harness owns its
+own loop, so the environment only sets the task up, serves the tools, and
+scores the result.
+
+`rle/server/env.py`'s `/reset` copies the pinned `requests` checkout baked
+into the image and applies the hidden test patch, which the harness never
+sees. RLE reads only the status code, so that response body is for humans.
+`/tools/workspace.apply_patch` and `/tools/github.create_pull_request` mock
+the harness's real tools. `/grade` runs the real regression test, checks for
+a recorded pull request, and returns `{reward, is_success, info}`. Adapt
+these for your own repo, mocks, and reward function.
+
+The taskset is not in the image. Every Execute Rollout call carries its own
+task and RLE posts it to `/reset` unchanged; `rle/fixtures/instance.json` is
+one SWE-bench-Lite instance baked in so the sample runs on its own. `/reset`
+checks the `instance_id` it receives against that fixture and rejects a
+mismatch, so a task for another instance fails loudly instead of being
+graded against the wrong repo. Scaling to a real taskset means making the
+checkout follow `instance_id`, not changing the protocol.
 
 `azd ai rle run` is supported only for `Gym: OpenEnv` environments, so iterate
 here by publishing a version and running a rollout (steps 3 and 4).
@@ -173,10 +197,12 @@ lives) against whichever published name/version you registered. `rollout`
 reads `rle.name`/`rle.version` from `rle.toml`, provisions a real Loom
 training session and sampler checkpoint for `--model`, calls Execute Rollout
 (which forwards `--agent-input` to your deployed agent's `--base-url`), and
-prints the resulting reward. This sample's `reset()` ignores `--task`, so
-`{}` is enough, but the agent requires `agent_input.issue`; pull the real
-SWE-bench issue text out of the bundled fixture so the command stays
-copy/paste-ready. Starting from the initialized sample folder:
+prints the resulting reward. `--task` is this rollout's taskset entry and
+reaches `/reset` verbatim, so `{}` and `{"instance_id":
+"psf__requests-3362"}` both work here and any other instance is rejected.
+The agent separately requires `agent_input.issue`; pull the real SWE-bench
+issue text out of the bundled fixture so the command stays copy/paste-ready.
+Starting from the initialized sample folder:
 
 ```bash
 cd rle

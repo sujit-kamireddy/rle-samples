@@ -104,9 +104,29 @@ resolvable, callable Hosted Agent identifiers (not `$default`).
 
 ## 2. Author and iterate the RLE side
 
-Identical to the [BYOH example](../../byoh/code_repair)'s RLE side — adapt
-`rle/server/env.py`'s `reset()`, mock tool routes, and `/grade` for your own
-repo, mocks, and reward function.
+RLE calls exactly four things on a harness container:
+
+| Endpoint | Purpose |
+| --- | --- |
+| `GET /health` | Readiness, polled before `/reset` |
+| `POST /reset` | The caller's task, verbatim |
+| `POST /tools/*` | The harness's tool calls, proxied per rollout |
+| `POST /grade` | `{"rollout": ..., "agent_response": "..."}` to a reward |
+
+There is no `/step` and no OpenEnv `Environment`, `Action`, or `Observation`
+here. Those belong to the `Gym: OpenEnv` subtype, where RLE drives the model
+through the environment step by step. In a harness RLE the harness owns its
+own loop, so the environment only sets the task up, serves the tools, and
+scores the result.
+
+The RLE side is identical to the
+[BYOH example](../../byoh/code_repair)'s: adapt `rle/server/env.py`'s
+`/reset`, mock tool routes, and `/grade` for your own repo, mocks, and
+reward function. The taskset is not in the image either. Every Execute
+Rollout call carries its own task and RLE posts it to `/reset` unchanged;
+`rle/fixtures/instance.json` is one SWE-bench-Lite instance baked in so the
+sample runs on its own, and `/reset` rejects a task asking for a different
+`instance_id` rather than grading the wrong repo.
 
 `azd ai rle run` is supported only for `Gym: OpenEnv` environments, so iterate
 here by publishing a version and running a rollout (steps 3 and 4).
@@ -157,10 +177,12 @@ Run this from the initialized sample's `rle` folder (where this sample's
 `rollout` reads `rle.name`/`rle.version` from `rle.toml`, provisions a real
 Loom training session and sampler checkpoint for `--model`, calls Execute
 Rollout (which forwards `--agent-input` to your Hosted Agent), and prints the
-resulting reward. This sample's `reset()` ignores `--task`, so `{}` is
-enough, but the agent requires `agent_input.issue`; pull the real SWE-bench
-issue text out of the bundled fixture so the command stays copy/paste-ready.
-Starting from the initialized sample folder:
+resulting reward. `--task` is this rollout's taskset entry and reaches
+`/reset` verbatim, so `{}` and `{"instance_id": "psf__requests-3362"}` both
+work here and any other instance is rejected. The agent separately requires
+`agent_input.issue`; pull the real SWE-bench issue text out of the bundled
+fixture so the command stays copy/paste-ready. Starting from the initialized
+sample folder:
 
 ```bash
 cd rle

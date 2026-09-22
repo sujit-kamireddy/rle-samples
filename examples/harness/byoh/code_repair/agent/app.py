@@ -1,7 +1,7 @@
 """Example BYOH agent harness for the code-repair RLE.
 
-Deploy this anywhere reachable over HTTPS and register its URL with
-``azd ai rle init --type Harness --subtype BYOH --base-url <this-url>/invoke``.
+Deploy this anywhere reachable over HTTPS, then point ``rle/rle.toml``'s
+``baseUrl`` at ``<this-url>/invoke`` and run ``azd ai rle publish``.
 
 RLE invokes a harness asynchronously. The start request only starts work; the
 answer is collected from a per-invocation resource RLE derives from the

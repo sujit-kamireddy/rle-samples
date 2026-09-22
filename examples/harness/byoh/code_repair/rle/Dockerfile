@@ -18,10 +18,10 @@ ARG PIP_FALLBACK_INDEX_URL
 # This RLE wraps a real SWE-bench-Lite instance (see fixtures/instance.json):
 # psf/requests at its pinned base commit. requests 2.10 predates Python's
 # collections.abc split and does `collections.Mapping` directly, which was
-# removed in Python 3.10. openenv requires Python >=3.10, so instead of an
-# older interpreter this image restores the removed aliases via
-# sitecustomize.py (auto-imported by every Python process, including the
-# pytest subprocess spawned by /grade) rather than pinning Python <3.10.
+# removed in Python 3.10. Rather than pin this image to an end-of-life
+# interpreter for one 2016 checkout, sitecustomize.py restores the removed
+# aliases; it is auto-imported by every Python process here, including the
+# pytest subprocess spawned by /grade.
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends git \
@@ -44,13 +44,16 @@ RUN if [ -n "${PIP_FALLBACK_INDEX_URL}" ] && \
         export PIP_INDEX_URL="${PIP_FALLBACK_INDEX_URL}"; \
     fi; \
     rm -rf /tmp/idxprobe; \
-    pip install --no-cache-dir --index-url "${PIP_INDEX_URL}" pytest==6.2.5 openenv
+    pip install --no-cache-dir --index-url "${PIP_INDEX_URL}" pytest==6.2.5 fastapi uvicorn
 
-# The checkout under /opt/base-repo is deliberately NOT pip-installed. It is
-# requests 2.10, and openenv requires requests>=2.25, so installing it would
-# only be undone moments later when pip resolves openenv and replaces it with a
-# modern wheel -- leaving an install that looks pinned but is not. Nothing needs
-# it on sys.path anyway: every rollout grades a *copy* of this checkout, and
+# A Harness RLE serves /health, /reset, /tools/* and /grade, so this image needs
+# an HTTP framework and nothing more. It deliberately does not install openenv:
+# that package carries the Gym: OpenEnv step protocol, which RLE never calls on
+# a Harness container, and it pulls in a modern `requests` that then competes
+# with the 2016 checkout under test.
+
+# The checkout under /opt/base-repo is deliberately NOT pip-installed. Nothing
+# needs it on sys.path: every rollout grades a *copy* of this checkout, and
 # /grade points PYTHONPATH at that copy so the code under test wins the import.
 # requests 2.10 vendors its own dependencies under requests/packages/, so the
 # copy is self-contained.
@@ -60,8 +63,6 @@ COPY fixtures/ /app/fixtures/
 COPY server/ /app/server/
 
 RUN python -c "import server.env as m; print('RLE harness server OK:', m.app)"
-
-ENV ENABLE_WEB_INTERFACE=true
 
 EXPOSE 8000
 
