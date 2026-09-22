@@ -134,7 +134,7 @@ See `agent/app.py`'s `create_model_client`, `call_tool`, and
 invocation contract RLE calls.
 
 RLE invokes a harness asynchronously: the start request only starts work, and
-the answer is collected from a per-rollout resource RLE derives from the
+the answer is collected from a per-invocation resource RLE derives from the
 registered URL. A harness never supplies that address, so RLE only ever calls
 back under the path you registered.
 
@@ -142,12 +142,13 @@ back under the path you registered.
 POST <base-url>/invoke
 {
   "rollout_id": "...",
+  "operation_id": "...",
   "agent_input": {"...": "agent-specific input"},
   "rollout_context": {
     "model_endpoint": "...",
     "model_api_key": "...",
     "sandbox_tools_endpoint": "...",
-    "sandbox_tools_bearer_token": "..."
+    "sandbox_tools_token": "..."
   }
 }
 
@@ -155,12 +156,18 @@ POST <base-url>/invoke
 {"retry_after_ms": 500}
 ```
 
+`rollout_id` correlates; `operation_id` addresses. RLE mints `operation_id`
+per invocation and puts it in the poll and cancel URLs, so key your own state on
+it. `rollout_id` is unique per project, not globally, and the poll and cancel
+legs carry no credential, so the caller-chosen id cannot safely name the
+resource.
+
 RLE then polls until the rollout reports an outcome. The first poll is
 immediate, so a harness that finishes at once costs one extra round trip rather
 than a poll interval:
 
 ```text
-GET <base-url>/invoke/rollouts/{rollout_id}
+GET <base-url>/invoke/rollouts/{operation_id}
 
 200 {"status": "running"}
 200 {"status": "succeeded", "output_text": "..."}
@@ -169,15 +176,16 @@ GET <base-url>/invoke/rollouts/{rollout_id}
 
 If RLE stops waiting — the caller disconnected, or the rollout deadline
 passed — it withdraws the rollout so you can stop spending tokens on an answer
-nobody will read. It never reads the response, and may not send this at all, so
-treat it as advisory and keep your own timeout:
+nobody will read. RLE checks only the status, and may not send this at all, so
+treat it as advisory and keep your own timeout — but do answer 2xx, because RLE
+records anything else as a cleanup failure:
 
 ```text
-DELETE <base-url>/invoke/rollouts/{rollout_id}
+DELETE <base-url>/invoke/rollouts/{operation_id}
 ```
 
-`agent/app.py` tracks rollouts in a process dictionary, which is the smallest
-thing that demonstrates the contract. A harness that runs more than one replica
+`agent/app.py` tracks rollouts in a process dictionary keyed by `operation_id`,
+which is the smallest thing that demonstrates the contract. A harness that runs more than one replica
 needs shared state instead: the poll can land on any replica, and a replica that
 has never heard of the rollout cannot answer for it.
 

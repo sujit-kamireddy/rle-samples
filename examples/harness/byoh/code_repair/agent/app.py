@@ -4,9 +4,17 @@ Deploy this anywhere reachable over HTTPS and register its URL with
 ``azd ai rle init --type Harness --subtype BYOH --base-url <this-url>/invoke``.
 
 RLE invokes a harness asynchronously. The start request only starts work; the
-answer is collected from a per-rollout resource RLE derives from the registered
-URL by appending ``/rollouts/{rollout_id}``. A harness never supplies that
-address, so RLE only ever calls back under the path you registered.
+answer is collected from a per-invocation resource RLE derives from the
+registered URL by appending ``/rollouts/{operation_id}``. A harness never
+supplies that address, so RLE only ever calls back under the path you
+registered.
+
+Two identifiers arrive and they answer different questions. ``rollout_id`` is
+the correlation handle both sides log. ``operation_id`` is what RLE polls and
+cancels: RLE mints it per invocation, and because the poll and cancel legs carry
+no credential, it is also what authorizes those calls. Key your own state on
+``operation_id``; ``rollout_id`` is unique per project, not globally, so two
+projects can legitimately send the same one to a shared harness.
 
 1. Start. RLE POSTs the rollout to the registered URL and the harness
    acknowledges with ``202`` as soon as it has taken ownership -- before the
@@ -15,12 +23,13 @@ address, so RLE only ever calls back under the path you registered.
        POST <base-url>
        {
          "rollout_id": "...",
+         "operation_id": "...",
          "agent_input": {"...": "agent-specific input"},
          "rollout_context": {
            "model_endpoint": "https://.../v1",
            "model_api_key": "...",
            "sandbox_tools_endpoint": "https://.../tools",
-           "sandbox_tools_bearer_token": "..."
+           "sandbox_tools_token": "..."
          }
        }
 
@@ -31,7 +40,7 @@ address, so RLE only ever calls back under the path you registered.
    poll is immediate, so a harness that finishes at once costs one extra round
    trip rather than a poll interval.
 
-       GET <base-url>/rollouts/{rollout_id}
+       GET <base-url>/rollouts/{operation_id}
 
        200 {"status": "running"}
        200 {"status": "succeeded", "output_text": "..."}
@@ -39,10 +48,11 @@ address, so RLE only ever calls back under the path you registered.
 
 3. Withdraw. If RLE stops waiting -- the caller disconnected, or the rollout
    deadline passed -- it DELETEs the rollout resource so the harness can stop
-   spending tokens. RLE never reads the response, and may not send it at all, so
-   treat it as advisory and keep your own timeout.
+   spending tokens. RLE checks only the status, and may not send this at all, so
+   treat it as advisory and keep your own timeout -- but do answer 2xx, because
+   RLE records anything else as a cleanup failure.
 
-       DELETE <base-url>/rollouts/{rollout_id}
+       DELETE <base-url>/rollouts/{operation_id}
 
 RLE never attaches caller, workspace, or identity headers to these requests, so
 protect the endpoint yourself (for example, require a shared secret header and
@@ -80,17 +90,21 @@ class RolloutContext(BaseModel):
     model_endpoint: str
     model_api_key: str
     sandbox_tools_endpoint: str
-    sandbox_tools_bearer_token: str
+    sandbox_tools_token: str
 
 
 class InvocationRequest(BaseModel):
     rollout_id: str
+    operation_id: str
     agent_input: dict[str, Any]
     rollout_context: RolloutContext
 
 
 class RolloutStore:
     """Tracks what this process knows about each rollout it has accepted.
+
+    Records are keyed by ``operation_id``, because that is the segment RLE puts in
+    its poll and cancel URLs.
 
     A single process dictionary is enough for a sample, and it is the smallest
     thing that demonstrates the contract. Real harnesses that run more than one
@@ -109,33 +123,33 @@ class RolloutStore:
         # partway through.
         self._tasks: dict[str, asyncio.Task[None]] = {}
 
-    def accept(self, rollout_id: str, task: asyncio.Task[None]) -> None:
-        self._states[rollout_id] = {"status": "running"}
-        self._tasks[rollout_id] = task
+    def accept(self, operation_id: str, task: asyncio.Task[None]) -> None:
+        self._states[operation_id] = {"status": "running"}
+        self._tasks[operation_id] = task
 
-    def succeed(self, rollout_id: str, output_text: str) -> None:
-        self._finish(rollout_id, {"status": "succeeded", "output_text": output_text})
+    def succeed(self, operation_id: str, output_text: str) -> None:
+        self._finish(operation_id, {"status": "succeeded", "output_text": output_text})
 
-    def fail(self, rollout_id: str, message: str) -> None:
-        self._finish(rollout_id, {"status": "failed", "error": {"message": message}})
+    def fail(self, operation_id: str, message: str) -> None:
+        self._finish(operation_id, {"status": "failed", "error": {"message": message}})
 
-    def read(self, rollout_id: str) -> dict[str, Any] | None:
-        state = self._states.get(rollout_id)
+    def read(self, operation_id: str) -> dict[str, Any] | None:
+        state = self._states.get(operation_id)
         return dict(state) if state is not None else None
 
-    def withdraw(self, rollout_id: str) -> None:
+    def withdraw(self, operation_id: str) -> None:
         """Forgets the rollout and stops its agent loop."""
-        self._states.pop(rollout_id, None)
-        task = self._tasks.pop(rollout_id, None)
+        self._states.pop(operation_id, None)
+        task = self._tasks.pop(operation_id, None)
         if task is not None:
             task.cancel()
 
-    def _finish(self, rollout_id: str, state: dict[str, Any]) -> None:
+    def _finish(self, operation_id: str, state: dict[str, Any]) -> None:
         # A withdrawn rollout is gone. Recording an outcome for it would
         # resurrect a resource RLE has already stopped waiting on.
-        if rollout_id in self._states:
-            self._states[rollout_id] = state
-        self._tasks.pop(rollout_id, None)
+        if operation_id in self._states:
+            self._states[operation_id] = state
+        self._tasks.pop(operation_id, None)
 
 
 ROLLOUTS = RolloutStore()
@@ -163,7 +177,7 @@ async def call_tool(rollout_context: RolloutContext, tool_name: str, arguments: 
             # which RLE forwards to the sandbox as a path it does not serve.
             f"{rollout_context.sandbox_tools_endpoint}/{tool_name}",
             json=arguments,
-            headers={"Authorization": f"Bearer {rollout_context.sandbox_tools_bearer_token}"},
+            headers={"Authorization": f"Bearer {rollout_context.sandbox_tools_token}"},
         )
         response.raise_for_status()
         return response.json()
@@ -250,36 +264,36 @@ async def run_rollout(request: InvocationRequest) -> None:
         # RLE deliberately does not echo this wording back to the caller, so an
         # async harness that does not log it has no record of why it failed.
         logger.exception("Rollout %s failed", request.rollout_id)
-        ROLLOUTS.fail(request.rollout_id, str(error))
+        ROLLOUTS.fail(request.operation_id, str(error))
         return
-    ROLLOUTS.succeed(request.rollout_id, output_text)
+    ROLLOUTS.succeed(request.operation_id, output_text)
 
 
 @app.post("/invoke", status_code=202)
 async def invoke(request: InvocationRequest) -> dict[str, int]:
     """Takes ownership of the rollout and returns immediately."""
     task = asyncio.create_task(run_rollout(request))
-    ROLLOUTS.accept(request.rollout_id, task)
+    ROLLOUTS.accept(request.operation_id, task)
     return {"retry_after_ms": RETRY_AFTER_MS}
 
 
-@app.get("/invoke/rollouts/{rollout_id}")
-async def poll(rollout_id: str) -> JSONResponse:
+@app.get("/invoke/rollouts/{operation_id}")
+async def poll(operation_id: str) -> JSONResponse:
     """Reports whether the rollout is still running, and its answer once it is not."""
-    state = ROLLOUTS.read(rollout_id)
+    state = ROLLOUTS.read(operation_id)
     if state is None:
         return JSONResponse({"error": "not_found"}, status_code=404)
     return JSONResponse(state)
 
 
-@app.delete("/invoke/rollouts/{rollout_id}", status_code=204)
-async def withdraw(rollout_id: str) -> Response:
+@app.delete("/invoke/rollouts/{operation_id}", status_code=204)
+async def withdraw(operation_id: str) -> Response:
     """Stops work RLE is no longer waiting for.
 
-    Idempotent on purpose: RLE sends this best-effort and never reads the
-    response, so a repeat or a late arrival must not be an error.
+    Idempotent on purpose: a repeat or a late arrival must not be an error, or
+    RLE would record a cleanup failure for work that is already gone.
     """
-    ROLLOUTS.withdraw(rollout_id)
+    ROLLOUTS.withdraw(operation_id)
     return Response(status_code=204)
 
 
