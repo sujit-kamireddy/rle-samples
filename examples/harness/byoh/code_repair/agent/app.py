@@ -70,7 +70,10 @@ async def call_tool(rollout_context: RolloutContext, tool_name: str, arguments: 
     """Routes a tool call to RLE's sandbox instead of the real production tool."""
     async with httpx.AsyncClient() as client:
         response = await client.post(
-            f"{rollout_context.sandbox_tools_endpoint}/tools/{tool_name}",
+            # sandbox_tools_endpoint already ends in /tools -- see the envelope
+            # above. Appending another /tools produced /tools/tools/<name>,
+            # which RLE forwards to the sandbox as a path it does not serve.
+            f"{rollout_context.sandbox_tools_endpoint}/{tool_name}",
             json=arguments,
             headers={"Authorization": f"Bearer {rollout_context.sandbox_tools_bearer_token}"},
         )

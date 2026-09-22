@@ -107,14 +107,20 @@ resolvable, callable Hosted Agent identifiers (not `$default`).
 ## 2. Wire the harness
 
 For each rollout, RLE creates a session for your Hosted Agent version and
-calls its Responses API with four extra headers:
+calls its Responses API with five extra headers:
 
 ```text
 x-client-rle-rollout-id
 x-client-rle-model-endpoint          # capture proxy, replaces your prod model endpoint
 x-client-rle-model-api-key           # capture proxy session key
 x-client-rle-sandbox-tools-endpoint  # sandbox tool routes for this rollout
+x-client-rle-sandbox-tools-token     # authorizes calls to those routes
 ```
+
+The tools endpoint is authorized, so a tool call without
+`x-client-rle-sandbox-tools-token` as a bearer is refused with 403. The token
+is scoped to this rollout and to `/tools/*` and expires with the rollout, so
+it is not something to store or reuse.
 
 `agent/main.py`'s `create_model_client` and `call_tool` read these headers
 when present and fall back to the agent's normal production model endpoint

@@ -3,13 +3,14 @@
 Register this agent's name and version with
 ``azd ai rle init --type Harness --subtype HostedAgent --agent-name ... --agent-version ...``.
 For each rollout, RLE creates a session for this Hosted Agent version and
-calls its Responses API with four extra request headers that carry the
+calls its Responses API with five extra request headers that carry the
 rollout-scoped runtime context:
 
   x-client-rle-rollout-id
   x-client-rle-model-endpoint          # capture proxy base URL
   x-client-rle-model-api-key           # capture proxy session key
   x-client-rle-sandbox-tools-endpoint  # sandbox tool routes for this rollout
+  x-client-rle-sandbox-tools-token     # bearer token authorizing those routes
 
 This file and ``../../../byoh/code_repair/agent/app.py`` share the same ``run_agent_loop``:
 the harness's native agent loop is unchanged between the two RLE subtypes.
@@ -33,6 +34,7 @@ ROLLOUT_ID_HEADER = "x-client-rle-rollout-id"
 MODEL_ENDPOINT_HEADER = "x-client-rle-model-endpoint"
 MODEL_API_KEY_HEADER = "x-client-rle-model-api-key"
 SANDBOX_TOOLS_ENDPOINT_HEADER = "x-client-rle-sandbox-tools-endpoint"
+SANDBOX_TOOLS_TOKEN_HEADER = "x-client-rle-sandbox-tools-token"
 
 PRODUCTION_MODEL_ENDPOINT = "https://api.contoso-models.example.com/v1"
 
@@ -49,8 +51,18 @@ async def call_tool(headers: dict[str, str], tool_name: str, arguments: dict[str
     sandbox_tools_endpoint = headers.get(SANDBOX_TOOLS_ENDPOINT_HEADER)
     if sandbox_tools_endpoint is None:
         return await call_production_tool(tool_name, arguments)
+    # The tool routes are rollout-scoped: this token authorizes calls for this
+    # rollout only, and only under /tools. It is not a workspace credential.
+    tools_token = headers.get(SANDBOX_TOOLS_TOKEN_HEADER)
+    request_headers = {"Authorization": f"Bearer {tools_token}"} if tools_token else {}
     async with httpx.AsyncClient() as client:
-        response = await client.post(f"{sandbox_tools_endpoint}/tools/{tool_name}", json=arguments)
+        # The header's value already ends in /tools, so the tool name is all
+        # that is appended. Adding another /tools yielded /tools/tools/<name>.
+        response = await client.post(
+            f"{sandbox_tools_endpoint}/{tool_name}",
+            json=arguments,
+            headers=request_headers,
+        )
         response.raise_for_status()
         return response.json()
 
