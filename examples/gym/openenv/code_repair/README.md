@@ -234,14 +234,14 @@ azd ai rle publish
 #    (see server/dataset.py's EpisodePicker):
 azd ai rle rollout --model Qwen/Qwen3-32B --task '{"seed": 0, "split": "train"}'
 
-# 4. Start a training job from the job_data subfolder:
-cd job_data
-azd ai rle train --rle-name code_repair --rle-version 2.0.1 --model qwen3-32b-1 --suffix rle-cli-smoke-20260918 --training-file ./training.jsonl
+# 4. Start a training job. Name and version come from rle.toml, so run this
+#    from the environment folder, not from job_data:
+azd ai rle train --model qwen3-32b-1 --suffix rle-cli-smoke-20260918 --training-file ./job_data/train.jsonl
 ```
 
-`azd ai rle init` downloads `training.jsonl` into the initialized RLE
-folder's `job_data` subfolder, which is why the training command changes to
-that directory first.
+`job_data` holds the task rows a training job replays, one per episode. Add
+`--validation-file ./job_data/validation.jsonl` to score a validation split
+as well.
 
 ## Use the published environment in a trainer loop
 
