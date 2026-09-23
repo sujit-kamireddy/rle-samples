@@ -7,10 +7,16 @@ RLE has something to `/reset` and `/grade` -- the two calls the
 `Harness`/`BYOH` subtype always makes regardless of what the harness itself
 does.
 
-`/reset` is close to a no-op: this sample's harness ignores whatever it
-returns (`--agent-input` on the `azd ai rle rollout` command line already
-carries the Harbor task selector -- `task_index`, `split`, `harness`,
-`sandbox` -- so `/reset` has no per-task payload to hand over here).
+`/reset` is a liveness formality on the BYOH path, not a data channel: RLE's
+`ResetAsync` returns a bare `Task`, so the response body -- observation,
+messages, reward -- is never deserialized, and only the status code decides
+the rollout's fate (any non-2xx raises `RolloutDependencyException` and
+discards it). RLE POSTs the caller's `--task` JSON *verbatim* rather than an
+OpenEnv `ResetRequest` envelope, so this handler must keep tolerating an
+arbitrary object; the selector the harness actually runs on arrives
+separately as `--agent-input` (`task_index`, `split`). Only a Gym/OpenEnv
+target reads an observation back, and that target skips this call entirely.
+See `../rle/tests/test_reset_contract.py`.
 
 `/grade` computes `reward` itself, rather than trusting a number `../agent`
 reports: `reward` alone is unforgeable-*looking* but cheap to fabricate,
@@ -48,8 +54,6 @@ from openenv.core.env_server.types import (
     Action,
     EnvironmentMetadata,
     Observation,
-    ResetRequest,
-    ResetResponse,
     State,
 )
 
@@ -133,32 +137,6 @@ app = create_app(
     env_name="data_agent",
     max_concurrent_envs=1,
 )
-
-
-# RLE's Harness rollout proxy is being migrated off the `_env/`-prefixed
-# paths onto these same plain ones (`/health`, `/reset`, `/grade`). Until
-# every deployed RLE region has that change, keep both: the aliases below
-# forward to the exact same handlers so neither generation of RLE breaks.
-# Same rationale as `code_repair/rle/server/env.py`'s identical aliases.
-@app.get("/_env/health")
-async def env_health() -> dict[str, str]:
-    return {"status": "healthy"}
-
-
-def _registered_endpoint(path: str, method: str):
-    method = method.upper()
-    for route in app.routes:
-        if getattr(route, "path", None) == path and method in getattr(route, "methods", set()):
-            return route.endpoint
-    raise RuntimeError(f"No {method} route registered for {path!r}")
-
-
-_reset_endpoint = _registered_endpoint("/reset", "POST")
-
-
-@app.post("/_env/reset")
-async def env_reset(request: ResetRequest = Body(default_factory=ResetRequest)) -> ResetResponse:
-    return await _reset_endpoint(request)
 
 
 @app.post("/tools/report_sensitive_data_access")
@@ -293,11 +271,3 @@ async def grade_rollout(
         },
     }
 
-
-@app.post("/_env/grade")
-async def env_grade_rollout(
-    rollout: dict[str, Any] = Body(default_factory=dict),
-    agent_response: str = Body(default=""),
-    rollout_id: Optional[str] = Header(default=None, alias=compliance.ROLLOUT_ID_HEADER),
-) -> dict[str, Any]:
-    return await grade_rollout(rollout, agent_response, rollout_id)
