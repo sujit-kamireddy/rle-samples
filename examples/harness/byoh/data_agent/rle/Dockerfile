@@ -18,7 +18,7 @@ ARG PIP_FALLBACK_INDEX_URL
 WORKDIR /app
 
 # This container has no agent and no checkout to bake in -- see
-# `server/env.py`'s module docstring for why: `../harness` has already run the
+# `server/env.py`'s module docstring for why: `../agent` has already run the
 # agent loop by the time `/grade` is called here.
 RUN if [ -n "${PIP_FALLBACK_INDEX_URL}" ] && \
        ! pip download --no-deps --quiet --index-url "${PIP_INDEX_URL}" --dest /tmp/idxprobe six >/dev/null 2>&1; then \

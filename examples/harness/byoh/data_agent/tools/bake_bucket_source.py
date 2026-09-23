@@ -12,7 +12,7 @@ the build tools read:
 
   * `task.toml`  -- `HF_BUCKET` becomes `BUCKET_BASE_URL`; the `HF_TOKEN` passthrough is dropped.
     This is the edit this sample actually consumes: `build_task_index.py` lifts
-    `BUCKET_BASE_URL` into `harness/vendor/task-index.json.gz`, and the harness fetches with its
+    `BUCKET_BASE_URL` into `agent/vendor/task-index.json.gz`, and the harness fetches with its
     own `/opt/pull_bucket.py`.
   * `environment/pull_bucket.py` -- replaced wholesale with the stdlib fetcher.
   * `environment/Dockerfile` -- gains a `COPY` that installs that fetcher over the one baked into
@@ -43,7 +43,7 @@ import tarfile
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-TARBALL = REPO_ROOT / "harness" / "vendor" / "harbor-datasets.tar.gz"
+TARBALL = REPO_ROOT / "agent" / "vendor" / "harbor-datasets.tar.gz"
 FETCHER = REPO_ROOT / "tools" / "pull_bucket.py"
 
 BASE_URL = "https://sujit-hf-datasets-d0dgfkeee4fxepga.b01.azurefd.net"

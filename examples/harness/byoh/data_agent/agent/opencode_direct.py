@@ -53,7 +53,7 @@ PULL_BUCKET = Path(os.environ.get("PULL_BUCKET_PATH", "/opt/pull_bucket.py"))
 # Built by `tools/build_task_index.py`; see "What the harness is given" above for why this is not
 # the full task suite.
 TASK_INDEX = Path(
-    os.environ.get("TASK_INDEX_PATH", str(Path(__file__).resolve().parent.parent / "vendor" / "task-index.json.gz"))
+    os.environ.get("TASK_INDEX_PATH", str(Path(__file__).resolve().parent / "vendor" / "task-index.json.gz"))
 )
 
 # The paths a task instruction hardcodes. See the module docstring.

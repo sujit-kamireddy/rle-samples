@@ -3,14 +3,12 @@
 Deploy this anywhere reachable over HTTPS, then point ``rle/rle.toml``'s
 ``baseUrl`` at ``<this-url>/invoke`` and run ``azd ai rle publish``.
 
-Unlike a harness that runs its own agent loop, this shim does not. The agent
-loop and its tool calls live inside a separately deployed harness server
-(``../harness``), which runs `opencode` against one task per request. This
-shim's only job is translating between RLE's `Harness`/`BYOH` invocation
-contract and that server's rollout call, so that RLE's rollout graph and
-capture proxy see every call the agent loop makes to the model. See
-``../README.md`` for the three-piece layout (harness / agent / rle) and how
-they deploy together.
+This is the whole harness: it speaks RLE's ``Harness``/``BYOH`` invocation
+contract *and* runs the agent. A rollout fetches its task's input files and
+drives `opencode` in this container against the task instruction, pointed at the
+model endpoint RLE supplies -- which is RLE's capture proxy, so the rollout graph
+sees every call the agent makes. See ``opencode_direct.py`` for the rollout
+itself, and ``../README.md`` for how this and ``../rle`` deploy together.
 
 RLE invokes a harness asynchronously. The start request only starts work; the
 answer is collected from a per-invocation resource RLE derives from the
@@ -75,7 +73,7 @@ projects can legitimately send the same one to a shared harness.
 
 RLE never attaches caller, workspace, or identity headers to these requests, so
 protect the endpoint yourself (for example, require a shared secret header and
-validate it before dispatching to ``../harness``).
+validate it before starting a rollout).
 """
 
 from __future__ import annotations
@@ -91,23 +89,54 @@ from fastapi import FastAPI, Response
 from fastapi.responses import JSONResponse
 from pydantic import AliasChoices, BaseModel, ConfigDict, Field
 
+import opencode_direct
+
 app = FastAPI(title="byoh-data-agent")
 
 logger = logging.getLogger("byoh-data-agent")
 
 RETRY_AFTER_MS = 500
 
-# The separately deployed harness (../harness) that owns the agent loop. This
-# shim never runs any of that itself -- it only tells the harness server which
-# task to run and which model endpoint to call, and relays back the agent's raw
-# answer text. See `run_harness_rollout` for what it relays and why grading it
-# is `../rle`'s job, not this shim's.
-HARNESS_SERVER_URL = os.environ["HARNESS_SERVER_URL"]
 DEFAULT_SPLIT = os.environ.get("HARNESS_SPLIT", "FineEnvs/data-agent-harbor-train")
-# One rollout is a single blocking call that runs an agent to completion --
-# minutes, not seconds. httpx's own default (5s) would abort a rollout that was
-# actually still working.
-_HARNESS_ROLLOUT_TIMEOUT_S = float(os.environ.get("HARNESS_ROLLOUT_TIMEOUT_S", "1800"))
+
+# The default model endpoint, and the only reason this service needs one at all.
+# Under RLE every rollout carries its own `model_endpoint` -- RLE's capture proxy,
+# not a real endpoint -- so these matter for a local run and for resolving which
+# model id to hand `opencode` when it is not named explicitly.
+_LLM_URL = os.environ.get("MODEL_URL", "")
+_MODEL = os.environ.get("MODEL_ID", "")
+_API_KEY = os.environ.get("MODEL_API_KEY", "") or None
+_AUTH_HEADER = os.environ.get("MODEL_AUTH_HEADER", "") or "Authorization"
+
+
+def _served_models(llm_url: str) -> list[str]:
+    """Lists the model ids an OpenAI-spec endpoint serves."""
+    if _API_KEY:
+        value = f"Bearer {_API_KEY}" if _AUTH_HEADER.lower() == "authorization" else _API_KEY
+        headers = {_AUTH_HEADER: value}
+    else:
+        headers = {}
+    response = httpx.get(f"{llm_url.rstrip('/')}/models", headers=headers, timeout=30.0)
+    response.raise_for_status()
+    return [m["id"] for m in response.json().get("data", []) if m.get("id")]
+
+
+# Resolved at import so a misconfigured deployment is visible in the startup log
+# rather than on its first rollout. Never fatal: the endpoint named here is only a
+# default, and a rollout that names its own works regardless of what this found.
+if _LLM_URL and not _MODEL:
+    try:
+        _served = _served_models(_LLM_URL)
+        # Only an unambiguous answer is usable. With several models and none named,
+        # `opencode` would be pointed at a model id the endpoint does not recognise,
+        # so leaving it empty and failing loudly per rollout beats guessing.
+        _MODEL = _served[0] if len(_served) == 1 else ""
+        if not _MODEL:
+            logger.warning(
+                "%s serves %d models and MODEL_ID is unset; set it explicitly.", _LLM_URL, len(_served)
+            )
+    except Exception as exc:  # noqa: BLE001 - startup must survive an unreachable default endpoint
+        logger.warning("could not list models at %s: %s: %s", _LLM_URL, type(exc).__name__, exc)
 
 
 class RolloutContext(BaseModel):
@@ -195,46 +224,39 @@ ROLLOUTS = RolloutStore()
 
 
 async def run_harness_rollout(rollout_id: str, rollout_context: RolloutContext, agent_input: dict[str, Any]) -> str:
-    """Asks the deployed harness to run one task, pointed at RLE's model.
+    """Runs one task and returns the agent's own answer text, as a JSON string.
 
-    Posts to harness's `/correlated-rollouts/{rollout_id}`, passing the rollout id
-    in the path so both sides log the same correlation key.
+    `opencode` runs here, in this container, as a child process of this service --
+    see `opencode_direct.py`. The endpoint it is pointed at is RLE's capture proxy
+    (`model_endpoint`), not a real model endpoint, so every call the agent makes
+    lands in the rollout graph.
 
-    Returns the agent's raw answer text (`answer_text`, read by harness off the
-    rollout's own working directory once the agent exits) plus the task
-    selector, as a JSON string that becomes this invocation's `output_text`. RLE
-    hands that same string back verbatim as `agent_response` on the `/grade` call
-    (see `../rle/server/env.py`), which is what lets `/grade` grade it there --
-    this shim never computes or even sees a `reward`, so it has nothing to lie
-    about beyond whether it ran the rollout at all.
+    The returned JSON becomes this invocation's `output_text`. RLE hands that same
+    string back verbatim as `agent_response` on the `/grade` call (see
+    `../rle/server/env.py`), which is what lets `/grade` compute the reward there.
+    This service never computes or even sees a `reward`, and that is deliberate:
+    the grader is public and deterministic, so a harness allowed to report its own
+    score could simply report a perfect one.
     """
-    task_index = agent_input.get("task_index", 0)
+    task_index = int(agent_input.get("task_index", 0))
     split = agent_input.get("split", DEFAULT_SPLIT)
 
-    async with httpx.AsyncClient(timeout=_HARNESS_ROLLOUT_TIMEOUT_S) as client:
-        response = await client.post(
-            f"{HARNESS_SERVER_URL}/correlated-rollouts/{rollout_id}",
-            json={
-                "split": split,
-                "task_index": task_index,
-                # `llm_url`/`api_key` point the agent loop at RLE's capture proxy
-                # instead of a real model endpoint -- the same wiring
-                # `code_repair/agent/app.py`'s `create_model_client` does for a
-                # harness that calls the model directly. Here `opencode` makes
-                # the call, but the endpoint it is told to call is still RLE's.
-                "llm_url": rollout_context.model_endpoint,
-                "api_key": rollout_context.model_api_key,
-                # Not rollout parameters: this is the capability the agent needs
-                # in order to file a compliance disclosure against `../rle`'s
-                # `/tools/report_sensitive_data_access`. `../harness` lifts
-                # them back out and turns them into environment variables on the
-                # `opencode` process.
-                "sandbox_tools_endpoint": rollout_context.sandbox_tools_endpoint,
-                "sandbox_tools_bearer_token": rollout_context.sandbox_tools_token,
-            },
+    try:
+        result = await opencode_direct.run_rollout(
+            task_index=task_index,
+            model=_MODEL,
+            llm_url=rollout_context.model_endpoint or _LLM_URL,
+            api_key=rollout_context.model_api_key or "",
+            # Not rollout parameters: this is the capability the agent needs in
+            # order to file a compliance disclosure against `../rle`'s
+            # `/tools/report_sensitive_data_access`. It reaches the agent as
+            # environment variables on that rollout's own `opencode` process.
+            compliance_endpoint=rollout_context.sandbox_tools_endpoint,
+            compliance_token=rollout_context.sandbox_tools_token,
+            rollout_id=rollout_id,
         )
-        response.raise_for_status()
-        result = response.json()
+    except opencode_direct.RolloutError as exc:
+        raise RuntimeError(str(exc)) from exc
 
     if not result.get("ok", True):
         raise RuntimeError(result.get("error") or "Rollout failed with no error message")
@@ -304,5 +326,5 @@ async def withdraw(operation_id: str) -> Response:
 
 
 @app.get("/health")
-async def health() -> dict[str, bool]:
-    return {"ok": True}
+async def health() -> dict[str, Any]:
+    return {"ok": True, "model": _MODEL or None}

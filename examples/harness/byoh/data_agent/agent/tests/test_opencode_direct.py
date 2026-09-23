@@ -14,7 +14,7 @@ from pathlib import Path
 
 import pytest
 
-from server import opencode_direct as od
+import opencode_direct as od
 
 REPO = Path(__file__).resolve().parent.parent.parent
 ANSWER_KEY = (

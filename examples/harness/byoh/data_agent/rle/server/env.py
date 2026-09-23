@@ -9,7 +9,7 @@ reads. Modelling it as a stepped MDP meant carrying an `Action`, an
 `Observation` and a `step()` that every real invocation ignored, plus ten
 catalogue and schema routes RLE never calls.
 
-The agent loop runs inside the separately deployed ``../harness``,
+The agent loop runs inside the separately deployed ``../agent``,
 driven by ``../agent``. This container holds the answer key, serves one
 mocked compliance tool, and scores the result.
 
@@ -28,6 +28,12 @@ separately as `--agent-input` (`task_index`, `split`). Only a Gym/OpenEnv
 target reads an observation back, and that target skips this call entirely.
 See `../rle/tests/test_reset_contract.py`.
 
+The request is still worth something, because it is the one place the task
+reaches this container without passing through the harness. A `--task`
+carrying `split`/`task_index` is pinned here and checked at `/grade`; see
+`_pin_task`. Pass the same selector to both `--task` and `--agent-input` to
+get that check, or to neither and grade on the harness's word as before.
+
 `/grade` computes `reward` itself, rather than trusting a number `../agent`
 reports: `reward` alone is unforgeable-*looking* but cheap to fabricate,
 since the grader (vendored below, byte-identical across every task in
@@ -35,18 +41,22 @@ this dataset) is a pure, public function of `(gold, candidate)` -- a
 misbehaving harness could compute the winning `candidate` string and just
 claim the score it produces. What `/grade` trusts instead is the *raw
 answer text* the agent produced (`answer_text`, read by
-`../harness` off the rollout's own working directory once the agent exits
--- see `../harness/server/app.py`), which it grades here
+`../agent` off the rollout's own working directory once the agent exits
+-- see `../agent/app.py`), which it grades here
 with its own copy of the same deterministic function.
 This still trusts that `answer_text` is what the agent actually wrote
 (nothing outside the harness can prove that independently), but it removes
-the ability to claim an arbitrary `reward` for an arbitrary answer.
+the ability to claim an arbitrary `reward` for an arbitrary answer -- and,
+where the task is pinned, the ability to choose which task that answer is
+scored against.
 """
 
 from __future__ import annotations
 
 import gzip
 import json
+import threading
+from collections import OrderedDict
 from functools import lru_cache
 from pathlib import Path
 from typing import Any, Optional
@@ -60,11 +70,69 @@ from .vendor.grader import grade as _grade
 _VENDOR_DIR = Path(__file__).parent / "vendor"
 _TASK_META_DIR = _VENDOR_DIR / "task-meta"
 
+# Which task RLE asked for, keyed by the rollout id RLE injects. Populated at
+# `/reset` and consumed at `/grade`, so the grader can check the harness's
+# claim about what it ran instead of taking its word for it. See `_pin_task`.
+_MAX_PINNED_ROLLOUTS = 256
+_pin_lock = threading.Lock()
+_pinned_tasks: "OrderedDict[str, dict[str, Any]]" = OrderedDict()
+
+
+def _selector(task: dict[str, Any]) -> dict[str, Any]:
+    """Pulls `split`/`task_index` out of a `--task` body, ignoring anything else.
+
+    Returns only the keys actually supplied, so a `--task` naming one of them
+    pins that one and leaves the other to the harness's report.
+    """
+    selector: dict[str, Any] = {}
+    split = task.get("split")
+    if isinstance(split, str) and split:
+        selector["split"] = split
+    task_index = task.get("task_index")
+    # `bool` is an `int` subclass, and `task_index: true` is a caller error, not
+    # a request to grade task 1.
+    if isinstance(task_index, int) and not isinstance(task_index, bool):
+        selector["task_index"] = task_index
+    return selector
+
+
+def _pin_task(rollout_id: str, task: dict[str, Any]) -> None:
+    """Records the task RLE named for this rollout, if it named one.
+
+    RLE calls `/reset` with the caller's `--task` before it invokes the harness,
+    and injects the rollout id itself (`x-rle-rollout-id`, stripped from any
+    caller-supplied value), so what lands here is the one statement about the
+    task that the harness had no hand in.
+
+    An empty or selector-less `--task` records nothing and drops any earlier
+    record, which is what keeps this advisory: callers that pass the selector
+    only in `--agent-input` grade exactly as they did before.
+    """
+    selector = _selector(task)
+    with _pin_lock:
+        _pinned_tasks.pop(rollout_id, None)
+        if selector:
+            _pinned_tasks[rollout_id] = selector
+            while len(_pinned_tasks) > _MAX_PINNED_ROLLOUTS:
+                _pinned_tasks.popitem(last=False)
+
+
+def _consume_pinned_task(rollout_id: Optional[str]) -> dict[str, Any]:
+    """Takes this rollout's pinned selector, removing it.
+
+    Removed rather than read so a rollout that was withdrawn or died before
+    `/grade` cannot pin the task of whichever rollout reuses the id next.
+    """
+    if not rollout_id:
+        return {}
+    with _pin_lock:
+        return _pinned_tasks.pop(rollout_id, None) or {}
+
 
 def _task_meta_path(split: str) -> Path:
     # Matches the on-disk convention the vendored dataset tarball itself
     # uses for HF repo ids (`FineEnvs/data-agent-harbor-train` ->
-    # `FineEnvs__data-agent-harbor-train`) -- see `../harness`'s
+    # `FineEnvs__data-agent-harbor-train`) -- see `../agent`'s
     # dataset vendoring script for the same substitution.
     return _TASK_META_DIR / f"{split.replace('/', '__')}.json.gz"
 
@@ -90,21 +158,31 @@ async def reset(
     task: dict[str, Any] = Body(default_factory=dict),
     rollout_id: Optional[str] = Header(default=None, alias=compliance.ROLLOUT_ID_HEADER),
 ) -> dict[str, Any]:
-    """Opens a rollout. No per-task setup happens here.
+    """Opens a rollout, and records which task RLE asked for.
 
     The body is the caller's task JSON forwarded verbatim, and RLE reads
     nothing of this response but its status code -- see this module's
-    docstring. What the call is good for is isolation: one container serves
-    several rollouts across successive `/reset` calls, so this drops any
-    disclosure still sitting under this rollout id from an attempt that was
-    withdrawn or died before `/grade` could consume it. Left in place, that
-    stale record would be credited to whoever graded next under the same id.
+    docstring.
+
+    Two things happen here. Isolation: one container serves several rollouts
+    across successive `/reset` calls, so this drops any disclosure still sitting
+    under this rollout id from an attempt that was withdrawn or died before
+    `/grade` could consume it. Left in place, that stale record would be
+    credited to whoever graded next under the same id.
+
+    And correlation: `/grade` otherwise learns which task it is grading from
+    the harness's own response, which means an untrusted harness picks the task
+    it is scored on -- ask it for task 4713 and it can run task 0, report task
+    0, and be graded correctly against task 0. RLE calls `/reset` before it
+    invokes the harness, so a `--task` carrying `split`/`task_index` is the one
+    statement about the task the harness never touches. Pin it here and
+    `/grade` checks the harness's claim against it.
     """
-    del task
     if rollout_id:
         # Never the no-argument form: that clears every rollout's disclosure,
         # including ones still in flight in this same container.
         compliance.clear(rollout_id)
+        _pin_task(rollout_id, task)
     return {"status": "ready", "rollout_id": rollout_id}
 
 
@@ -183,8 +261,10 @@ async def grade_rollout(
     del rollout
     # Consumed before any early return: a container can serve several rollouts
     # across `/reset` calls, and a disclosure left behind by an abandoned one
-    # would otherwise be credited to whichever rollout graded next.
+    # would otherwise be credited to whichever rollout graded next. The pinned
+    # task is taken on the same terms and for the same reason.
     disclosure = compliance.consume_disclosure(rollout_id)
+    pinned = _consume_pinned_task(rollout_id)
     try:
         reported = json.loads(agent_response) if agent_response else None
     except ValueError:
@@ -215,6 +295,28 @@ async def grade_rollout(
                 "error": reported.get("error"),
             },
         }
+
+    # The harness reported which task it ran. Where `/reset` pinned one, that is
+    # the authority: a harness free to choose the task it is graded on can hold
+    # the training distribution to whichever tasks it does well on, without ever
+    # having to fake a reward. Mismatch scores zero rather than grading the
+    # pinned task anyway -- the answer text in hand belongs to some other task,
+    # so there is nothing here worth grading.
+    if pinned:
+        claimed = {"split": split, "task_index": task_index}
+        conflicts = {k: v for k, v in pinned.items() if claimed[k] != v}
+        if conflicts:
+            return {
+                "reward": 0.0,
+                "is_success": False,
+                "info": {
+                    "reason": "Harness graded a different task than the one this rollout was reset with.",
+                    "pinned": pinned,
+                    "reported": claimed,
+                },
+            }
+        split = pinned.get("split", split)
+        task_index = pinned.get("task_index", task_index)
 
     try:
         task_meta_list = _load_task_meta(split)

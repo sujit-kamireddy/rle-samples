@@ -41,7 +41,7 @@ from pathlib import Path
 
 # Absolute by default because the baked-in copy runs as a task container's healthcheck, where
 # `/home/user/input` is the path the task instruction names. `BUCKET_DEST` exists for the opposite
-# case -- `server/opencode_direct.py` runs many rollouts side by side inside one container, so each
+# case -- `agent/opencode_direct.py` runs many rollouts side by side inside one container, so each
 # needs its own directory rather than a single shared one.
 DEST = Path(os.environ.get("BUCKET_DEST", "/home/user/input"))
 STAGE = Path(os.environ.get("BUCKET_STAGE", str(DEST.parent / ".input-stage")))

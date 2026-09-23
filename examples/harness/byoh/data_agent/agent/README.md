@@ -1,23 +1,33 @@
-# harness
+# agent
 
-The harness container for the Hugging Face
+The BYOH harness for the Hugging Face
 [`FineEnvs/data-agent-harbor-*`](https://huggingface.co/collections/FineEnvs/data-agent)
-collection: a small FastAPI service that runs one Data Agent task per request by
-driving [`opencode`](https://opencode.ai) inside this container, and hands back
-the answer text the agent wrote.
+collection: one FastAPI service that speaks RLE's harness contract and runs the
+Data Agent tasks itself, by driving [`opencode`](https://opencode.ai) inside this
+container.
 
-Two routes, and only one of them does anything:
+RLE's contract, all of it in `app.py`:
 
+- `POST /invoke` -- starts one rollout. Acknowledges with `202` and runs the
+  rollout in the background; RLE polls for the result.
+- `GET /invoke/rollouts/{operation_id}` -- the poll. `202` while the rollout is
+  still running, `200` with the result once it has finished.
+- `DELETE /invoke/rollouts/{operation_id}` -- withdraws a rollout RLE no longer
+  wants.
 - `GET /health` -- readiness, plus the resolved default model id.
-- `POST /correlated-rollouts/{rollout_id}` -- runs a rollout and returns
-  `answer_text`. `../agent` calls this and relays `answer_text` verbatim to
-  `../rle`'s `/grade`, which computes the reward itself. This server never
-  produces a reward, which is what stops a harness claiming a score it did not
-  earn. See `server/app.py`.
+
+`operation_id` is RLE's, not ours. It is minted per invocation, it is the only
+thing authenticating the poll and withdraw calls, and it is therefore what
+rollouts are stored under here. `rollout_id`, which arrives on the same request,
+is unique only within a project -- a correlation key for logs, not an identity.
+
+What RLE polls for is the answer text the agent wrote, never a reward. `../rle`'s
+`/grade` computes the reward itself from that text, which is what stops a harness
+claiming a score it did not earn.
 
 `opencode` is installed at image build time and runs as a child process of this
-server. There is no sandbox provider and no per-rollout agent install. The whole
-dependency set is `fastapi`, `uvicorn[standard]` and `httpx`.
+service. There is no sandbox provider and no per-rollout agent install. The whole
+Python dependency set is `fastapi`, `uvicorn[standard]` and `httpx`.
 
 The trade-off to know about: rollouts share a container, and `opencode` runs with
 `--dangerously-skip-permissions`, so the boundary between two concurrent rollouts
@@ -51,12 +61,13 @@ answer at `/workdir/answer.txt`. Those are fine when the rollout owns the whole
 container and collide the moment two run side by side. Each rollout gets a
 private directory and both paths are rewritten to point inside it. Nothing
 downstream depends on the original strings: `/grade` is handed the answer *text*,
-never a path. See `server/opencode_direct.py`.
+never a path. See `opencode_direct.py`.
 
 The per-rollout compliance credentials (`sandbox_tools_endpoint` /
-`sandbox_tools_bearer_token`) are lifted out of the request body and set as
-`COMPLIANCE_ENDPOINT` / `COMPLIANCE_TOKEN` on that rollout's `opencode` process,
-so the agent can file the disclosure that `../rle` grades. They are per-process,
+`sandbox_tools_token`, which RLE sends on `/invoke`) are lifted out of the
+rollout context and set as `COMPLIANCE_ENDPOINT` / `COMPLIANCE_TOKEN` on that
+rollout's `opencode` process, so the agent can file the disclosure that `../rle`
+grades. They are per-process,
 never process-global: concurrent rollouts would otherwise overwrite each other's
 and misattribute a disclosure with no error anywhere.
 
@@ -64,7 +75,7 @@ and misattribute a disclosure with no error anywhere.
 
 `vendor/pull_bucket.py` (shipped to `/opt/pull_bucket.py`, a generated copy of
 `../tools/pull_bucket.py`) fetches a task's input files once per rollout, as a
-subprocess of the server.
+subprocess of this service.
 
 Each `task.toml` names a `BUCKET_BASE_URL`, fetched over anonymous HTTPS with
 nothing but the standard library -- no credentials anywhere in the data path. The
@@ -109,36 +120,50 @@ every task instruction promises are installed (`pandas`, `numpy`, `matplotlib`,
 `seaborn`, `scipy`, `scikit-learn`, `statsmodels`, `tabulate`, `plotly`).
 
 ```bash
-cd harness
+cd agent
 python3.12 -m venv .venv && source .venv/bin/activate
-pip install -e .
+pip install -r requirements.txt
 PULL_BUCKET_PATH=vendor/pull_bucket.py \
 MODEL_URL=https://api.openai.com/v1 \
 MODEL_API_KEY=$OPENAI_API_KEY \
 MODEL_ID=gpt-5-mini \
-  python -m server.app
+  python -m uvicorn app:app --port 8080
 ```
 
 ```bash
-curl -s localhost:8000/health
-curl -s -X POST localhost:8000/correlated-rollouts/local-1 \
+curl -s localhost:8080/health
+
+curl -s -X POST localhost:8080/invoke \
   -H 'content-type: application/json' \
-  -d '{"task_index": 0, "llm_url": "https://api.openai.com/v1", "api_key": "'"$OPENAI_API_KEY"'"}' | jq .
+  -d '{
+        "rollout_id": "local-1",
+        "operation_id": "op-local-1",
+        "agent_input": {"task_index": 0},
+        "rollout_context": {
+          "model_endpoint": "https://api.openai.com/v1",
+          "model_api_key": "'"$OPENAI_API_KEY"'"
+        }
+      }'
+
+# Poll under the operation_id until it stops answering 202.
+curl -s localhost:8080/invoke/rollouts/op-local-1 | jq .
 ```
 
-`MODEL_URL` is optional at boot -- `../agent` overrides it per rollout with
-RLE's capture proxy endpoint -- but a local smoke test needs one endpoint to
-actually call. `MODEL_ID` is probed from the endpoint when unset and the
-endpoint serves exactly one model.
+Locally you supply `operation_id` yourself; under RLE it is generated for you and
+must be echoed back exactly as received. `model_endpoint` is RLE's capture proxy
+in a real rollout, so a local smoke test is the one case where it is a real model
+endpoint. `MODEL_URL` is only the fallback for a rollout that names none.
+`MODEL_ID` is probed from the endpoint when unset and the endpoint serves exactly
+one model.
 
 ## Tests
 
 ```bash
-cd harness
+cd agent
 python -m pytest tests -q
 ```
 
-No extra dependencies beyond `pip install -e .` and `pytest`; the tests drive
+No extra dependencies beyond `requirements.txt` and `pytest`; the tests drive
 `opencode_direct` with the `opencode` invocation stubbed, so they need neither a
 model endpoint nor the task suite.
 
@@ -146,15 +171,16 @@ model endpoint nor the task suite.
 
 ```bash
 docker build -t data-agent-harness:local .
-docker run --rm -p 8000:8000 \
+docker run --rm -p 8080:8080 \
   -e MODEL_URL=https://api.openai.com/v1 \
   -e MODEL_API_KEY=$OPENAI_API_KEY \
   -e MODEL_ID=gpt-5-mini \
   data-agent-harness:local
 ```
 
-Push this image anywhere `../agent` can reach over HTTPS (Azure Container Apps,
-your own cluster, a VM) and point `../agent`'s `HARNESS_SERVER_URL` at it.
+Push this image anywhere RLE can reach over HTTPS (Azure Container Apps, your own
+cluster, a VM) and register that base URL as your BYOH harness. RLE appends
+`/invoke` to it, so register the root.
 
 Size the container for concurrency: each rollout holds its own copy of the task's
 input files on local disk and runs its own `opencode` process.

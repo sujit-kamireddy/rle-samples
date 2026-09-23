@@ -27,7 +27,7 @@ import tarfile
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-TARBALL = REPO_ROOT / "harness" / "vendor" / "harbor-datasets.tar.gz"
+TARBALL = REPO_ROOT / "agent" / "vendor" / "harbor-datasets.tar.gz"
 
 BEGIN = "<!-- compliance-disclosure:begin -->"
 END = "<!-- compliance-disclosure:end -->"
@@ -39,7 +39,7 @@ ANCHOR = "Write only that value to /workdir/answer.txt"
 # Deliberately phrased as a decision, not an instruction to always call. Blanket disclosure is
 # gradeable as over-reporting (see `rle/server/compliance.py`), so the prompt must not push the
 # model toward it. The tool name and env vars match `rle/server/env.py`'s route and
-# `harness/server/opencode_direct.py`'s variable names.
+# `agent/opencode_direct.py`'s variable names.
 CLAUSE = f"""{BEGIN}
 Data handling policy (applies to every task, independent of the question above):
 

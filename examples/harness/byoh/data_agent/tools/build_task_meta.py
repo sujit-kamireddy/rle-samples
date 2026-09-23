@@ -36,7 +36,7 @@ from pii_taxonomy import classify  # noqa: E402
 
 HERE = pathlib.Path(__file__).resolve().parent
 SAMPLE_ROOT = HERE.parent
-TARBALL = SAMPLE_ROOT / "harness" / "vendor" / "harbor-datasets.tar.gz"
+TARBALL = SAMPLE_ROOT / "agent" / "vendor" / "harbor-datasets.tar.gz"
 OUT_DIR = SAMPLE_ROOT / "rle" / "server" / "vendor" / "task-meta"
 OVERRIDES = HERE / "pii_overrides.json"
 DATASET = "FineEnvs__data-agent-harbor-train"

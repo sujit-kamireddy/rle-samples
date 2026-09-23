@@ -10,17 +10,14 @@ This sample adds a second, orthogonal axis on top: **did the agent correctly
 decide whether the data it just analysed was sensitive, and report it.** See
 "Compliance disclosure" below.
 
-Three containers:
+Two containers:
 
-- [`harness/`](./harness) -- runs the agent. `POST /correlated-rollouts/{rollout_id}`
-  fetches the task's input files, runs [`opencode`](https://opencode.ai) against
-  the task instruction, and returns the answer text the agent wrote. Deploy this
-  once and reference it by URL.
-- [`agent/`](./agent) -- the harness RLE actually invokes (`Harness`/`BYOH`'s
-  `agent/`). It implements RLE's `/invoke`/poll/withdraw contract and does no
-  agent work of its own: it POSTs to `harness/`, passing RLE's capture proxy as
-  the model endpoint so every model call lands in the rollout graph, and relays
-  the answer text back.
+- [`agent/`](./agent) -- the harness RLE invokes. It implements RLE's
+  `/invoke`/poll/withdraw contract, and it runs the agent itself: it fetches the
+  task's input files, runs [`opencode`](https://opencode.ai) against the task
+  instruction with RLE's capture proxy as the model endpoint (so every model
+  call lands in the rollout graph), and relays back the answer text the agent
+  wrote.
 - [`rle/`](./rle) -- the RLE container. `/grade` scores that answer text with its
   own vendored copy of the grader. It also serves
   `/tools/report_sensitive_data_access`, the compliance-disclosure endpoint
@@ -34,19 +31,18 @@ winning `candidate` and reporting whatever `reward` it likes. So `rle/`'s
 `agent/` sends.
 
 What it does trust is the raw answer text the agent wrote. Each rollout runs in
-its own directory inside `harness/`; the task instruction tells the agent to
-write its answer to a file there, and `harness/` reads that file off local disk
-once the agent exits and returns it as `answer_text`. `agent/` relays it
-verbatim to RLE as `output_text`; RLE forwards it to `/grade` as
-`agent_response`, and `/grade` grades it against a vendored per-task answer key
-(`rle/server/vendor/task-meta/`) using the dataset's own deterministic grader
-(`rle/server/vendor/grader.py`, byte-identical across every task in this
-dataset). `agent/` still cannot fabricate a better score for itself: it can only
-relay -- or fail to relay -- whatever the agent actually wrote.
+its own directory inside `agent/`'s container; the task instruction tells the
+agent to write its answer to a file there, and `agent/` reads that file off
+local disk once the agent exits. It relays it verbatim to RLE as `output_text`;
+RLE forwards it to `/grade` as `agent_response`, and `/grade` grades it against a
+vendored per-task answer key (`rle/server/vendor/task-meta/`) using the dataset's
+own deterministic grader (`rle/server/vendor/grader.py`, byte-identical across
+every task in this dataset). `agent/` still cannot fabricate a better score for
+itself: it can only relay -- or fail to relay -- whatever the agent actually
+wrote.
 
 Running `azd ai rle init --type Harness --subtype BYOH --sample data_agent`
-copies this exact `agent/` + `rle/` pair as your starting point; `harness/` is
-deployed separately, once, and referenced by URL.
+copies this exact `agent/` + `rle/` pair as your starting point.
 
 ## Compliance disclosure: grading judgement, not just answers
 
@@ -109,7 +105,7 @@ body and are set as environment variables on that rollout's `opencode` process
 -- per process, never process-global, because concurrent rollouts would
 otherwise overwrite each other's and misattribute a disclosure with no error
 anywhere. See
-[`harness/server/opencode_direct.py`](./harness/server/opencode_direct.py)
+[`agent/opencode_direct.py`](./agent/opencode_direct.py)
 for the injection and for what is deliberately *not* passed through.
 
 ## Container and registry setup
@@ -163,54 +159,56 @@ az acr show --name "<registry>" --query id --output tsv
 az role assignment create --assignee-object-id "<project-principal-id>" --assignee-principal-type ServicePrincipal --role AcrPull --scope "<registry-resource-id>"
 ```
 
-## 1. Deploy `harness`
+## 1. Deploy the agent (your harness)
 
-Build and deploy the harness container first; it has no RLE
-dependency and is easiest to prove working on its own. See
-[`harness/README.md`](./harness/README.md) for local run, build,
-and deploy instructions. Confirm `/health` on the deployed URL
-before moving on.
-
-## 2. Deploy the agent (harness)
-
-`agent/` is a plain FastAPI service with no Foundry or Azure dependency other
-than reaching `harness`. Run it wherever you already run the rest of
-your stack:
+`agent/` is a plain FastAPI service with no Foundry or Azure dependency. It runs
+`opencode` itself, so give it room: each rollout holds its own copy of the task's
+input files on local disk and runs its own agent process.
 
 ```bash
 cd agent
 docker build -t data-agent-byoh:latest .
 docker run --rm -p 8080:8080 \
-  -e HARNESS_SERVER_URL=https://<your-deployed-harness> \
+  -e MODEL_URL=https://api.openai.com/v1 \
+  -e MODEL_API_KEY=$OPENAI_API_KEY \
+  -e MODEL_ID=gpt-5-mini \
   data-agent-byoh:latest
 ```
 
-For Podman, replace `docker` with `podman` in both commands.
+For Podman, replace `docker` with `podman` in both commands. Confirm `/health` on
+the deployed URL before moving on. See [`agent/README.md`](./agent/README.md) for
+a local run without Docker, and for a `/invoke` smoke test that does a real
+rollout without RLE involved.
 
 Put it behind HTTPS and protect it yourself -- RLE never attaches caller,
 workspace, or identity headers to its invocation requests, so require a
-shared secret header and validate it in `agent/app.py` before dispatching to
-`harness/`.
+shared secret header and validate it in `agent/app.py` before starting a
+rollout.
 
-## 3. Author and iterate the RLE side
+## 2. Author and iterate the RLE side
 
-`rle/server/env.py`'s `/reset` is close to a no-op -- the task selector
-(`task_index`, `split`) travels in `--agent-input`, not
-in whatever `/reset` returns. `/grade` doesn't call out anywhere: it parses
+`rle/server/env.py`'s `/reset` returns nothing RLE reads -- only its status
+code matters -- but it is not idle. It clears any compliance disclosure left
+under this rollout id, and it pins the task selector (`task_index`, `split`)
+if `--task` carries one, so `/grade` can check what the harness reports
+against what RLE asked for (see step 4).
+
+`/grade` doesn't call out anywhere: it parses
 `answer_text`, `task_index`, and `split` out of `agent_response` (the same
 JSON string `agent/`'s `/invoke` returned as `output_text`, which RLE
 forwards to `/grade` verbatim), looks up that task's answer key in the
 vendored `rle/server/vendor/task-meta/` metadata, and grades it with the
 vendored copy of the dataset's own deterministic grader
-(`rle/server/vendor/grader.py`). `agent/` never computes or even sees a
+(`rle/server/vendor/grader.py`). Where `/reset` pinned a task, a report naming
+a different one scores zero instead. `agent/` never computes or even sees a
 `reward` -- it only relays what the agent wrote (see `agent/app.py`'s
 `run_harness_rollout`). Adapt `rle/server/env.py`'s `grade_rollout` if you
 want reward shaping other than the grader's raw score.
 
 `azd ai rle run` is supported only for `Gym: OpenEnv` environments, so iterate
-here by publishing a version and running a rollout (steps 4 and 5).
+here by publishing a version and running a rollout (steps 3 and 4).
 
-## 4. Register the base URL and publish
+## 3. Register the base URL and publish
 
 Once your deployed agent URL is stable, point the manifest at it and publish
 a version. Complete [registry setup](#before-the-first-publish) and set
@@ -242,16 +240,30 @@ azd ai rle publish
 
 Registered versions are immutable, so bump `version` before republishing.
 
-## 5. Run a rollout
+## 4. Run a rollout
 
 ```bash
 cd rle
-azd ai rle rollout --model Qwen/Qwen3-32B --task '{}' \
+azd ai rle rollout --model Qwen/Qwen3-32B \
+  --task '{"task_index": 0, "split": "FineEnvs/data-agent-harbor-train"}' \
   --agent-input '{"task_index": 0, "split": "FineEnvs/data-agent-harbor-train"}'
 ```
 
-This sample's `/reset` ignores `--task`, so `{}` is enough; task
-selection lives entirely in `--agent-input`.
+The selector is repeated because RLE sends the two payloads to two different
+places, and neither one is forwarded to the other: `--agent-input` goes to your
+harness's `/invoke` and selects the task it runs, while `--task` goes to
+`rle/`'s `/reset` and never passes through the harness at all.
+
+That second copy is what lets `/grade` check the harness's work. `/grade`
+otherwise learns which task it is grading from the harness's own response, so a
+harness asked for task 4713 could run task 0, report task 0, and be graded
+correctly against task 0 -- no forged reward required, just a quietly
+re-selected task. `/reset` pins whatever selector `--task` carries, and `/grade`
+scores zero if the harness reports a different one.
+
+It stays optional: `--task '{}'` pins nothing and grades on the harness's
+report, which is the right choice when you are the one running the harness and
+want one less thing to keep in sync.
 
 ## Reference: how RLE invokes your harness
 
@@ -260,16 +272,17 @@ module docstring. In short: RLE invokes a harness asynchronously -- the start
 request only starts work, and the answer is collected from a per-invocation
 resource RLE derives from the registered URL. What `agent/app.py` does with
 `rollout_context` once it has it is the one thing worth calling out here:
-instead of calling the model directly, it hands
-`model_endpoint`/`model_api_key`
-to `harness`'s `/correlated-rollouts/{rollout_id}`, which points `opencode` at
-that endpoint and lets the agent loop make the calls.
+instead of calling the model directly, it points `opencode` at
+`model_endpoint`/`model_api_key` and lets the agent loop make the calls, so the
+trajectory RLE records is the agent's own.
 
-It forwards `sandbox_tools_endpoint`/`sandbox_tools_token` on the same
-request, but those are not rollout parameters -- `harness` lifts them
-back out of the payload and turns them into environment variables on the
-`opencode` process, so the agent can file a compliance disclosure back to
-`rle/`. The
+`sandbox_tools_endpoint`/`sandbox_tools_token` arrive on the same request, but
+those are not rollout parameters -- they are lifted out of the rollout context
+and turned into environment variables on that rollout's `opencode` process, so
+the agent can file a compliance disclosure back to `rle/`. The
+token is presented as `Authorization: Bearer`; RLE terminates that
+authentication at its own ingress and replaces the header before forwarding,
+so the RLE container never sees it and must not try to validate it.
 token is presented as `Authorization: Bearer`; RLE terminates that
 authentication at its own ingress and replaces the header before forwarding,
 so the RLE container never sees it and must not try to validate it.

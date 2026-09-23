@@ -1,6 +1,6 @@
 """Records whether an agent actually files a compliance disclosure.
 
-`../harness` hands each rollout a `COMPLIANCE_ENDPOINT` and a bearer token, and the task
+`../agent` hands each rollout a `COMPLIANCE_ENDPOINT` and a bearer token, and the task
 instruction tells the agent to POST a disclosure there when the data it inspected is sensitive.
 Whether a given model *does* that, from prose alone, is the open question the whole
 compliance-grading design rests on -- and it is not something the grader can answer, because a

@@ -2,7 +2,7 @@
 
 Why a separate index instead of the whole suite
 -----------------------------------------------
-`server/opencode_direct.py` runs `opencode` in the harness container and `../rle` does the
+`agent/opencode_direct.py` runs `opencode` in the harness container and `../rle` does the
 grading, so the only things it needs per task are the instruction text, the bucket coordinates
 for the input files, and the agent timeout. The upstream suite is 216MB extracted.
 
@@ -19,7 +19,7 @@ no shell.
 
 Output
 ------
-`harness/vendor/task-index.json.gz`: a gzipped JSON array, one entry per task, ordered by task
+`agent/vendor/task-index.json.gz`: a gzipped JSON array, one entry per task, ordered by task
 directory name with dotted directories skipped -- a task's index is its identity, and `../rle`'s
 answer key is keyed by it, so the order is load-bearing rather than cosmetic.
 """
@@ -37,14 +37,14 @@ from pathlib import Path
 from typing import Any
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-TARBALL = REPO_ROOT / "harness" / "vendor" / "harbor-datasets.tar.gz"
-INDEX = REPO_ROOT / "harness" / "vendor" / "task-index.json.gz"
+TARBALL = REPO_ROOT / "agent" / "vendor" / "harbor-datasets.tar.gz"
+INDEX = REPO_ROOT / "agent" / "vendor" / "task-index.json.gz"
 
-# Docker cannot COPY above its build context (`harness/`), so the fetcher is mirrored into
+# Docker cannot COPY above its build context (`agent/`), so the fetcher is mirrored into
 # `vendor/` for the image to pick up. `tools/pull_bucket.py` stays the source of truth; this copy is
 # generated, and `--verify` fails when the two drift.
 FETCHER_SRC = REPO_ROOT / "tools" / "pull_bucket.py"
-FETCHER_DST = REPO_ROOT / "harness" / "vendor" / "pull_bucket.py"
+FETCHER_DST = REPO_ROOT / "agent" / "vendor" / "pull_bucket.py"
 
 # Keys that must never reach the harness container. Checked against the emitted index rather than
 # assumed from the code that builds it, so that adding a field to the row below cannot quietly

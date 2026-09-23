@@ -19,7 +19,6 @@ from pathlib import Path
 
 import pytest
 
-os.environ.setdefault("HARNESS_SERVER_URL", "https://harbor.invalid")
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from fastapi.testclient import TestClient  # noqa: E402
