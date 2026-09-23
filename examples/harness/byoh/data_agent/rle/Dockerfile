@@ -27,7 +27,7 @@ RUN if [ -n "${PIP_FALLBACK_INDEX_URL}" ] && \
         export PIP_INDEX_URL="${PIP_FALLBACK_INDEX_URL}"; \
     fi; \
     rm -rf /tmp/idxprobe; \
-    pip install --no-cache-dir --index-url "${PIP_INDEX_URL}" openenv
+    pip install --no-cache-dir --index-url "${PIP_INDEX_URL}" fastapi uvicorn
 
 COPY server/ /app/server/
 

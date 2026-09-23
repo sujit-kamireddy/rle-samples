@@ -1,11 +1,21 @@
-"""RLE harness container for the FineEnvs data-agent tasks.
+"""RLE rollout container for the FineEnvs data-agent tasks.
 
-This environment owns no sandbox and mocks no tools: the sandbox, the agent
-loop, and Harbor's own grader all run inside the separately deployed
-``../harbor-server``, driven by ``../agent``. This environment exists only so
-RLE has something to `/reset` and `/grade` -- the two calls the
-`Harness`/`BYOH` subtype always makes regardless of what the harness itself
-does.
+A plain FastAPI app speaking exactly the four things RLE's `Harness`/`BYOH`
+subtype asks of a rollout container -- `/health`, `/reset`, `/tools/<name>`
+and `/grade` -- and nothing else. Deliberately *not* an OpenEnv
+environment: the agent never acts through this container, so there is no
+`step` to implement, no episode state to hold and no observation anyone
+reads. Modelling it as a stepped MDP meant carrying an `Action`, an
+`Observation` and a `step()` that every real invocation ignored, plus ten
+catalogue and schema routes RLE never calls.
+
+The agent loop runs inside the separately deployed ``../harbor-server``,
+driven by ``../agent``. This container holds the answer key, serves one
+mocked compliance tool, and scores the result.
+
+`/health` is the readiness probe RLE polls before it will attempt `/reset`:
+a sandbox reports Running once the container is scheduled, which is well
+before uvicorn has bound its port.
 
 `/reset` is a liveness formality on the BYOH path, not a data channel: RLE's
 `ResetAsync` returns a bare `Task`, so the response body -- observation,
@@ -42,20 +52,10 @@ from pathlib import Path
 from typing import Any, Optional
 from uuid import uuid4
 
-from fastapi import Body, Header
-from pydantic import Field
+from fastapi import Body, FastAPI, Header, HTTPException
 
 from . import compliance
 from .vendor.grader import grade as _grade
-
-from openenv.core.env_server.http_server import create_app
-from openenv.core.env_server.interfaces import Environment
-from openenv.core.env_server.types import (
-    Action,
-    EnvironmentMetadata,
-    Observation,
-    State,
-)
 
 _VENDOR_DIR = Path(__file__).parent / "vendor"
 _TASK_META_DIR = _VENDOR_DIR / "task-meta"
@@ -76,67 +76,36 @@ def _load_task_meta(split: str) -> list[dict[str, Any]]:
         return json.load(fh)
 
 
-class DataAgentAction(Action):
-    """Unused: this sample's harness never calls `/step`."""
-
-    message: str = Field(default="", description="Unused placeholder.")
+app = FastAPI(title="data-agent-rle")
 
 
-class DataAgentObservation(Observation):
-    """Rollout-visible messages returned by `/reset`."""
-
-    messages: list[dict[str, Any]] = Field(default_factory=list)
-
-
-class DataAgentEnvironment(Environment[DataAgentAction, DataAgentObservation, State]):
-    """Holds no rollout state: `/grade` grades `agent_response`, not anything stored here."""
-
-    def __init__(self) -> None:
-        super().__init__()
-        self._state = State(episode_id=None, step_count=0)
-
-    def reset(
-        self,
-        seed: Optional[int] = None,
-        episode_id: Optional[str] = None,
-        **task_data: Any,
-    ) -> DataAgentObservation:
-        del seed, task_data
-        episode_id = episode_id or str(uuid4())
-        self._state = State(episode_id=episode_id, step_count=0)
-        return DataAgentObservation(done=False, reward=None, messages=[])
-
-    def step(
-        self,
-        action: DataAgentAction,
-        timeout_s: Optional[float] = None,
-        **kwargs: Any,
-    ) -> DataAgentObservation:
-        """Unused by real invocations: RLE calls `/grade` directly. Kept only
-        so OpenEnv's schema can still exercise this environment."""
-        del action, timeout_s, kwargs
-        self._state.step_count += 1
-        return DataAgentObservation(done=True, reward=None, messages=[])
-
-    @property
-    def state(self) -> State:
-        return self._state
-
-    def get_metadata(self) -> EnvironmentMetadata:
-        return EnvironmentMetadata(
-            name="data_agent",
-            description="RLE harness fronting a FineEnvs Harbor data-agent task.",
-            version="0.1.0",
-        )
+@app.get("/health")
+async def health() -> dict[str, str]:
+    """Readiness probe RLE polls before it will attempt `/reset`."""
+    return {"status": "healthy"}
 
 
-app = create_app(
-    DataAgentEnvironment,
-    DataAgentAction,
-    DataAgentObservation,
-    env_name="data_agent",
-    max_concurrent_envs=1,
-)
+@app.post("/reset")
+async def reset(
+    task: dict[str, Any] = Body(default_factory=dict),
+    rollout_id: Optional[str] = Header(default=None, alias=compliance.ROLLOUT_ID_HEADER),
+) -> dict[str, Any]:
+    """Opens a rollout. No per-task setup happens here.
+
+    The body is the caller's task JSON forwarded verbatim, and RLE reads
+    nothing of this response but its status code -- see this module's
+    docstring. What the call is good for is isolation: one container serves
+    several rollouts across successive `/reset` calls, so this drops any
+    disclosure still sitting under this rollout id from an attempt that was
+    withdrawn or died before `/grade` could consume it. Left in place, that
+    stale record would be credited to whoever graded next under the same id.
+    """
+    del task
+    if rollout_id:
+        # Never the no-argument form: that clears every rollout's disclosure,
+        # including ones still in flight in this same container.
+        compliance.clear(rollout_id)
+    return {"status": "ready", "rollout_id": rollout_id}
 
 
 @app.post("/tools/report_sensitive_data_access")
@@ -164,8 +133,23 @@ async def report_sensitive_data_access(
     columns = [str(c) for c in columns]
     note = payload.get("note")
 
+    if not rollout_id:
+        # RLE resolves this header from its own rollout mapping and strips any
+        # caller-supplied copy, so a missing one is broken plumbing rather than
+        # anything the agent did. Refusing beats recording under a shared
+        # fallback key: that key is unattributable, and two concurrent rollouts
+        # filing under it would silently overwrite each other. The refusal says
+        # nothing about the data, so it leaks no grading signal either.
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"Missing {compliance.ROLLOUT_ID_HEADER}; "
+                "this disclosure cannot be attributed to a rollout."
+            ),
+        )
+
     record = compliance.record_disclosure(
-        rollout_id or "",
+        rollout_id,
         columns,
         str(note) if note is not None else None,
     )
@@ -251,7 +235,15 @@ async def grade_rollout(
     )
 
     has_pii = bool(task_meta.get("has_pii"))
-    verdict, multiplier = compliance.evaluate(has_pii, disclosure is not None)
+    if rollout_id:
+        verdict, multiplier = compliance.evaluate(has_pii, disclosure is not None)
+    else:
+        # RLE always injects the rollout id, so its absence means the
+        # disclosure channel is mis-plumbed rather than that the agent chose
+        # to stay silent. Scoring a missed disclosure here would invent a
+        # behavioural failure out of a deployment fault, so the decision is
+        # left unscored and the reason is recorded instead.
+        verdict, multiplier = "unmeasured_no_rollout_id", 1.0
     return {
         "reward": result.reward * multiplier,
         "is_success": result.reward > 0,

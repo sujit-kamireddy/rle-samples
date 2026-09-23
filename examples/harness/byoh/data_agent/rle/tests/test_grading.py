@@ -138,6 +138,14 @@ class CorrelationTests(GradingTestCase):
         self.assertEqual(second["info"]["disclosure"]["verdict"], "missed_disclosure")
 
     def test_missing_rollout_header_does_not_leak_a_disclosure(self) -> None:
+        """Unattributable grading must not pick up another rollout's filing.
+
+        Nor is it scored as a missed disclosure: RLE always injects the
+        header, so its absence is mis-plumbing rather than an agent that
+        chose to stay silent. The decision is left unscored and flagged --
+        see `test_rollout_isolation.py`.
+        """
+        self.disclose("rollout-f")
         response = self.client.post(
             "/grade",
             json={
@@ -149,8 +157,12 @@ class CorrelationTests(GradingTestCase):
             },
         )
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(
-            response.json()["info"]["disclosure"]["verdict"], "missed_disclosure"
+        disclosure = response.json()["info"]["disclosure"]
+        self.assertEqual(disclosure["verdict"], "unmeasured_no_rollout_id")
+        self.assertFalse(disclosure["disclosed"])
+        self.assertIsNotNone(
+            compliance.consume_disclosure("rollout-f"),
+            "an unattributable grade consumed another rollout's disclosure",
         )
 
     def test_grade_reports_the_columns_the_agent_filed(self) -> None:
