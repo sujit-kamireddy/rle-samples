@@ -1,7 +1,7 @@
 """Example BYOH agent harness for the FineEnvs data-agent RLE.
 
-Deploy this anywhere reachable over HTTPS and register its URL with
-``azd ai rle init --type Harness --subtype BYOH --base-url <this-url>/invoke``.
+Deploy this anywhere reachable over HTTPS, then point ``rle/rle.toml``'s
+``baseUrl`` at ``<this-url>/invoke`` and run ``azd ai rle publish``.
 
 Unlike ``../../code_repair``, this harness does not run its own agent loop.
 The agent loop, sandbox, and tool calls all live inside a separately deployed
