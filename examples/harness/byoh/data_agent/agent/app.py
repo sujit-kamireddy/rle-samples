@@ -36,15 +36,13 @@ projects can legitimately send the same one to a shared harness.
          "operation_id": "...",
          "agent_input": {
            "task_index": 0,
-           "split": "FineEnvs/data-agent-harbor-train",
-           "harness": "opencode",
-           "sandbox": "e2b"
+           "split": "FineEnvs/data-agent-harbor-train"
          },
          "rollout_context": {
-           "capture_proxy_endpoint": "https://.../rle/v1.0/capture-proxy/v1",
-           "capture_proxy_session_key": "...",
+           "model_endpoint": "https://.../rle/v1.0/capture-proxy/v1",
+           "model_api_key": "...",
            "sandbox_tools_endpoint": "https://.../rollouts/<rollout-id>/tools",
-           "sandbox_tools_bearer_token": "..."
+           "sandbox_tools_token": "..."
          }
        }
 
@@ -93,7 +91,7 @@ from typing import Any
 import httpx
 from fastapi import FastAPI, Response
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field
 
 app = FastAPI(title="byoh-data-agent")
 
@@ -118,15 +116,25 @@ _HARBOR_ROLLOUT_TIMEOUT_S = float(os.environ.get("HARBOR_ROLLOUT_TIMEOUT_S", "18
 
 
 class RolloutContext(BaseModel):
-    # These names are RLE's wire contract, not ours. `capture_proxy_*` is the
-    # model route; `sandbox_tools_endpoint` addresses the per-rollout container
-    # that also serves `/reset` and `/grade` (tools are a sibling of those, not
-    # a path under them), and `sandbox_tools_bearer_token` is a rollout-scoped
-    # capability that expires with the rollout.
-    capture_proxy_endpoint: str
-    capture_proxy_session_key: str
+    # These names are RLE's wire contract, not ours. `model_endpoint`/`model_api_key` are the
+    # route to the model, pointed at RLE's capture proxy so the trajectory is recorded;
+    # `sandbox_tools_endpoint` addresses the per-rollout container that also serves `/reset` and
+    # `/grade` (tools are a sibling of those, not a path under them), and `sandbox_tools_token` is
+    # a rollout-scoped capability that expires with the rollout.
+    #
+    # RLE renamed three of these (`capture_proxy_endpoint` -> `model_endpoint`,
+    # `capture_proxy_session_key` -> `model_api_key`, `sandbox_tools_bearer_token` ->
+    # `sandbox_tools_token`). Both spellings are accepted because a harness is customer-deployed
+    # and outlives any single RLE release: a sample that only understood the new names would break
+    # against a region still serving the old ones, and the failure would surface as a 422 on
+    # dispatch, which looks like a harness bug rather than a version skew.
+    model_config = ConfigDict(protected_namespaces=())
+
+    model_endpoint: str = Field(validation_alias=AliasChoices("model_endpoint", "capture_proxy_endpoint"))
+    model_api_key: str = Field(validation_alias=AliasChoices("model_api_key", "capture_proxy_session_key"))
     sandbox_tools_endpoint: str
-    sandbox_tools_bearer_token: str
+    sandbox_tools_token: str = Field(
+        validation_alias=AliasChoices("sandbox_tools_token", "sandbox_tools_bearer_token"))
 
 
 class InvocationRequest(BaseModel):
@@ -224,15 +232,15 @@ async def run_harbor_rollout(rollout_id: str, rollout_context: RolloutContext, a
                 # `code_repair/agent/app.py`'s `create_model_client` does for a
                 # harness that calls the model directly. Here Harbor makes the
                 # call, but the endpoint it is told to call is still RLE's.
-                "llm_url": rollout_context.capture_proxy_endpoint,
-                "api_key": rollout_context.capture_proxy_session_key,
+                "llm_url": rollout_context.model_endpoint,
+                "api_key": rollout_context.model_api_key,
                 # Not rollout parameters: this is the capability the agent needs
                 # inside the sandbox to file a compliance disclosure against
                 # `../rle`'s `/tools/report_sensitive_data_access`.
                 # `../harbor-server` lifts them back out and turns them into
                 # sandbox environment variables -- see its `rollout_tools.py`.
                 "sandbox_tools_endpoint": rollout_context.sandbox_tools_endpoint,
-                "sandbox_tools_bearer_token": rollout_context.sandbox_tools_bearer_token,
+                "sandbox_tools_bearer_token": rollout_context.sandbox_tools_token,
             },
         )
         response.raise_for_status()
