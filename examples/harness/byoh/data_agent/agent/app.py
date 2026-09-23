@@ -226,6 +226,13 @@ async def run_harbor_rollout(rollout_id: str, rollout_context: RolloutContext, a
                 # call, but the endpoint it is told to call is still RLE's.
                 "llm_url": rollout_context.capture_proxy_endpoint,
                 "api_key": rollout_context.capture_proxy_session_key,
+                # Not rollout parameters: this is the capability the agent needs
+                # inside the sandbox to file a compliance disclosure against
+                # `../rle`'s `/tools/report_sensitive_data_access`.
+                # `../harbor-server` lifts them back out and turns them into
+                # sandbox environment variables -- see its `rollout_tools.py`.
+                "sandbox_tools_endpoint": rollout_context.sandbox_tools_endpoint,
+                "sandbox_tools_bearer_token": rollout_context.sandbox_tools_bearer_token,
             },
         )
         response.raise_for_status()

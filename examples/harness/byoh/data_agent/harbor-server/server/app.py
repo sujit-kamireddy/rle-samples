@@ -165,17 +165,37 @@ app = build_app(datasets=_DATASETS, llm_url=_LLM_URL, model=_MODEL, llm=_LLM)
 # `openenv.harbor.environment._trials_dir()` is the same default (`/tmp/openenv-harbor-trials`,
 # overridable via `OPENENV_HARBOR_TRIALS_DIR`) `HarborEnv` already uses internally.
 #
-# The POST calls this same server's own `run_rollout` MCP tool over a loopback HTTP connection rather
-# than reimplementing engine resolution and capture-level probing here: `HarborEnv` is the same client
-# `../agent` would otherwise call directly, so nothing about how a rollout runs changes.
+# The POST runs the rollout through `HarborEnvironment._run_rollout` -- the method this same
+# server's `run_rollout` MCP tool delegates to -- rather than reimplementing engine resolution and
+# capture-level probing here. It previously reached that method through `HarborEnv` over a loopback
+# HTTP connection; calling it directly changes nothing about how a rollout runs, and keeps the work
+# in THIS request's context. That is what lets `rollout_tools` give each sandbox its own tool
+# credentials without a process-global, which concurrent rollouts would overwrite for one another.
+# The tradeoff is depending on a private method; the openenv wheel is vendored and pinned, so an
+# upgrade is the point to re-check it.
 import asyncio
 from pathlib import Path
 from typing import Any
 
 from fastapi import Body
-from openenv.harbor.client import HarborEnv
+from openenv.harbor.environment import HarborEnvironment
+from openenv.harbor.models import HarborRolloutResult
 
-_SELF_URL = f"http://127.0.0.1:{os.environ.get('PORT', '8000')}"
+from . import rollout_tools
+
+rollout_tools.install()
+
+# `_run_rollout` declares no defaults for these; `HarborEnv.run_rollout` supplied them client-side,
+# so they have to be supplied here instead.
+_ROLLOUT_DEFAULTS: dict[str, Any] = {
+    "split": "",
+    "task_index": 0,
+    "harness": "opencode",
+    "sandbox": "e2b",
+    "reward_key": "",
+    "keep_sandbox": False,
+    "force_build": False,
+}
 _TRIALS_DIR = Path(os.environ.get("OPENENV_HARBOR_TRIALS_DIR", "/tmp/openenv-harbor-trials"))
 
 
@@ -205,13 +225,19 @@ async def run_correlated_rollout(rollout_id: str, payload: dict[str, Any] = Body
     The path keeps its historical name (RLE's `rollout_id` in the URL is useful for log
     correlation) even though nothing is stored under it anymore -- see the module note above for
     why `../rle`'s `/grade` no longer needs to read anything back from this server.
+
+    `sandbox_tools_endpoint`/`sandbox_tools_bearer_token` are lifted out of the payload rather than
+    forwarded to Harbor: they are not rollout parameters but the capability the agent needs in order
+    to file a compliance disclosure, and they reach it as sandbox environment variables.
     """
+    call_kwargs = {**_ROLLOUT_DEFAULTS, **payload}
+    endpoint = str(call_kwargs.pop("sandbox_tools_endpoint", "") or "")
+    token = str(call_kwargs.pop("sandbox_tools_bearer_token", "") or "")
 
-    def _call() -> Any:
-        with HarborEnv(base_url=_SELF_URL) as env:
-            return env.run_rollout(**payload)
+    with rollout_tools.rollout_tools(endpoint, token):
+        raw = await HarborEnvironment()._run_rollout(**call_kwargs)
 
-    result = await asyncio.to_thread(_call)
+    result = HarborRolloutResult.model_validate_json(raw)
     dumped = result.model_dump()
     answer_text = await asyncio.to_thread(_read_answer_text, dumped.get("trial_name"))
     return {**dumped, "answer_text": answer_text}

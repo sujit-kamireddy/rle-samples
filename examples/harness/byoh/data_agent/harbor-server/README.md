@@ -13,7 +13,7 @@ Beyond defaulting `OPENENV_DATASETS` to `FineEnvs/data-agent-harbor-train`,
 this version adds:
 
 - `POST /correlated-rollouts/{rollout_id}` -- the reward-hacking fix
-  described in `../README.md`. Loopback-triggers a `run_rollout` call, reads
+  described in `../README.md`. Runs a rollout, reads
   the sandbox's own `/workdir/answer.txt` (collected via a Harbor
   `artifacts` entry patched into every task's `task.toml` -- see
   `vendor/harbor-datasets/`) off local disk before the sandbox is torn down,
@@ -21,6 +21,23 @@ this version adds:
   response. `../agent` calls this to trigger a rollout and relays
   `answer_text` on to RLE; `../rle`'s `/grade` grades that text itself
   rather than trusting any score `../agent` reports.
+
+  It reaches Harbor through `HarborEnvironment._run_rollout` -- the method
+  this server's own `run_rollout` MCP tool delegates to -- rather than
+  through `HarborEnv` over a loopback HTTP connection as it originally did.
+  Nothing about how a rollout runs changed; what changed is that the work now
+  happens inside the request's own context, which is what `rollout_tools`
+  needs.
+- `server/rollout_tools.py` -- delivers each rollout's own
+  `sandbox_tools_endpoint`/`sandbox_tools_bearer_token` into its sandbox as
+  `COMPLIANCE_ENDPOINT`/`COMPLIANCE_TOKEN`, so the agent can file the
+  compliance disclosure that `../rle` grades. Worth reading before changing:
+  the obvious channel (`AgentConfig.env`) silently does not reach the sandbox
+  for this harness, and the credentials are context-scoped rather than
+  process-global because concurrent rollouts would otherwise overwrite each
+  other's -- misattributing a disclosure with no error anywhere. Covered by
+  `tests/test_rollout_tools.py`, which asserts against the real Harbor
+  `OpenCode` class rather than a stub.
 - `vendor/harbor-datasets/` -- the full `FineEnvs/data-agent-harbor-train`
   task suite (5,000 tasks, ~196MB), baked into the image via a plain
   Dockerfile `COPY` instead of a build-time `prefetch()` download. A fresh
@@ -29,6 +46,13 @@ this version adds:
   (`HF_HUB_OFFLINE=1`). Re-vendor by running `prefetch()` yourself against a
   different `OPENENV_DATASET_CACHE` and copying the result in, if you need a
   different split.
+
+  Two patches are applied to the upstream tarball, both reproducible and both
+  verifiable without a rebuild: the `artifacts` entry above, and the
+  data-handling clause spliced into every `instruction.md` by
+  `../tools/bake_compliance_instruction.py`. That script is idempotent and
+  its `--verify` mode strips the clause back out to prove nothing else in the
+  archive moved.
 - `vendor/wheels/` -- a pinned `openenv==0.5.0` wheel, downloaded straight
   from PyPI. Needed because this sample requires `openenv>=0.5.0` for
   `openenv.harbor`, but the internal package feed proxy (the
@@ -38,9 +62,11 @@ this version adds:
   up without ever hitting the network for this one package.
 
 This container owns the sandbox, the agent loop, and Harbor's own grader for
-every task. It has no RLE awareness at all -- `../agent` is what bridges it to
-RLE's `Harness`/`BYOH` contract, and `../rle` is what RLE itself talks to. See
-`../README.md` for how the three pieces fit together.
+every task. It is almost entirely RLE-unaware -- `../agent` is what bridges it
+to RLE's `Harness`/`BYOH` contract, and `../rle` is what RLE itself talks to.
+The one exception is `rollout_tools.py`, which has to know that a rollout may
+come with a tool capability attached, because Harbor has no concept of one.
+See `../README.md` for how the three pieces fit together.
 
 ## Run locally
 
@@ -66,6 +92,18 @@ curl -s localhost:8000/schema | jq .
 `OPENENV_LLM_URL` is optional at boot -- `../agent` overrides it per rollout
 with RLE's capture proxy endpoint (`run_rollout(llm_url=...)`) -- but a local
 smoke test needs one endpoint to actually call.
+
+## Tests
+
+```bash
+cd harbor-server
+python -m unittest discover -s tests -t .
+```
+
+Needs the same venv as above plus `harbor` itself (`pip install -e .` pulls
+it). The tests exercise the real Harbor `OpenCode` class on purpose: the
+mechanism `rollout_tools.py` relies on is a Harbor implementation detail, so a
+stub would confirm a channel Harbor actually discards.
 
 ## Build and deploy
 
