@@ -21,10 +21,12 @@ Two harness subtypes exist:
 | `HostedAgent` | A Foundry Hosted Agent version | [`hosted-agent/`](./hosted-agent) |
 | `BYOH` (Bring Your Own Harness) | Anywhere you register a base URL | [`byoh/`](./byoh) |
 
-Each subtype directory holds one directory per named sample — today each holds
-a single `code_repair/` — alongside a `catalog.toml` listing which samples
-`azd ai rle init` offers. Pick one with `--sample <name>`; when a subtype has
-only one visible sample the CLI scaffolds it without prompting.
+Each subtype directory holds one directory per named sample — today
+`hosted-agent/` holds a single `code_repair/`, and `byoh/` holds both
+`code_repair/` and [`spreadsheet_query_agent/`](./byoh/spreadsheet_query_agent) — alongside a
+`catalog.toml` listing which samples `azd ai rle init` offers. Pick one with
+`--sample <name>`; when a subtype has only one visible sample the CLI
+scaffolds it without prompting.
 
 Each sample ships two independent pieces that get deployed and published
 separately:
@@ -35,6 +37,15 @@ separately:
 - `rle/` — the RLE side: the container `azd ai rle init --type Harness`
   scaffolds, filled in with a concrete task setup, mock tools, and grader
   (`rle/server/env.py`), plus `rle/rle.toml` and `rle/Dockerfile`.
+
+[`byoh/spreadsheet_query_agent`](./byoh/spreadsheet_query_agent) wraps Hugging Face's
+`FineEnvs/data-agent` collection — 5,000 data-analysis tasks over real CSVs —
+and grades a second axis on top of answer correctness: whether the agent
+correctly judged the data it analysed to be sensitive, and filed a disclosure.
+Its `agent/` runs the agent loop itself (`opencode`, in the same container) and
+its `rle/` vendors the dataset's own grader, so the two pieces are
+self-contained — see its own README for how they fit
+together.
 
 Both `code_repair` samples wrap the same real SWE-bench-Lite instance
 (`psf__requests-3362`, a real `psf/requests` issue, pinned repo checkout, and
