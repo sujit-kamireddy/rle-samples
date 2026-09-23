@@ -63,7 +63,8 @@ for agents running as a Foundry Hosted Agent version, and
 [`examples/harness/byoh/`](./examples/harness/byoh) for bring-your-own
 harnesses deployed anywhere and registered by base URL. Each subtype holds
 one directory per sample — today
-[`code_repair`](./examples/harness/byoh/code_repair) under both — and each
+[`code_repair`](./examples/harness/byoh/code_repair) under both, plus
+[`data_agent`](./examples/harness/byoh/data_agent) under `byoh` — and each
 sample includes the agent/harness code and the paired RLE code (task setup,
 mock tools, grader), plus a README covering deploy → wire → publish. Because
 the agent side is always specific to your own harness,

@@ -1,0 +1,6 @@
+[rle]
+name = "data_agent_byoh"
+version = "0.1.0"
+type = "Harness"
+subtype = "BYOH"
+baseUrl = "https://harness.example.com/invoke"

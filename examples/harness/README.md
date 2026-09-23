@@ -21,10 +21,12 @@ Two harness subtypes exist:
 | `HostedAgent` | A Foundry Hosted Agent version | [`hosted-agent/`](./hosted-agent) |
 | `BYOH` (Bring Your Own Harness) | Anywhere you register a base URL | [`byoh/`](./byoh) |
 
-Each subtype directory holds one directory per named sample — today each holds
-a single `code_repair/` — alongside a `catalog.toml` listing which samples
-`azd ai rle init` offers. Pick one with `--sample <name>`; when a subtype has
-only one visible sample the CLI scaffolds it without prompting.
+Each subtype directory holds one directory per named sample — today
+`hosted-agent/` holds a single `code_repair/`, and `byoh/` holds both
+`code_repair/` and [`data_agent/`](./byoh/data_agent) — alongside a
+`catalog.toml` listing which samples `azd ai rle init` offers. Pick one with
+`--sample <name>`; when a subtype has only one visible sample the CLI
+scaffolds it without prompting.
 
 Each sample ships two independent pieces that get deployed and published
 separately:
@@ -35,6 +37,13 @@ separately:
 - `rle/` — the RLE side: the container `azd ai rle init --type Harness`
   scaffolds, filled in with a concrete task setup, mock tools, and grader
   (`rle/server/env.py`), plus `rle/rle.toml` and `rle/Dockerfile`.
+
+[`byoh/data_agent`](./byoh/data_agent) is the exception: its `agent/` runs no
+agent loop of its own, so a third piece, `harbor-server/`, is deployed
+separately and does. It wraps Hugging Face's `FineEnvs/data-agent` Harbor
+tasks, where the agent loop, sandbox, and grader all live upstream in Harbor
+rather than in this sample — see its own README for how the pieces fit
+together.
 
 Both `code_repair` samples wrap the same real SWE-bench-Lite instance
 (`psf__requests-3362`, a real `psf/requests` issue, pinned repo checkout, and

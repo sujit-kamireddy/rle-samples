@@ -19,3 +19,12 @@
 [[sample]]
 name = "code_repair"
 visible = false
+
+# data_agent is staged for internal use only, same rationale as code_repair
+# above. It additionally depends on a separately deployed harbor-server
+# (external sandbox credentials required), which is not yet something
+# `azd ai rle init` provisions for a user, so keep it hidden until that story
+# is resolved.
+[[sample]]
+name = "data_agent"
+visible = false
