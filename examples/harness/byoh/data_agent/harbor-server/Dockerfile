@@ -14,8 +14,12 @@ ARG PIP_FALLBACK_INDEX_URL=https://packagefeedproxy.microsoft.io/pypi/simple/
 RUN apt-get update && apt-get install -y --no-install-recommends git build-essential curl \
     && rm -rf /var/lib/apt/lists/*
 
-ARG PIP_INDEX_URL
-ARG PIP_FALLBACK_INDEX_URL
+# Repeat the defaults, don't just re-declare the names. BuildKit carries a
+# stage's ARG default across a re-declaration; the classic builder (which is
+# what `az acr build` runs) resets it to empty, which silently turns
+# --index-url into "" and fails the install below.
+ARG PIP_INDEX_URL=https://pypi.org/simple
+ARG PIP_FALLBACK_INDEX_URL=https://packagefeedproxy.microsoft.io/pypi/simple/
 
 # Use the fallback only when the primary package index cannot be reached.
 RUN if [ -n "${PIP_FALLBACK_INDEX_URL}" ] && \
