@@ -1,0 +1,64 @@
+schema_version = "1.2"
+artifacts = []
+
+[task]
+name = "train-verify2/0041_708_41708867_qa_3"
+description = "What BMI category (underweight, normalweight, overweight, obese) has the highest mean insurance charge in the dataset?"
+authors = []
+keywords = ["data-agent", "data-analysis", "kaggle"]
+
+[metadata]
+source_dataset = "jupyter-agent/jupyter-agent-dataset"
+source_row_id = "0041/708/41708867.ipynb_qa_3"
+kaggle_dataset_name = "mirichoi0218/insurance"
+gold_answer = "obese"
+reward_mode_initial = "exact_short"
+package_tier = 1
+difficulty_level = 2
+difficulty_tier = "medium"
+
+[environment]
+build_timeout_sec = 600.0
+os = "linux"
+cpus = 1
+memory_mb = 1024
+storage_mb = 5120
+gpus = 0
+allow_internet = true
+mcp_servers = []
+
+# Pre-agent hook: Harbor runs the command AFTER container start and BEFORE the
+# agent setup begins. We use it to pull this task's bucket prefix into
+# /home/user/input/. See environment/pull_bucket.py.
+[environment.healthcheck]
+command = "python3 /opt/pull_bucket.py && [ -n \"$(ls /home/user/input)\" ]"
+interval_sec = 2.0
+timeout_sec = 180.0
+start_period_sec = 5.0
+start_interval_sec = 2.0
+retries = 30
+
+[environment.env]
+HF_BUCKET = "AdithyaSK/jupyter-agent-kaggle-all"
+BUCKET_PREFIX = "mirichoi0218__insurance"
+HF_TOKEN = "${HF_TOKEN}"
+KAGGLE_DATASET_NAME = "mirichoi0218/insurance"
+
+[verifier]
+timeout_sec = 120.0
+
+[verifier.env]
+EXPECTED_ANSWER = "obese"
+QUESTION = "What BMI category (underweight, normalweight, overweight, obese) has the highest mean insurance charge in the dataset?"
+REWARD_MODE = "exact_short"
+ATOL = "0.0"
+RTOL = "0.0"
+
+[agent]
+# Capped at 600s (10 min) to kill the long-tail stuck-agent cases without
+# cutting off legitimate complex trials. Median Phase B trial is 60-120s;
+# legitimate L4/L5 tasks can hit 200-300s; anything past 600s is almost
+# certainly a stuck agent loop.
+timeout_sec = 600.0
+
+[solution.env]

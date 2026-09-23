@@ -1,0 +1,58 @@
+schema_version = "1.2"
+artifacts = []
+
+[task]
+name = "data-agent-eval-v1/0041_703_41703265_qa_5"
+description = "Which model had the highest weighted average precision, and what was its value?"
+authors = []
+keywords = ["data-agent", "data-analysis", "kaggle"]
+
+[metadata]
+source_dataset = "jupyter-agent/jupyter-agent-dataset"
+source_row_id = "0041/703/41703265.ipynb_qa_5"
+kaggle_dataset_name = "uciml/iris"
+gold_answer = "Logistic, SVM, Naive Bayes with 100%"
+reward_mode_initial = "list_csv"
+package_tier = 1
+difficulty_level = 4
+difficulty_tier = "hard"
+
+[environment]
+build_timeout_sec = 600.0
+os = "linux"
+cpus = 2
+memory_mb = 4096
+storage_mb = 10240
+gpus = 0
+allow_internet = true
+mcp_servers = []
+
+# Pre-agent hook: Harbor runs the command AFTER container start and BEFORE the
+# agent setup begins. We use it to pull this task's bucket prefix into
+# /home/user/input/. See environment/pull_bucket.py.
+[environment.healthcheck]
+command = "python3 /opt/pull_bucket.py && [ -n \"$(ls /home/user/input)\" ]"
+interval_sec = 2.0
+timeout_sec = 180.0
+start_period_sec = 5.0
+start_interval_sec = 2.0
+retries = 30
+
+[environment.env]
+HF_BUCKET = "AdithyaSK/jupyter-agent-kaggle-all"
+BUCKET_PREFIX = "uciml__iris"
+HF_TOKEN = "${HF_TOKEN}"
+KAGGLE_DATASET_NAME = "uciml/iris"
+
+[verifier]
+timeout_sec = 120.0
+
+[verifier.env]
+EXPECTED_ANSWER = "Logistic, SVM, Naive Bayes with 100%"
+QUESTION = "Which model had the highest weighted average precision, and what was its value?"
+REWARD_MODE = "list_csv"
+
+[agent]
+timeout_sec = 900.0
+
+[solution.env]

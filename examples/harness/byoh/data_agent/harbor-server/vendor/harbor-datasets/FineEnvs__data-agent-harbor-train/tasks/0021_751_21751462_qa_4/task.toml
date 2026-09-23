@@ -1,0 +1,58 @@
+schema_version = "1.2"
+artifacts = []
+
+[task]
+name = "data-agent-eval-v1/0021_751_21751462_qa_4"
+description = "How many duplicate property records were identified and removed based on the unique combination of location, date, and property characteristics?"
+authors = []
+keywords = ["data-agent", "data-analysis", "kaggle"]
+
+[metadata]
+source_dataset = "jupyter-agent/jupyter-agent-dataset"
+source_row_id = "0021/751/21751462.ipynb_qa_4"
+kaggle_dataset_name = "harlfoxem/housesalesprediction"
+gold_answer = "2"
+reward_mode_initial = "numeric"
+package_tier = 1
+difficulty_level = 2
+difficulty_tier = "medium"
+
+[environment]
+build_timeout_sec = 600.0
+os = "linux"
+cpus = 2
+memory_mb = 4096
+storage_mb = 10240
+gpus = 0
+allow_internet = true
+mcp_servers = []
+
+# Pre-agent hook: Harbor runs the command AFTER container start and BEFORE the
+# agent setup begins. We use it to pull this task's bucket prefix into
+# /home/user/input/. See environment/pull_bucket.py.
+[environment.healthcheck]
+command = "python3 /opt/pull_bucket.py && [ -n \"$(ls /home/user/input)\" ]"
+interval_sec = 2.0
+timeout_sec = 180.0
+start_period_sec = 5.0
+start_interval_sec = 2.0
+retries = 30
+
+[environment.env]
+HF_BUCKET = "AdithyaSK/jupyter-agent-kaggle-all"
+BUCKET_PREFIX = "harlfoxem__housesalesprediction"
+HF_TOKEN = "${HF_TOKEN}"
+KAGGLE_DATASET_NAME = "harlfoxem/housesalesprediction"
+
+[verifier]
+timeout_sec = 120.0
+
+[verifier.env]
+EXPECTED_ANSWER = "2"
+QUESTION = "How many duplicate property records were identified and removed based on the unique combination of location, date, and property characteristics? (Count all rows that are part of any duplicate group, i.e., use keep=False when identifying duplicates.)"
+REWARD_MODE = "numeric"
+
+[agent]
+timeout_sec = 900.0
+
+[solution.env]

@@ -11,12 +11,21 @@ harness itself does.
 returns (`--agent-input` on the `azd ai rle rollout` command line already
 carries the Harbor task selector -- `task_index`, `split`, `harness`,
 `sandbox` -- so the issue text `code_repair`'s `/reset` hands over has no
-equivalent here). `/grade` cannot run Harbor's own verifier either, because it
-never touches the sandbox that verifier ran in -- Harbor already ran it and
-computed a reward before this container ever hears about the rollout. So
-``../agent`` posts that reward to `/tools/harbor.report_result` as its last
-step (the same channel a harness normally uses for side-effecting tool
-calls), and `/grade` reads back whatever was posted for this episode.
+equivalent here).
+
+`/grade` cannot re-run Harbor's own verifier -- it never touches the sandbox
+that ran it, and by the time `/grade` is called that sandbox may already be
+gone. But it does not have to trust ``../agent`` either. RLE attaches the
+same rollout id to every call it makes for one rollout, as the
+`x-rle-rollout-id` header -- on this container's `/reset` and `/grade` calls,
+and as the `rollout_id` field in ``../agent``'s `/invoke` body. ``../agent``
+uses that id to trigger the run on harbor-server
+(`POST /correlated-rollouts/{rollout_id}`); `/grade` here uses the *same* id
+to fetch harbor-server's own record of what happened
+(`GET /correlated-rollouts/{rollout_id}`) directly, over the network, without
+going through ``../agent`` at all. So a harness that lies about the reward
+gains nothing: nothing downstream of Harbor's own verifier ever reads what
+``../agent`` says.
 """
 
 from __future__ import annotations
@@ -25,6 +34,8 @@ import os
 from typing import Any, Optional
 from uuid import uuid4
 
+import httpx
+from fastapi import Body, Request
 from pydantic import Field
 
 from openenv.core.env_server.http_server import create_app
@@ -37,18 +48,21 @@ from openenv.core.env_server.types import (
     ResetResponse,
     State,
 )
-from fastapi import Body
 
-# `/grade` runs after `agent/app.py`'s Harbor call returns, and that call can
-# run for minutes. Without a bound, a harness that crashes before reporting a
-# result leaves `/grade` waiting forever instead of scoring the rollout zero.
-REPORT_TIMEOUT_S = float(os.environ.get("DATA_AGENT_REPORT_TIMEOUT_S", "1800"))
-
-_current_environment: Optional["DataAgentEnvironment"] = None
+# The same harbor-server ../agent drives. `/grade` reaches it directly,
+# independent of ../agent, to fetch the rollout id it is grading.
+HARBOR_SERVER_URL = os.environ["HARBOR_SERVER_URL"]
+# RLE's own header name for the rollout id it correlates every call by
+# (`RleSandboxRequestHeaders.RolloutId` in RLE's sandbox client) -- server-set,
+# never caller-supplied, so a harness cannot forge it.
+ROLLOUT_ID_HEADER = "x-rle-rollout-id"
+# harbor-server's `run_rollout` can run for minutes; a grade call has to wait
+# at least that long for a legitimately still-running rollout to land.
+GRADE_FETCH_TIMEOUT_S = float(os.environ.get("DATA_AGENT_GRADE_TIMEOUT_S", "1800"))
 
 
 class DataAgentAction(Action):
-    """Unused: this sample's harness never calls `/step`, only `/tools/*`."""
+    """Unused: this sample's harness never calls `/step`."""
 
     message: str = Field(default="", description="Unused placeholder.")
 
@@ -60,18 +74,11 @@ class DataAgentObservation(Observation):
 
 
 class DataAgentEnvironment(Environment[DataAgentAction, DataAgentObservation, State]):
-    """One rollout's worth of state: nothing but the reward Harbor reported."""
+    """Holds no rollout state: `/grade` fetches everything it needs from harbor-server."""
 
     def __init__(self) -> None:
         super().__init__()
         self._state = State(episode_id=None, step_count=0)
-        self._reported_result: Optional[dict[str, Any]] = None
-        # max_concurrent_envs=1 below means this container ever hosts one
-        # live instance at a time, so the module-level routes below can
-        # reach this rollout's state through this singleton reference --
-        # the same pattern `code_repair/rle/server/env.py` uses.
-        global _current_environment
-        _current_environment = self
 
     def reset(
         self,
@@ -82,7 +89,6 @@ class DataAgentEnvironment(Environment[DataAgentAction, DataAgentObservation, St
         del seed, task_data
         episode_id = episode_id or str(uuid4())
         self._state = State(episode_id=episode_id, step_count=0)
-        self._reported_result = None
         return DataAgentObservation(done=False, reward=None, messages=[])
 
     def step(
@@ -91,9 +97,8 @@ class DataAgentEnvironment(Environment[DataAgentAction, DataAgentObservation, St
         timeout_s: Optional[float] = None,
         **kwargs: Any,
     ) -> DataAgentObservation:
-        """Unused by real invocations: the harness calls
-        `/tools/harbor.report_result` and RLE calls `/grade` directly. Kept
-        only so OpenEnv's schema can still exercise this environment."""
+        """Unused by real invocations: RLE calls `/grade` directly. Kept only
+        so OpenEnv's schema can still exercise this environment."""
         del action, timeout_s, kwargs
         self._state.step_count += 1
         return DataAgentObservation(done=True, reward=None, messages=[])
@@ -145,36 +150,31 @@ async def env_reset(request: ResetRequest = Body(default_factory=ResetRequest)) 
     return await _reset_endpoint(request)
 
 
-@app.post("/tools/harbor.report_result")
-async def harbor_report_result(arguments: dict[str, Any]) -> dict[str, Any]:
-    """Records the reward `agent/app.py` got back from Harbor's `run_rollout`.
-
-    This is the only "tool" this sample's harness calls -- there is no
-    workspace or sandbox to mock, because Harbor already ran the agent loop
-    and its own verifier before this call arrives. `/grade` below just reads
-    back what was recorded here.
-    """
-    if _current_environment is None:
-        raise RuntimeError("No active rollout; call /reset first.")
-    _current_environment._reported_result = arguments
-    return {"recorded": True}
+async def _fetch_harbor_result(rollout_id: str) -> Optional[dict[str, Any]]:
+    async with httpx.AsyncClient(timeout=GRADE_FETCH_TIMEOUT_S) as client:
+        response = await client.get(f"{HARBOR_SERVER_URL}/correlated-rollouts/{rollout_id}")
+        if response.status_code == 404:
+            return None
+        response.raise_for_status()
+        return response.json()
 
 
 @app.post("/grade")
-async def grade_rollout(rollout: dict[str, Any]) -> dict[str, Any]:
-    """Reports the reward Harbor computed for this rollout's task."""
+async def grade_rollout(request: Request, rollout: dict[str, Any] = Body(default_factory=dict)) -> dict[str, Any]:
+    """Fetches Harbor's own reward for this rollout id, straight from harbor-server."""
     del rollout
-    if _current_environment is None:
-        raise RuntimeError("No active rollout; call /reset first.")
-    reported = _current_environment._reported_result
+    rollout_id = request.headers.get(ROLLOUT_ID_HEADER)
+    reported = await _fetch_harbor_result(rollout_id) if rollout_id else None
     if reported is None:
-        # The harness never reported a result -- withdrawn, crashed, or timed
-        # out before its Harbor call returned. Score zero rather than hang:
-        # nothing else in this container bounds how long `/grade` waits.
+        # Either RLE sent no rollout id (older region -- see the `_env/`
+        # aliases' rationale above), or harbor-server never recorded a
+        # result for it: `../agent` was withdrawn, crashed, or never
+        # started before grading. Score zero rather than hang -- nothing
+        # else in this container bounds how long `/grade` waits.
         return {
             "reward": 0.0,
             "is_success": False,
-            "info": {"reason": "No result reported by the harness before grading."},
+            "info": {"reason": "No result recorded on harbor-server for this rollout id."},
         }
     reward = reported.get("reward")
     ok = bool(reported.get("ok", True))
@@ -195,5 +195,5 @@ async def grade_rollout(rollout: dict[str, Any]) -> dict[str, Any]:
 
 
 @app.post("/_env/grade")
-async def env_grade_rollout(rollout: dict[str, Any]) -> dict[str, Any]:
-    return await grade_rollout(rollout)
+async def env_grade_rollout(request: Request, rollout: dict[str, Any] = Body(default_factory=dict)) -> dict[str, Any]:
+    return await grade_rollout(request, rollout)

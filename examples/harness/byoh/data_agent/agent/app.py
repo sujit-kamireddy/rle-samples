@@ -85,7 +85,6 @@ from typing import Any
 import httpx
 from fastapi import FastAPI, Response
 from fastapi.responses import JSONResponse
-from openenv.harbor.client import HarborEnv
 from pydantic import BaseModel
 
 app = FastAPI(title="byoh-data-agent")
@@ -97,16 +96,25 @@ RETRY_AFTER_MS = 500
 # The separately deployed harbor-server (../harbor-server) that owns the
 # sandbox, the agent loop, and Harbor's own grader. This shim never runs any
 # of that itself -- it only tells Harbor which task to run and which model
-# endpoint to call, then reports the result back to RLE.
+# endpoint to call. It never reports the result to RLE directly -- see
+# `run_harbor_rollout` for why that channel is deliberately not trusted.
 HARBOR_SERVER_URL = os.environ["HARBOR_SERVER_URL"]
 DEFAULT_SPLIT = os.environ.get("HARBOR_SPLIT", "FineEnvs/data-agent-harbor-train")
 DEFAULT_HARNESS = os.environ.get("HARBOR_HARNESS", "opencode")
 DEFAULT_SANDBOX = os.environ.get("HARBOR_SANDBOX", "e2b")
+# `run_rollout` boots a sandbox, runs an agent to completion, and grades it in
+# one blocking call -- minutes, not seconds. httpx's own default (5s) would
+# abort a rollout that was actually still working.
+_HARBOR_ROLLOUT_TIMEOUT_S = float(os.environ.get("HARBOR_ROLLOUT_TIMEOUT_S", "1800"))
 
 
 class RolloutContext(BaseModel):
     model_endpoint: str
     model_api_key: str
+    # RLE always sends these two regardless of whether a harness uses them.
+    # This sample's harness does not: there is no sandbox or tool to mock here
+    # (see `../rle/server/env.py`'s module docstring), so nothing calls out to
+    # `sandbox_tools_endpoint`.
     sandbox_tools_endpoint: str
     sandbox_tools_token: str
 
@@ -173,66 +181,47 @@ class RolloutStore:
 ROLLOUTS = RolloutStore()
 
 
-async def report_result_to_rle(rollout_context: RolloutContext, result) -> None:
-    """Hands Harbor's own reward to the RLE-side environment (``../rle``).
-
-    Harbor's `run_rollout` computes the reward itself, inside its own sandbox --
-    RLE's `/grade` never sees the sandbox or the agent's transcript. So the
-    reward has to travel over the same tool-call channel a harness normally uses
-    for side effects: this posts it to a tool RLE's environment registers for
-    exactly that purpose (see ``rle/server/env.py``'s
-    ``/tools/harbor.report_result``), and `/grade` reads it back from there.
-    """
-    async with httpx.AsyncClient() as client:
-        response = await client.post(
-            f"{rollout_context.sandbox_tools_endpoint}/harbor.report_result",
-            json={
-                "reward": result.reward,
-                "ok": result.ok,
-                "error": result.error,
-                "n_turns": result.n_turns,
-                "task_name": result.task_name,
-            },
-            headers={"Authorization": f"Bearer {rollout_context.sandbox_tools_token}"},
-        )
-        response.raise_for_status()
-
-
-async def run_harbor_rollout(rollout_context: RolloutContext, agent_input: dict[str, Any]) -> str:
+async def run_harbor_rollout(rollout_id: str, rollout_context: RolloutContext, agent_input: dict[str, Any]) -> str:
     """Asks the deployed harbor-server to run one task, pointed at RLE's model.
 
-    `HarborEnv.run_rollout` is a single blocking call -- it boots the sandbox,
-    runs Harbor's own agent loop against `llm_url`, and grades the result --
-    so it is offloaded to a thread rather than awaited directly on the event
-    loop poll/withdraw handlers need to keep serving.
+    Posts to harbor-server's `/correlated-rollouts/{rollout_id}` rather than calling
+    `HarborEnv.run_rollout` directly. The two look similar -- both trigger the same
+    rollout -- but only the correlated endpoint also has harbor-server keep its own
+    copy of the result under `rollout_id`, which is what lets `../rle`'s `/grade` get
+    the verifier's answer straight from harbor-server instead of trusting whatever
+    this process (a harness deployed wherever a customer runs it) says it was. See
+    harbor-server's `server/app.py` for why: this shim could otherwise misreport
+    `reward` and nothing downstream would catch it.
     """
     task_index = agent_input.get("task_index", 0)
     split = agent_input.get("split", DEFAULT_SPLIT)
     harness = agent_input.get("harness", DEFAULT_HARNESS)
     sandbox = agent_input.get("sandbox", DEFAULT_SANDBOX)
 
-    def _call() -> Any:
-        with HarborEnv(base_url=HARBOR_SERVER_URL) as env:
-            # `llm_url`/`api_key` point Harbor's agent loop at RLE's capture
-            # proxy instead of a real model endpoint -- the same wiring
-            # `code_repair/agent/app.py`'s `create_model_client` does for a
-            # harness that calls the model directly. Here Harbor makes the
-            # call, but the endpoint it is told to call is still RLE's.
-            return env.run_rollout(
-                split=split,
-                task_index=task_index,
-                harness=harness,
-                sandbox=sandbox,
-                llm_url=rollout_context.model_endpoint,
-                api_key=rollout_context.model_api_key,
-            )
+    async with httpx.AsyncClient(timeout=_HARBOR_ROLLOUT_TIMEOUT_S) as client:
+        response = await client.post(
+            f"{HARBOR_SERVER_URL}/correlated-rollouts/{rollout_id}",
+            json={
+                "split": split,
+                "task_index": task_index,
+                "harness": harness,
+                "sandbox": sandbox,
+                # `llm_url`/`api_key` point Harbor's agent loop at RLE's capture
+                # proxy instead of a real model endpoint -- the same wiring
+                # `code_repair/agent/app.py`'s `create_model_client` does for a
+                # harness that calls the model directly. Here Harbor makes the
+                # call, but the endpoint it is told to call is still RLE's.
+                "llm_url": rollout_context.model_endpoint,
+                "api_key": rollout_context.model_api_key,
+            },
+        )
+        response.raise_for_status()
+        result = response.json()
 
-    result = await asyncio.to_thread(_call)
-    if not result.ok:
-        raise RuntimeError(result.error or "Harbor rollout failed with no error message")
+    if not result.get("ok", True):
+        raise RuntimeError(result.get("error") or "Harbor rollout failed with no error message")
 
-    await report_result_to_rle(rollout_context, result)
-    return f"task={result.task_name} reward={result.reward} turns={result.n_turns}"
+    return f"task={result.get('task_name')} reward={result.get('reward')} turns={result.get('n_turns')}"
 
 
 async def run_rollout(request: InvocationRequest) -> None:
@@ -242,7 +231,9 @@ async def run_rollout(request: InvocationRequest) -> None:
     the time this runs, so a failure has nowhere to go except the poll resource.
     """
     try:
-        output_text = await run_harbor_rollout(request.rollout_context, request.agent_input)
+        output_text = await run_harbor_rollout(
+            request.rollout_id, request.rollout_context, request.agent_input
+        )
     except asyncio.CancelledError:
         # RLE withdrew the rollout, which already removed it from the store.
         logger.info("Rollout %s withdrawn", request.rollout_id)

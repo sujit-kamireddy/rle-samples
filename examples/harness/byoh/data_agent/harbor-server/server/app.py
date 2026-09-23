@@ -146,6 +146,62 @@ os.environ.setdefault("ENABLE_WEB_INTERFACE", "true")
 app = build_app(datasets=_DATASETS, llm_url=_LLM_URL, model=_MODEL, llm=_LLM)
 
 
+# --- Correlated rollouts: an authoritative result store keyed by RLE's rollout id -----------------
+#
+# `../agent` (untrusted: it runs wherever a customer deploys it) is the only side that can trigger a
+# rollout, because only it is handed the model endpoint. But it must not also be the only side that
+# can report the reward -- a harness that lies about `reward` would otherwise go unnoticed, since
+# RLE never re-runs Harbor's own verifier itself. So triggering and reading are split: `../agent`
+# POSTs here to start a run, but reads nothing back that RLE will trust. `../rle`'s `/grade` GETs the
+# same rollout_id straight from this server -- the one place the verifier's result actually landed --
+# instead of trusting whatever `../agent` says.
+#
+# The POST calls this same server's own `run_rollout` MCP tool over a loopback HTTP connection rather
+# than reimplementing engine resolution and capture-level probing here: `HarborEnv` is the same client
+# `../agent` would otherwise call directly, so nothing about how a rollout runs changes, only who is
+# allowed to read the result afterward.
+import asyncio
+import threading
+from typing import Any
+
+from fastapi import Body
+from fastapi.responses import JSONResponse
+from openenv.harbor.client import HarborEnv
+
+_CORRELATED_RESULTS: dict[str, dict[str, Any]] = {}
+_CORRELATED_RESULTS_LOCK = threading.Lock()
+_SELF_URL = f"http://127.0.0.1:{os.environ.get('PORT', '8000')}"
+
+
+@app.post("/correlated-rollouts/{rollout_id}")
+async def run_correlated_rollout(rollout_id: str, payload: dict[str, Any] = Body(...)) -> dict[str, Any]:
+    """Runs one rollout and records the authoritative result under `rollout_id`.
+
+    Re-posting the same `rollout_id` overwrites the prior result -- there is one rollout per id in
+    practice (RLE mints a fresh one per invocation), and overwriting rather than rejecting means a
+    harness retry after a transient failure does not have to invent a new id to get an answer through.
+    """
+
+    def _call() -> Any:
+        with HarborEnv(base_url=_SELF_URL) as env:
+            return env.run_rollout(**payload)
+
+    result = await asyncio.to_thread(_call)
+    with _CORRELATED_RESULTS_LOCK:
+        _CORRELATED_RESULTS[rollout_id] = result.model_dump()
+    return result.model_dump()
+
+
+@app.get("/correlated-rollouts/{rollout_id}")
+async def get_correlated_rollout(rollout_id: str) -> JSONResponse:
+    """What `../rle`'s `/grade` calls: the verifier's own result, not a harness's retelling of it."""
+    with _CORRELATED_RESULTS_LOCK:
+        stored = _CORRELATED_RESULTS.get(rollout_id)
+    if stored is None:
+        return JSONResponse({"error": "not_found"}, status_code=404)
+    return JSONResponse(stored)
+
+
 def main() -> None:
     import uvicorn
 

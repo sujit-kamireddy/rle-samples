@@ -1,0 +1,64 @@
+schema_version = "1.2"
+artifacts = []
+
+[task]
+name = "train-verify/0032_614_32614408_qa_1"
+description = "Which wine color type (red or white) has a higher average quality score, and by how much does it exceed the other type's average quality?"
+authors = []
+keywords = ["data-agent", "data-analysis", "kaggle"]
+
+[metadata]
+source_dataset = "jupyter-agent/jupyter-agent-dataset"
+source_row_id = "0032/614/32614408.ipynb_qa_1"
+kaggle_dataset_name = "sgus1318/winedata"
+gold_answer = "white, 0.24"
+reward_mode_initial = "list"
+package_tier = 1
+difficulty_level = 2
+difficulty_tier = "medium"
+
+[environment]
+build_timeout_sec = 600.0
+os = "linux"
+cpus = 1
+memory_mb = 1024
+storage_mb = 5120
+gpus = 0
+allow_internet = true
+mcp_servers = []
+
+# Pre-agent hook: Harbor runs the command AFTER container start and BEFORE the
+# agent setup begins. We use it to pull this task's bucket prefix into
+# /home/user/input/. See environment/pull_bucket.py.
+[environment.healthcheck]
+command = "python3 /opt/pull_bucket.py && [ -n \"$(ls /home/user/input)\" ]"
+interval_sec = 2.0
+timeout_sec = 180.0
+start_period_sec = 5.0
+start_interval_sec = 2.0
+retries = 30
+
+[environment.env]
+HF_BUCKET = "AdithyaSK/jupyter-agent-kaggle-all"
+BUCKET_PREFIX = "sgus1318__winedata"
+HF_TOKEN = "${HF_TOKEN}"
+KAGGLE_DATASET_NAME = "sgus1318/winedata"
+
+[verifier]
+timeout_sec = 120.0
+
+[verifier.env]
+EXPECTED_ANSWER = "white, 0.24"
+QUESTION = "Which wine color type (red or white) has a higher average quality score, and by how much does it exceed the other type's average quality?"
+REWARD_MODE = "list"
+ATOL = "0.0"
+RTOL = "0.0"
+
+[agent]
+# Capped at 600s (10 min) to kill the long-tail stuck-agent cases without
+# cutting off legitimate complex trials. Median Phase B trial is 60-120s;
+# legitimate L4/L5 tasks can hit 200-300s; anything past 600s is almost
+# certainly a stuck agent loop.
+timeout_sec = 600.0
+
+[solution.env]
