@@ -39,11 +39,47 @@ port and one URL, so the proxy is mounted at `/capture` and the sandbox reaches 
 from __future__ import annotations
 
 import os
+from pathlib import Path
 
 from openenv.harbor.serving import HarborService, build_app
 
+_DATASET_CACHE = Path(os.environ.get("OPENENV_DATASET_CACHE", "/opt/harbor-datasets"))
+
+
+def _resolve_dataset(spec: str) -> str:
+    """Maps a dataset id to the copy baked into this image, refusing to fall back to a download.
+
+    openenv resolves a dataset spec by shape: an existing directory is used as-is, anything shaped
+    like `org/name` goes to `huggingface_hub.snapshot_download` (`openenv.harbor.tasks`). This
+    harness must never take that second branch -- the task suite ships inside the image, and a
+    rollout that silently reached out to the Hub would make the run depend on another account's
+    repo staying public and on egress this deployment is not supposed to need.
+
+    `HF_HUB_OFFLINE=1` was the previous guard, but it is only a guard: the call still went through
+    huggingface_hub, still needed the cache laid out as a Hub snapshot, and degraded to a confusing
+    cache miss rather than a clear error. Resolving to the directory up front means the HF branch is
+    unreachable instead of merely disabled. The `org/name` -> `org__name` layout is openenv's own
+    (`_materialise_hf_dataset` downloads to exactly that path), so this is pre-populating the
+    location openenv would have written to, minus the download.
+
+    A spec that is already a path is passed through, which keeps local development against an
+    arbitrary directory working.
+    """
+    if Path(spec).expanduser().is_dir():
+        return spec
+    baked = _DATASET_CACHE / spec.replace("/", "__")
+    if baked.is_dir():
+        return str(baked)
+    raise RuntimeError(
+        f"dataset {spec!r} is not baked into this image: expected {baked}. "
+        "Vendor the task suite and extract it into OPENENV_DATASET_CACHE, or pass a local "
+        "directory as OPENENV_DATASETS. Downloading from the Hugging Face Hub is deliberately "
+        "not a fallback."
+    )
+
+
 _DATASETS = [
-    d.strip()
+    _resolve_dataset(d.strip())
     for d in os.environ.get(
         "OPENENV_DATASETS", "FineEnvs/data-agent-harbor-train"
     ).split(",")
@@ -125,19 +161,44 @@ if _LLM_URL:
 # Started unconditionally: the proxy has to be listening and publicly reachable before any rollout
 # can name an engine, and it is the SESSION that carries the engine. Gating this on OPENENV_LLM_URL
 # was what made an engineless server useless — every rollout answered "server not initialised".
+#
+# The sandbox runs off-cluster, so it has to reach this server's capture proxy over the public
+# internet. openenv's default route to that is a gradio tunnel: `expose="gradio"` mints a fresh
+# `*.gradio.live` address on every boot and forwards it to the capture port. That works, and it also
+# puts an unauthenticated, third-party-hosted URL in front of the model route, outside the ingress
+# whose access control everything else here depends on.
+#
+# openenv already has a better branch for a deployment shaped like this one: when the platform hands
+# the process a single public URL and a single port, the capture app is mounted on the env server's
+# own app at `/capture` and forwarding is skipped entirely (`serving.HarborService.start`). Azure
+# Container Apps is exactly that shape, and it injects the app's own FQDN as CONTAINER_APP_HOSTNAME,
+# so there is nothing to configure when deployed there.
+#
+# openenv reads that URL from SPACE_HOST, whose only reader is `serving.space_public_url()`. Setting
+# it is the supported way into that branch, as opposed to assigning to the service's own attributes.
+_PUBLIC_HOST = (
+    os.environ.get("HARBOR_PUBLIC_HOST") or os.environ.get("CONTAINER_APP_HOSTNAME") or ""
+).strip()
+if _PUBLIC_HOST and not os.environ.get("SPACE_HOST", "").strip():
+    os.environ["SPACE_HOST"] = _PUBLIC_HOST
+
 _service = HarborService(
     llm_url=_LLM_URL,
     model=_MODEL,
     datasets=_DATASETS,
     capture_port=int(os.environ.get("OPENENV_CAPTURE_PORT", "8100")),
-    expose=os.environ.get("OPENENV_EXPOSE", "gradio"),
+    # Only consulted when no public host resolved above, i.e. never on ACA. `direct` rather than
+    # openenv's `gradio` default so that a misconfigured deployment fails visibly -- the sandbox
+    # cannot route to 127.0.0.1 and says so -- instead of silently publishing a tunnel. Local
+    # development against an off-cluster sandbox can still opt back in with OPENENV_EXPOSE=gradio.
+    expose=os.environ.get("OPENENV_EXPOSE", "direct"),
     api_key=_API_KEY,
     auth_header=_AUTH_HEADER,
     capture_level=_CAPTURE_LEVEL,
     max_output_tokens=int(os.environ.get("OPENENV_MAX_OUTPUT_TOKENS", "8192")) or None,
 )
-# On a Space this only computes the public URL and flags the app for mounting; off one it
-# publishes the capture port the usual way.
+# With a public host this only computes the capture URL and flags the app for mounting; without one
+# it publishes the capture port through whichever forwarder `OPENENV_EXPOSE` named.
 _service.start()
 HarborService.set_current(_service)
 
@@ -174,7 +235,6 @@ app = build_app(datasets=_DATASETS, llm_url=_LLM_URL, model=_MODEL, llm=_LLM)
 # The tradeoff is depending on a private method; the openenv wheel is vendored and pinned, so an
 # upgrade is the point to re-check it.
 import asyncio
-from pathlib import Path
 from typing import Any
 
 from fastapi import Body
@@ -233,6 +293,12 @@ async def run_correlated_rollout(rollout_id: str, payload: dict[str, Any] = Body
     call_kwargs = {**_ROLLOUT_DEFAULTS, **payload}
     endpoint = str(call_kwargs.pop("sandbox_tools_endpoint", "") or "")
     token = str(call_kwargs.pop("sandbox_tools_bearer_token", "") or "")
+    # `../agent` and `../rle` agree on a logical dataset id (`FineEnvs/data-agent-harbor-train`),
+    # and `../rle` derives its vendored answer-key filename from it. Where that suite physically
+    # lives is this server's business alone, so the translation to an on-disk path happens here
+    # rather than leaking a container path into the wire contract.
+    if call_kwargs.get("split"):
+        call_kwargs["split"] = _resolve_dataset(str(call_kwargs["split"]))
 
     with rollout_tools.rollout_tools(endpoint, token):
         raw = await HarborEnvironment()._run_rollout(**call_kwargs)

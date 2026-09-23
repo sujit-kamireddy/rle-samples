@@ -38,21 +38,79 @@ this version adds:
   other's -- misattributing a disclosure with no error anywhere. Covered by
   `tests/test_rollout_tools.py`, which asserts against the real Harbor
   `OpenCode` class rather than a stub.
+- Capture-proxy exposure without a public tunnel. The sandbox runs
+  off-cluster and has to reach this server's capture proxy over the internet.
+  openenv's default route to that is a gradio tunnel, which mints a fresh
+  unauthenticated `*.gradio.live` address on every boot -- a third-party URL
+  in front of the model route, outside the ingress everything else here is
+  protected by. openenv already has a better branch: given a single public
+  host and port it mounts the capture app on this server's own app at
+  `/capture` and skips forwarding entirely. Azure Container Apps is exactly
+  that shape and injects the app's FQDN as `CONTAINER_APP_HOSTNAME`, so on
+  ACA this needs no configuration; elsewhere, set `HARBOR_PUBLIC_HOST`. When
+  neither resolves, `OPENENV_EXPOSE` decides, and it now defaults to `direct`
+  rather than `gradio` so a misconfigured deployment fails visibly instead of
+  quietly publishing a tunnel. Local development against an off-cluster
+  sandbox can still opt back in with `OPENENV_EXPOSE=gradio`.
 - `vendor/harbor-datasets/` -- the full `FineEnvs/data-agent-harbor-train`
   task suite (5,000 tasks, ~196MB), baked into the image via a plain
   Dockerfile `COPY` instead of a build-time `prefetch()` download. A fresh
   container serves every task the moment it passes its health check, with no
-  Hugging Face Hub reachability needed at build *or* run time
-  (`HF_HUB_OFFLINE=1`). Re-vendor by running `prefetch()` yourself against a
-  different `OPENENV_DATASET_CACHE` and copying the result in, if you need a
-  different split.
+  Hugging Face Hub reachability needed at build *or* run time. Re-vendor by
+  running `prefetch()` yourself against a different `OPENENV_DATASET_CACHE`
+  and copying the result in, if you need a different split.
 
-  Two patches are applied to the upstream tarball, both reproducible and both
-  verifiable without a rebuild: the `artifacts` entry above, and the
+  `server/app.py`'s `_resolve_dataset` is what makes that guarantee hold.
+  openenv resolves a dataset spec by shape: an existing directory is used
+  as-is, anything shaped like `org/name` goes to `snapshot_download`
+  (`openenv.harbor.tasks`). So the logical id is translated to the baked
+  directory *before* openenv sees it, which makes the Hub branch unreachable
+  rather than merely disabled, and a spec with no baked copy raises instead
+  of quietly falling back to a download. `HF_HUB_OFFLINE=1` is still set, but
+  only as a backstop for other callers -- gradio pulls `huggingface_hub` in
+  transitively, so the library's presence is not something this image can
+  remove. The translation happens here rather than on the wire because
+  `../agent` and `../rle` agree on the logical dataset id, and `../rle`
+  derives its vendored answer-key filename from it; a container path in that
+  field would couple the graded container to this one's filesystem layout.
+
+  Three patches are applied to the upstream tarball, all reproducible and all
+  verifiable without a rebuild: the `artifacts` entry above; the
   data-handling clause spliced into every `instruction.md` by
-  `../tools/bake_compliance_instruction.py`. That script is idempotent and
-  its `--verify` mode strips the clause back out to prove nothing else in the
-  archive moved.
+  `../tools/bake_compliance_instruction.py`; and the dataset source repointed
+  from the upstream Hugging Face bucket to a public HTTPS object store by
+  `../tools/bake_bucket_source.py`. Each script is idempotent and has a
+  `--verify` mode that re-reads the archive and reports drift rather than
+  assuming its own last run held.
+
+  That third patch is what removes the last credential from the data path.
+  Upstream, every task pulled its Kaggle files through `huggingface_hub`
+  using an `HF_TOKEN` threaded in from the host -- 5,000 rollouts depending on
+  another account staying reachable and the token staying valid. Each
+  `task.toml` now names a `BUCKET_BASE_URL` instead, and each task's
+  `environment/pull_bucket.py` is replaced by `../tools/pull_bucket.py`, which
+  fetches over anonymous HTTPS with nothing but the standard library. The
+  store grants anonymous read on blobs but not container listing, so the file
+  list for a prefix travels with it as `<prefix>/_manifest.txt`; the fetcher
+  decides "already downloaded" against that manifest rather than against "is
+  the directory non-empty", so a health-check retry after a partial download
+  finishes the job instead of handing the agent a truncated dataset.
+  `BUCKET_PREFIX` is untouched -- the upstream prefixes already match the
+  store's `<owner>__<dataset>` layout one-for-one.
+
+  That manifest check is also what makes the fetch resumable, which the
+  largest prefixes need: 844MB across 2,004 files takes minutes to pull, well
+  past the task's 180s health-check timeout, so being killed mid-fetch is the
+  normal case rather than the exceptional one. Each file is moved into place
+  as soon as it lands rather than publishing the batch at the end, so every
+  attempt keeps the work of the one before it and the retry loop converges
+  (measured: 420 -> 838 -> 1,806 -> 2,004 files across four attempts, then a
+  clean exit). Publishing atomically at the end would instead make each
+  attempt discard the last one's progress and the health check would never
+  pass. Downloads stage through a hidden sibling directory, so a partial file
+  is never visible under a name the manifest lists and `/home/user/input/`
+  never accumulates `.part` debris. Set `BUCKET_WORKERS` to widen or narrow
+  the fetch concurrency (default 16).
 - `vendor/wheels/` -- a pinned `openenv==0.5.0` wheel, downloaded straight
   from PyPI. Needed because this sample requires `openenv>=0.5.0` for
   `openenv.harbor`, but the internal package feed proxy (the

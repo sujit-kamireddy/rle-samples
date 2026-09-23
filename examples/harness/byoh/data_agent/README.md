@@ -16,9 +16,11 @@ sample is therefore three pieces instead of two:
   against whatever model endpoint it is told to call, and grades the result.
   It also exposes `POST /correlated-rollouts/{rollout_id}` -- see the answer
   note below -- and bakes both the dataset (patched so every task declares
-  `/workdir/answer.txt` as a Harbor `artifacts` entry) and its own `openenv`
-  dependency in as vendored files, so its image builds and runs with no
-  network dependency at all.
+  `/workdir/answer.txt` as a Harbor `artifacts` entry, carries the
+  data-handling clause, and pulls its Kaggle files from a credential-free
+  public HTTPS store rather than a token-gated Hugging Face bucket) and its
+  own `openenv` dependency in as vendored files, so its image builds and runs
+  with no network dependency at all.
 - [`agent/`](./agent) -- the harness RLE actually invokes (`Harness`/`BYOH`'s
   `agent/`). It implements RLE's `/invoke`/poll/withdraw contract, but instead
   of running its own agent loop it `POST`s to `harbor-server`'s

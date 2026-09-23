@@ -66,10 +66,11 @@ RUN mkdir -p "${OPENENV_DATASET_CACHE}" \
 ENV ENABLE_WEB_INTERFACE=true
 ENV PORT=8000
 ENV OPENENV_DATASETS=${DATASETS}
-# The dataset is already on disk from the bake step above; this stops
-# `huggingface_hub` from making a network call to re-verify it on first use,
-# which would otherwise be a hard dependency on reaching the HF Hub from
-# wherever this image ends up running.
+# Backstop only. `server/app.py` resolves OPENENV_DATASETS to the directory
+# extracted above before openenv ever sees it, so the Hugging Face branch in
+# `openenv.harbor.tasks` is unreachable rather than merely disabled. This stays
+# so that any *other* huggingface_hub caller -- gradio pulls the library in
+# transitively -- cannot turn a rollout into a Hub round trip either.
 ENV HF_HUB_OFFLINE=1
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
