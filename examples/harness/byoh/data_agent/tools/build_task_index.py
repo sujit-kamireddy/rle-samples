@@ -1,13 +1,10 @@
-"""Bakes the slim task index the direct-opencode harness runs from.
+"""Bakes the slim task index the harness runs from.
 
-Why a separate index instead of the Harbor suite
-------------------------------------------------
-`harbor-server` used to bake the whole 5,000-task Harbor suite (216MB extracted) because Harbor
-needed real task directories: it built a per-task sandbox image from `environment/`, ran its own
-verifier from `tests/`, and read `task.toml` for all of it. `server/opencode_direct.py` does none
-of that -- it runs `opencode` in the harness container itself and `../rle` does the grading -- so
-the only things it still needs per task are the instruction text, the bucket coordinates for the
-input files, and the agent timeout.
+Why a separate index instead of the whole suite
+-----------------------------------------------
+`server/opencode_direct.py` runs `opencode` in the harness container and `../rle` does the
+grading, so the only things it needs per task are the instruction text, the bucket coordinates
+for the input files, and the agent timeout. The upstream suite is 216MB extracted.
 
 Shipping the rest is not merely wasteful, it is unsafe. Every `task.toml` carries
 `metadata.gold_answer` and `verifier.env.EXPECTED_ANSWER`, and every `instruction.md` embeds its
@@ -16,16 +13,14 @@ agent with a shell can `grep -rlF "<its own question>"` the suite, land on its o
 and read its own gold answer without doing any analysis. Measured on this suite, that resolves the
 agent's own answer for 25 of 25 sampled tasks.
 
-That was harmless while the agent ran in a remote Harbor sandbox, because Harbor only ever uploads
-a task's `environment/` directory (`harbor.environments.e2b`), never the task root. Running the
-agent in the harness container removes that boundary. Filesystem permissions could hide the suite,
-but not shipping the answers at all is the stronger and simpler guarantee: the grading key lives
-only in `../rle`'s container, which hands the agent no shell.
+Filesystem permissions could hide the suite, but not shipping the answers at all is the stronger
+and simpler guarantee: the grading key lives only in `../rle`'s container, which hands the agent
+no shell.
 
 Output
 ------
-`harbor-server/vendor/task-index.json.gz`: a gzipped JSON array, one entry per task, ordered
-exactly as openenv orders task directories -- a task's index is its identity, and `../rle`'s
+`harness/vendor/task-index.json.gz`: a gzipped JSON array, one entry per task, ordered by task
+directory name with dotted directories skipped -- a task's index is its identity, and `../rle`'s
 answer key is keyed by it, so the order is load-bearing rather than cosmetic.
 """
 
@@ -42,14 +37,14 @@ from pathlib import Path
 from typing import Any
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-TARBALL = REPO_ROOT / "harbor-server" / "vendor" / "harbor-datasets.tar.gz"
-INDEX = REPO_ROOT / "harbor-server" / "vendor" / "task-index.json.gz"
+TARBALL = REPO_ROOT / "harness" / "vendor" / "harbor-datasets.tar.gz"
+INDEX = REPO_ROOT / "harness" / "vendor" / "task-index.json.gz"
 
-# Docker cannot COPY above its build context (`harbor-server/`), so the fetcher is mirrored into
+# Docker cannot COPY above its build context (`harness/`), so the fetcher is mirrored into
 # `vendor/` for the image to pick up. `tools/pull_bucket.py` stays the source of truth; this copy is
 # generated, and `--verify` fails when the two drift.
 FETCHER_SRC = REPO_ROOT / "tools" / "pull_bucket.py"
-FETCHER_DST = REPO_ROOT / "harbor-server" / "vendor" / "pull_bucket.py"
+FETCHER_DST = REPO_ROOT / "harness" / "vendor" / "pull_bucket.py"
 
 # Keys that must never reach the harness container. Checked against the emitted index rather than
 # assumed from the code that builds it, so that adding a field to the row below cannot quietly
@@ -62,7 +57,7 @@ DEFAULT_AGENT_TIMEOUT_SEC = 600.0
 def _task_rows(tf: tarfile.TarFile) -> list[dict[str, Any]]:
     """Builds one row per task, ordered by task directory name.
 
-    openenv sorts task directories by name and skips dotted ones (`openenv.harbor.tasks`); this
+    Task directories sort by name and dotted ones are skipped; this
     mirrors that rather than trusting tar member order, which follows however the archive was
     written.
     """

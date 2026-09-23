@@ -1,7 +1,6 @@
 """Pull this task's dataset files into /home/user/input/.
 
-Invoked by Harbor's [environment.healthcheck] command (declared in task.toml) -- runs after
-container start, before the agent.
+Invoked once per rollout by the harness server, before the agent starts.
 
 Reads from a plain public HTTPS object store instead of a Hugging Face bucket: no SDK, no
 credentials, no HF_TOKEN, nothing to install beyond the standard library. The store grants

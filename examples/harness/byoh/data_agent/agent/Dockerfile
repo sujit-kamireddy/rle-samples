@@ -1,6 +1,6 @@
-# Package index for this build. Defaults to public PyPI; override it where that
-# is unreachable -- see "Build fails downloading Python packages" in
-# ../../../gym/openenv/README.md.
+# Package index for this build. Defaults to public PyPI. Where that is blocked,
+# override it with --build-arg PIP_INDEX_URL=<your mirror>, or rely on the
+# fallback below, which is probed only when the primary index is unreachable.
 ARG PIP_INDEX_URL=https://pypi.org/simple
 
 # Index to fall back to when the one above cannot be reached. Set it empty to
@@ -27,9 +27,9 @@ COPY app.py .
 
 EXPOSE 8080
 
-# Base URL of the separately deployed harbor-server (../harbor-server). This
-# has no default because a shim with no Harbor server to call cannot do
+# Base URL of the separately deployed harness (../harness). This
+# has no default because a shim with no harness server to call cannot do
 # anything useful -- fail at startup, not on the first rollout.
-ENV HARBOR_SERVER_URL=""
+ENV HARNESS_SERVER_URL=""
 
 CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8080"]

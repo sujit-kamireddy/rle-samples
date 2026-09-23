@@ -1,4 +1,4 @@
-"""Rebuilds the vendored task-metadata answer key from the Harbor dataset tarball.
+"""Rebuilds the vendored task-metadata answer key from the upstream dataset tarball.
 
 `rle/server/env.py` grades a rollout itself rather than trusting a score
 relayed back through the harness, so it needs each task's expected answer and
@@ -6,10 +6,10 @@ reward mode locally. That is what this script bakes.
 
 It also bakes the sensitive-data label the compliance check grades against
 (`has_pii`). Labelling happens here, offline and once, because the CSVs are not
-available at grading time -- `environment/pull_bucket.py` pulls them into the
-sandbox at container start, and the sandbox is gone by the time `/grade` runs.
+available at grading time -- `pull_bucket.py` pulls them into the harness
+container when the rollout starts, and they are gone by the time `/grade` runs.
 
-Ordering is load-bearing. Harbor addresses a task by integer `task_index`, and
+Ordering is load-bearing. A task is addressed by integer `task_index`, and
 that index is the position in the directory listing sorted by task directory
 name, so entries are emitted in exactly that order and `--verify` guards it.
 
@@ -36,7 +36,7 @@ from pii_taxonomy import classify  # noqa: E402
 
 HERE = pathlib.Path(__file__).resolve().parent
 SAMPLE_ROOT = HERE.parent
-TARBALL = SAMPLE_ROOT / "harbor-server" / "vendor" / "harbor-datasets.tar.gz"
+TARBALL = SAMPLE_ROOT / "harness" / "vendor" / "harbor-datasets.tar.gz"
 OUT_DIR = SAMPLE_ROOT / "rle" / "server" / "vendor" / "task-meta"
 OVERRIDES = HERE / "pii_overrides.json"
 DATASET = "FineEnvs__data-agent-harbor-train"

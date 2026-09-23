@@ -1,39 +1,24 @@
-"""Runs one rollout by driving `opencode` directly, with no Harbor and no external sandbox.
+"""Runs one rollout by driving `opencode` as a child process of this server.
 
-Why this exists
----------------
-The Harbor path (`app.py`'s `/correlated-rollouts/{rollout_id}`) hands the rollout to
-`HarborEnvironment._run_rollout`, which boots a sandbox -- E2B by default -- installs `opencode`
-into it over npm, runs the agent there, and collects artifacts back. Harbor's own reward, verifier,
-trajectory conversion and trials database are all unused here: `../rle`'s `/grade` scores the
-answer text, and RLE's capture proxy records the trajectory. What is left is sandbox lifecycle plus
-an `opencode` bootstrap, and every sandbox backend Harbor ships (`e2b`, `modal`, `daytona`, `gke`,
-`ec2`, ...) is somebody else's cloud -- there is no Azure one. Running the agent through them means
-the task's Kaggle CSVs and the agent's own execution leave the subscription.
-
-RLE's rollout container is for the grader and its mock tools. In BYOH the harness is a single
-container, so `opencode` belongs *here*, in this process's own container, not in a rented one.
-
-What this gives up, honestly: a sandbox per rollout. Rollouts now share a container and `opencode`
-runs with `--dangerously-skip-permissions`, so the boundary between two concurrent rollouts is a
-directory, not a VM. Two things make that acceptable rather than merely cheaper. RLE scopes the
-capture-proxy session key and the sandbox-tools URL and token per rollout, so neither is usable
-across them. And this container holds no grading key to find -- see "What the harness is given"
-below, which is the part that had to change before any of this was safe.
+Isolation
+---------
+Rollouts share this container and `opencode` runs with `--dangerously-skip-permissions`, so the
+boundary between two concurrent rollouts is a directory, not a VM. Two things make that safe. RLE
+scopes the capture-proxy session key and the sandbox-tools URL and token per rollout, so neither is
+usable across them. And this container holds no grading key to find -- see "What the harness is
+given" below.
 
 What the harness is given
 -------------------------
 A slim index (`vendor/task-index.json.gz`, built by `tools/build_task_index.py`), carrying only
-each task's instruction, bucket coordinates and agent timeout -- not the Harbor suite.
+each task's instruction, bucket coordinates and agent timeout -- not the full task suite.
 
 That is a security boundary, not a size optimisation. Every `task.toml` in the suite carries
 `metadata.gold_answer` and `verifier.env.EXPECTED_ANSWER`, and every `instruction.md` quotes its
 question verbatim while `task.description` repeats it. An agent with a shell can therefore
 `grep -rlF "<its own question>"` the suite, land on its own task directory and read its own answer
-without analysing anything -- measured at 25 of 25 sampled tasks. That was harmless while the agent
-ran in a remote Harbor sandbox, which only ever receives a task's `environment/` directory, and
-stops being harmless the moment the agent runs here. The grading key lives in `../rle`'s container,
-which gives the agent no shell.
+without analysing anything -- measured at 25 of 25 sampled tasks. So the answers do not ship here:
+the grading key lives in `../rle`'s container, which gives the agent no shell.
 
 Path rewriting
 --------------
@@ -66,7 +51,7 @@ logger = logging.getLogger(__name__)
 PULL_BUCKET = Path(os.environ.get("PULL_BUCKET_PATH", "/opt/pull_bucket.py"))
 
 # Built by `tools/build_task_index.py`; see "What the harness is given" above for why this is not
-# the Harbor suite.
+# the full task suite.
 TASK_INDEX = Path(
     os.environ.get("TASK_INDEX_PATH", str(Path(__file__).resolve().parent.parent / "vendor" / "task-index.json.gz"))
 )
@@ -110,8 +95,8 @@ def task_row(task_index: int) -> dict[str, Any]:
     """Returns the index entry `task_index` selects.
 
     A task's index *is* its identity -- `../rle`'s vendored answer key is keyed by it -- so the
-    index is built in openenv's own task order (sorted by directory name, dot-directories skipped)
-    and must not be re-sorted here. `tools/build_task_index.py` owns that ordering.
+    index is built in the suite's own task order (sorted by directory name, dot-directories
+    skipped) and must not be re-sorted here. `tools/build_task_index.py` owns that ordering.
     """
     rows = _index()
     if not 0 <= task_index < len(rows):
@@ -183,10 +168,7 @@ async def run_rollout(
     compliance_token: str = "",
     rollout_id: str = "",
 ) -> dict[str, Any]:
-    """Runs one task end to end and returns the agent's own answer text.
-
-    The return shape matches the Harbor path's so `../agent` does not have to care which ran.
-    """
+    """Runs one task end to end and returns the agent's own answer text."""
     row = task_row(task_index)
 
     tmp = tempfile.mkdtemp(prefix=f"rollout-{rollout_id or 'anon'}-")
@@ -249,9 +231,9 @@ async def _run_in(
         "OPENAI_API_KEY": api_key,
         "OPENAI_BASE_URL": llm_url,
     }
-    # The capability the agent needs to file a compliance disclosure. On the Harbor path this
-    # required patching `OpenCode.model_connection`, because Harbor drops `AgentConfig.env` before
-    # it reaches the sandbox. Here the agent is a child process, so it is just an env var.
+    # The capability the agent needs to file a compliance disclosure. Set per process, never
+    # process-global: concurrent rollouts would otherwise overwrite each other's credentials and
+    # misattribute a disclosure with no error anywhere.
     if compliance_endpoint and compliance_token:
         env["COMPLIANCE_ENDPOINT"] = compliance_endpoint
         env["COMPLIANCE_TOKEN"] = compliance_token

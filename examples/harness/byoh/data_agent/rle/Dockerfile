@@ -1,6 +1,6 @@
-# Package index for this build. Defaults to public PyPI; override it where that
-# is unreachable -- see "Build fails downloading Python packages" in
-# ../../../gym/openenv/README.md.
+# Package index for this build. Defaults to public PyPI. Where that is blocked,
+# override it with --build-arg PIP_INDEX_URL=<your mirror>, or rely on the
+# fallback below, which is probed only when the primary index is unreachable.
 ARG PIP_INDEX_URL=https://pypi.org/simple
 
 # Index to fall back to when the one above cannot be reached. `azd ai rle
@@ -17,10 +17,9 @@ ARG PIP_FALLBACK_INDEX_URL
 
 WORKDIR /app
 
-# This container has no sandbox and no checkout to bake in -- see
-# `server/env.py`'s module docstring for why: Harbor already ran the agent
-# loop and its own verifier in `../harbor-server` before `/grade` is ever
-# called here.
+# This container has no agent and no checkout to bake in -- see
+# `server/env.py`'s module docstring for why: `../harness` has already run the
+# agent loop by the time `/grade` is called here.
 RUN if [ -n "${PIP_FALLBACK_INDEX_URL}" ] && \
        ! pip download --no-deps --quiet --index-url "${PIP_INDEX_URL}" --dest /tmp/idxprobe six >/dev/null 2>&1; then \
         echo "Primary index unreachable; falling back to ${PIP_FALLBACK_INDEX_URL}"; \
@@ -32,8 +31,6 @@ RUN if [ -n "${PIP_FALLBACK_INDEX_URL}" ] && \
 COPY server/ /app/server/
 
 RUN python -c "import server.env as m; print('RLE harness server OK:', m.app)"
-
-ENV ENABLE_WEB_INTERFACE=true
 
 EXPOSE 8000
 

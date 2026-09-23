@@ -4,14 +4,13 @@ Deploy this anywhere reachable over HTTPS, then point ``rle/rle.toml``'s
 ``baseUrl`` at ``<this-url>/invoke`` and run ``azd ai rle publish``.
 
 Unlike a harness that runs its own agent loop, this shim does not. The agent
-loop, sandbox, and tool calls all live inside a separately deployed Harbor
-environment server (``../harbor-server``) -- Hugging Face's `OpenEnv`
-packaging of the `Harbor` project, the harness behind the
-`FineEnvs/data-agent-harbor-*` datasets on Hugging Face. This shim's only job
-is translating between RLE's `Harness`/`BYOH` invocation contract and Harbor's
-own `run_rollout` call, so that RLE's rollout graph and capture proxy see the
-one call Harbor's agent loop makes to the model. See ``../README.md`` for the
-three-piece layout (harbor-server / agent / rle) and how they deploy together.
+loop and its tool calls live inside a separately deployed harness server
+(``../harness``), which runs `opencode` against one task per request. This
+shim's only job is translating between RLE's `Harness`/`BYOH` invocation
+contract and that server's rollout call, so that RLE's rollout graph and
+capture proxy see every call the agent loop makes to the model. See
+``../README.md`` for the three-piece layout (harness / agent / rle) and how
+they deploy together.
 
 RLE invokes a harness asynchronously. The start request only starts work; the
 answer is collected from a per-invocation resource RLE derives from the
@@ -27,8 +26,8 @@ no credential, it is also what authorizes those calls. Key your own state on
 projects can legitimately send the same one to a shared harness.
 
 1. Start. RLE POSTs the rollout to the registered URL and the harness
-   acknowledges with ``202`` as soon as it has taken ownership -- before Harbor's
-   `run_rollout` has run. ``retry_after_ms`` is advisory; RLE clamps it.
+   acknowledges with ``202`` as soon as it has taken ownership -- before the
+   rollout has run. ``retry_after_ms`` is advisory; RLE clamps it.
 
        POST <base-url>
        {
@@ -49,10 +48,9 @@ projects can legitimately send the same one to a shared harness.
        202 Accepted
        {"retry_after_ms": 500}
 
-2. Poll. RLE GETs the rollout resource until it reports an outcome. Harbor's
-   `run_rollout` is one blocking call that boots the sandbox, runs the agent to
-   completion, and grades the workspace, so this can poll for minutes before an
-   outcome appears.
+2. Poll. RLE GETs the rollout resource until it reports an outcome. A rollout is
+   one blocking call that fetches the task's input files and runs the agent to
+   completion, so this can poll for minutes before an outcome appears.
 
        GET <base-url>/rollouts/{operation_id}
 
@@ -60,12 +58,12 @@ projects can legitimately send the same one to a shared harness.
        200 {"status": "succeeded", "output_text": "{\"answer_text\": \"...\", \"split\": \"...\", ...}"}
        200 {"status": "failed", "error": {"message": "..."}}
 
-   ``output_text`` is a JSON string, not free text: the sandbox's own raw
+   ``output_text`` is a JSON string, not free text: the agent's own raw
    answer (`answer_text`) plus the task selector, produced by
-   `run_harbor_rollout` below. RLE forwards this same string to `../rle`'s
+   `run_harness_rollout` below. RLE forwards this same string to `../rle`'s
    `/grade` verbatim, as `agent_response` -- that is how the answer gets
    there. This shim never computes or even sees a `reward`; `/grade` grades
-   `answer_text` itself, against its own vendored copy of Harbor's grader.
+   `answer_text` itself, against its own vendored copy of the grader.
 
 3. Withdraw. If RLE stops waiting -- the caller disconnected, or the rollout
    deadline passed -- it DELETEs the rollout resource so the harness can stop
@@ -77,7 +75,7 @@ projects can legitimately send the same one to a shared harness.
 
 RLE never attaches caller, workspace, or identity headers to these requests, so
 protect the endpoint yourself (for example, require a shared secret header and
-validate it before dispatching to Harbor).
+validate it before dispatching to ``../harness``).
 """
 
 from __future__ import annotations
@@ -99,20 +97,17 @@ logger = logging.getLogger("byoh-data-agent")
 
 RETRY_AFTER_MS = 500
 
-# The separately deployed harbor-server (../harbor-server) that owns the
-# sandbox, the agent loop, and Harbor's own grader. This shim never runs any
-# of that itself -- it only tells Harbor which task to run and which model
-# endpoint to call, and relays back the sandbox's raw answer text. See
-# `run_harbor_rollout` for what it relays and why grading it is `../rle`'s
-# job, not this shim's.
-HARBOR_SERVER_URL = os.environ["HARBOR_SERVER_URL"]
-DEFAULT_SPLIT = os.environ.get("HARBOR_SPLIT", "FineEnvs/data-agent-harbor-train")
-DEFAULT_HARNESS = os.environ.get("HARBOR_HARNESS", "opencode")
-DEFAULT_SANDBOX = os.environ.get("HARBOR_SANDBOX", "e2b")
-# `run_rollout` boots a sandbox, runs an agent to completion, and grades it in
-# one blocking call -- minutes, not seconds. httpx's own default (5s) would
-# abort a rollout that was actually still working.
-_HARBOR_ROLLOUT_TIMEOUT_S = float(os.environ.get("HARBOR_ROLLOUT_TIMEOUT_S", "1800"))
+# The separately deployed harness (../harness) that owns the agent loop. This
+# shim never runs any of that itself -- it only tells the harness server which
+# task to run and which model endpoint to call, and relays back the agent's raw
+# answer text. See `run_harness_rollout` for what it relays and why grading it
+# is `../rle`'s job, not this shim's.
+HARNESS_SERVER_URL = os.environ["HARNESS_SERVER_URL"]
+DEFAULT_SPLIT = os.environ.get("HARNESS_SPLIT", "FineEnvs/data-agent-harbor-train")
+# One rollout is a single blocking call that runs an agent to completion --
+# minutes, not seconds. httpx's own default (5s) would abort a rollout that was
+# actually still working.
+_HARNESS_ROLLOUT_TIMEOUT_S = float(os.environ.get("HARNESS_ROLLOUT_TIMEOUT_S", "1800"))
 
 
 class RolloutContext(BaseModel):
@@ -156,8 +151,8 @@ class RolloutStore:
     replica that has never heard of the rollout cannot answer for it.
 
     The record is created by the start request, before the acknowledgement is
-    written, because RLE's first poll is immediate and may arrive before Harbor
-    has done anything at all.
+    written, because RLE's first poll is immediate and may arrive before the
+    harness has done anything at all.
     """
 
     def __init__(self) -> None:
@@ -199,15 +194,14 @@ class RolloutStore:
 ROLLOUTS = RolloutStore()
 
 
-async def run_harbor_rollout(rollout_id: str, rollout_context: RolloutContext, agent_input: dict[str, Any]) -> str:
-    """Asks the deployed harbor-server to run one task, pointed at RLE's model.
+async def run_harness_rollout(rollout_id: str, rollout_context: RolloutContext, agent_input: dict[str, Any]) -> str:
+    """Asks the deployed harness to run one task, pointed at RLE's model.
 
-    Posts to harbor-server's `/correlated-rollouts/{rollout_id}` rather than calling
-    `HarborEnv.run_rollout` directly only to get harbor-server's own request logging
-    for free; the two otherwise trigger the identical rollout.
+    Posts to harness's `/correlated-rollouts/{rollout_id}`, passing the rollout id
+    in the path so both sides log the same correlation key.
 
-    Returns the sandbox's raw answer text (`answer_text`, harvested by harbor-server
-    from `/workdir/answer.txt` before its sandbox was torn down) plus the task
+    Returns the agent's raw answer text (`answer_text`, read by harness off the
+    rollout's own working directory once the agent exits) plus the task
     selector, as a JSON string that becomes this invocation's `output_text`. RLE
     hands that same string back verbatim as `agent_response` on the `/grade` call
     (see `../rle/server/env.py`), which is what lets `/grade` grade it there --
@@ -216,29 +210,25 @@ async def run_harbor_rollout(rollout_id: str, rollout_context: RolloutContext, a
     """
     task_index = agent_input.get("task_index", 0)
     split = agent_input.get("split", DEFAULT_SPLIT)
-    harness = agent_input.get("harness", DEFAULT_HARNESS)
-    sandbox = agent_input.get("sandbox", DEFAULT_SANDBOX)
 
-    async with httpx.AsyncClient(timeout=_HARBOR_ROLLOUT_TIMEOUT_S) as client:
+    async with httpx.AsyncClient(timeout=_HARNESS_ROLLOUT_TIMEOUT_S) as client:
         response = await client.post(
-            f"{HARBOR_SERVER_URL}/correlated-rollouts/{rollout_id}",
+            f"{HARNESS_SERVER_URL}/correlated-rollouts/{rollout_id}",
             json={
                 "split": split,
                 "task_index": task_index,
-                "harness": harness,
-                "sandbox": sandbox,
-                # `llm_url`/`api_key` point Harbor's agent loop at RLE's capture
-                # proxy instead of a real model endpoint -- the same wiring
+                # `llm_url`/`api_key` point the agent loop at RLE's capture proxy
+                # instead of a real model endpoint -- the same wiring
                 # `code_repair/agent/app.py`'s `create_model_client` does for a
-                # harness that calls the model directly. Here Harbor makes the
-                # call, but the endpoint it is told to call is still RLE's.
+                # harness that calls the model directly. Here `opencode` makes
+                # the call, but the endpoint it is told to call is still RLE's.
                 "llm_url": rollout_context.model_endpoint,
                 "api_key": rollout_context.model_api_key,
                 # Not rollout parameters: this is the capability the agent needs
-                # inside the sandbox to file a compliance disclosure against
-                # `../rle`'s `/tools/report_sensitive_data_access`.
-                # `../harbor-server` lifts them back out and turns them into
-                # sandbox environment variables -- see its `rollout_tools.py`.
+                # in order to file a compliance disclosure against `../rle`'s
+                # `/tools/report_sensitive_data_access`. `../harness` lifts
+                # them back out and turns them into environment variables on the
+                # `opencode` process.
                 "sandbox_tools_endpoint": rollout_context.sandbox_tools_endpoint,
                 "sandbox_tools_bearer_token": rollout_context.sandbox_tools_token,
             },
@@ -247,7 +237,7 @@ async def run_harbor_rollout(rollout_id: str, rollout_context: RolloutContext, a
         result = response.json()
 
     if not result.get("ok", True):
-        raise RuntimeError(result.get("error") or "Harbor rollout failed with no error message")
+        raise RuntimeError(result.get("error") or "Rollout failed with no error message")
 
     # `../rle/server/env.py`'s `/grade` parses this same JSON back out of
     # `agent_response` -- keep the key names in sync with that.
@@ -263,13 +253,13 @@ async def run_harbor_rollout(rollout_id: str, rollout_context: RolloutContext, a
 
 
 async def run_rollout(request: InvocationRequest) -> None:
-    """Runs the Harbor rollout and records where the poll can find the answer.
+    """Runs the rollout and records where the poll can find the answer.
 
     Nothing is raised out of here. The start request has already been answered by
     the time this runs, so a failure has nowhere to go except the poll resource.
     """
     try:
-        output_text = await run_harbor_rollout(
+        output_text = await run_harness_rollout(
             request.rollout_id, request.rollout_context, request.agent_input
         )
     except asyncio.CancelledError:

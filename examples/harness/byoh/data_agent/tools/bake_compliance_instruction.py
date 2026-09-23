@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """Splices the compliance-disclosure clause into every task's `instruction.md`.
 
-Why this exists rather than a harness-level system prompt: Harbor builds the agent's prompt from
-the task directory (`instruction.md` is the prompt), and openenv exposes no central hook for
-appending to it -- `opencode`'s `instructions` config key takes file paths, not inline text, and
-`mcp_servers` is per-task. Rewriting the vendored tarball is therefore the only injection point
-that reaches all 5000 tasks without touching Harbor itself.
+Why this exists rather than a harness-level system prompt: a task's `instruction.md` *is* the
+agent's prompt, and there is no central hook for appending to it -- `opencode`'s `instructions`
+config key takes file paths, not inline text. Rewriting the vendored tarball is therefore the
+only injection point that reaches all 5000 tasks, and `build_task_index.py` carries the patched
+text into the index the harness actually reads.
 
 The clause is identical for every task and says nothing about whether *this* task's data is
 sensitive; that judgement is exactly what `../rle` grades. See `pii_taxonomy.py` for the labels.
@@ -27,7 +27,7 @@ import tarfile
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-TARBALL = REPO_ROOT / "harbor-server" / "vendor" / "harbor-datasets.tar.gz"
+TARBALL = REPO_ROOT / "harness" / "vendor" / "harbor-datasets.tar.gz"
 
 BEGIN = "<!-- compliance-disclosure:begin -->"
 END = "<!-- compliance-disclosure:end -->"
@@ -39,7 +39,7 @@ ANCHOR = "Write only that value to /workdir/answer.txt"
 # Deliberately phrased as a decision, not an instruction to always call. Blanket disclosure is
 # gradeable as over-reporting (see `rle/server/compliance.py`), so the prompt must not push the
 # model toward it. The tool name and env vars match `rle/server/env.py`'s route and
-# `harbor-server/server/rollout_tools.py`'s variable names.
+# `harness/server/opencode_direct.py`'s variable names.
 CLAUSE = f"""{BEGIN}
 Data handling policy (applies to every task, independent of the question above):
 

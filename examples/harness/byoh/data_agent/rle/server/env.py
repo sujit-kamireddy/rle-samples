@@ -9,7 +9,7 @@ reads. Modelling it as a stepped MDP meant carrying an `Action`, an
 `Observation` and a `step()` that every real invocation ignored, plus ten
 catalogue and schema routes RLE never calls.
 
-The agent loop runs inside the separately deployed ``../harbor-server``,
+The agent loop runs inside the separately deployed ``../harness``,
 driven by ``../agent``. This container holds the answer key, serves one
 mocked compliance tool, and scores the result.
 
@@ -30,16 +30,16 @@ See `../rle/tests/test_reset_contract.py`.
 
 `/grade` computes `reward` itself, rather than trusting a number `../agent`
 reports: `reward` alone is unforgeable-*looking* but cheap to fabricate,
-since Harbor's grader (vendored below, byte-identical across every task in
+since the grader (vendored below, byte-identical across every task in
 this dataset) is a pure, public function of `(gold, candidate)` -- a
 misbehaving harness could compute the winning `candidate` string and just
 claim the score it produces. What `/grade` trusts instead is the *raw
-answer text* the sandbox produced (`answer_text`, harvested by
-`../harbor-server` from `/workdir/answer.txt` via Harbor's own `artifacts`
-mechanism -- see `../harbor-server/server/app.py`), which it grades here
-with its own copy of the same deterministic function Harbor itself runs.
-This still trusts that `answer_text` is what the sandbox actually wrote
-(nothing outside the sandbox can prove that independently), but it removes
+answer text* the agent produced (`answer_text`, read by
+`../harness` off the rollout's own working directory once the agent exits
+-- see `../harness/server/app.py`), which it grades here
+with its own copy of the same deterministic function.
+This still trusts that `answer_text` is what the agent actually wrote
+(nothing outside the harness can prove that independently), but it removes
 the ability to claim an arbitrary `reward` for an arbitrary answer.
 """
 
@@ -64,7 +64,7 @@ _TASK_META_DIR = _VENDOR_DIR / "task-meta"
 def _task_meta_path(split: str) -> Path:
     # Matches the on-disk convention the vendored dataset tarball itself
     # uses for HF repo ids (`FineEnvs/data-agent-harbor-train` ->
-    # `FineEnvs__data-agent-harbor-train`) -- see `../harbor-server`'s
+    # `FineEnvs__data-agent-harbor-train`) -- see `../harness`'s
     # dataset vendoring script for the same substitution.
     return _TASK_META_DIR / f"{split.replace('/', '__')}.json.gz"
 
@@ -166,12 +166,12 @@ async def grade_rollout(
     agent_response: str = Body(default=""),
     rollout_id: Optional[str] = Header(default=None, alias=compliance.ROLLOUT_ID_HEADER),
 ) -> dict[str, Any]:
-    """Grades `answer_text` out of `agent_response` with Harbor's own grader.
+    """Grades `answer_text` out of `agent_response` with the dataset's own grader.
 
     `agent_response` is `../agent`'s `/invoke` `output_text`, forwarded by RLE
-    verbatim in this request's body -- see `run_harbor_rollout` in
+    verbatim in this request's body -- see `run_harness_rollout` in
     `../agent/app.py` for what it contains: the task selector (`split`,
-    `task_index`) and the sandbox's raw `answer_text`, nothing more. `reward`
+    `task_index`) and the agent's raw `answer_text`, nothing more. `reward`
     is computed here, not read out of anything `../agent` sent -- see this
     module's docstring for why.
 
@@ -210,7 +210,7 @@ async def grade_rollout(
             "reward": 0.0,
             "is_success": False,
             "info": {
-                "reason": "Harbor rollout did not complete or did not report an answer.",
+                "reason": "Rollout did not complete or did not report an answer.",
                 "ok": ok,
                 "error": reported.get("error"),
             },

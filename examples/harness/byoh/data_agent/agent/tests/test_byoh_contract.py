@@ -19,7 +19,7 @@ from pathlib import Path
 
 import pytest
 
-os.environ.setdefault("HARBOR_SERVER_URL", "https://harbor.invalid")
+os.environ.setdefault("HARNESS_SERVER_URL", "https://harbor.invalid")
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from fastapi.testclient import TestClient  # noqa: E402
@@ -76,7 +76,7 @@ def test_dispatch_acknowledges_with_202_and_a_poll_interval(monkeypatch):
 
         await asyncio.sleep(3600)
 
-    monkeypatch.setattr("app.run_harbor_rollout", never_finishes)
+    monkeypatch.setattr("app.run_harness_rollout", never_finishes)
     with TestClient(app) as client:
         response = client.post("/invoke", json={
             "rollout_id": "rollout-2",
@@ -101,7 +101,7 @@ def test_poll_reports_the_answer_under_output_text(monkeypatch):
     async def succeeds(rollout_id, rollout_context, agent_input):
         return "Web Development"
 
-    monkeypatch.setattr("app.run_harbor_rollout", succeeds)
+    monkeypatch.setattr("app.run_harness_rollout", succeeds)
     with TestClient(app) as client:
         client.post("/invoke", json={
             "rollout_id": "rollout-3",
@@ -122,7 +122,7 @@ def test_a_failed_rollout_is_reported_on_the_poll_not_the_dispatch(monkeypatch):
     async def explodes(rollout_id, rollout_context, agent_input):
         raise RuntimeError("sandbox refused to start")
 
-    monkeypatch.setattr("app.run_harbor_rollout", explodes)
+    monkeypatch.setattr("app.run_harness_rollout", explodes)
     with TestClient(app) as client:
         assert client.post("/invoke", json={
             "rollout_id": "rollout-4",

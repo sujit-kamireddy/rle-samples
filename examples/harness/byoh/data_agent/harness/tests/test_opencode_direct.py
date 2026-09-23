@@ -1,8 +1,9 @@
-"""Tests for the direct-opencode rollout path.
+"""Tests for the opencode rollout path.
 
 The ordering test is the important one. A task's index is its identity: `../../rle`'s answer key is
-keyed by position, so an index built in a different order than openenv's would not fail anything --
-it would grade every rollout against the wrong task's answer and still look like a working system.
+keyed by position, so an index built in a different order than the suite's would not fail anything
+-- it would grade every rollout against the wrong task's answer and still look like a working
+system.
 """
 
 from __future__ import annotations
@@ -43,7 +44,7 @@ def test_index_order_matches_the_answer_key(rows):
     key = json.loads(gzip.decompress(ANSWER_KEY.read_bytes()))
     assert len(key) == len(rows)
     for i, (entry, row) in enumerate(zip(key, rows)):
-        # Harbor's `[task] name` carries a suite prefix (`train-verify/...`) that the directory
+        # The suite's `[task] name` carries a prefix (`train-verify/...`) that the directory
         # name does not; the part after it is the task identity.
         _, _, name = entry["task_name"].partition("/")
         assert name == row["name"], f"index {i} disagrees with the answer key"

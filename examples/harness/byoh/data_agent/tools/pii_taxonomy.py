@@ -7,8 +7,8 @@ given task will be labelled.
 
 Two things it is *not*:
 
-  - It is not column-level. Harbor tasks ship no CSVs; `environment/pull_bucket.py`
-    fetches them from the Hugging Face bucket when the container starts, so the
+  - It is not column-level. Tasks ship no CSVs; `pull_bucket.py`
+    fetches them from the object store when the rollout starts, so the
     real column names do not exist at labelling time or at grading time. The
     signal available offline is the Kaggle dataset slug, the question text and
     the file names quoted in `instruction.md`.

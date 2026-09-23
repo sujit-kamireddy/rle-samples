@@ -8,23 +8,22 @@ store that we own, fetched with nothing but the standard library -- see `tools/p
 why the file list travels as a per-prefix `_manifest.txt`.
 
 Three edits per task, all inside the vendored tarball because the task directory *is* the contract
-Harbor reads:
+the build tools read:
 
   * `task.toml`  -- `HF_BUCKET` becomes `BUCKET_BASE_URL`; the `HF_TOKEN` passthrough is dropped.
+    This is the edit this sample actually consumes: `build_task_index.py` lifts
+    `BUCKET_BASE_URL` into `harness/vendor/task-index.json.gz`, and the harness fetches with its
+    own `/opt/pull_bucket.py`.
   * `environment/pull_bucket.py` -- replaced wholesale with the stdlib fetcher.
   * `environment/Dockerfile` -- gains a `COPY` that installs that fetcher over the one baked into
     the base image.
 
-That third edit is the one that makes the other two take effect, and it is easy to miss. The task
-`environment/` directory is *not* uploaded into the sandbox: Harbor skips the upload whenever an
-`environment/Dockerfile` exists (`harbor.environments.definition.should_upload_environment_dir`),
-and these tasks all have one. The upstream Dockerfile is `FROM ...:base` plus a `WORKDIR` and
-copies nothing, so the `/opt/pull_bucket.py` the healthcheck runs is the one baked into
-`savatar101/env-data-agent-train:base` -- and that copy imports `huggingface_hub` and falls back to
-a hardcoded `HF_BUCKET` default when the variable is absent. Rewriting only `task.toml` would
-therefore not fail; it would quietly keep fetching from the upstream Hugging Face bucket. The
-`environment/` directory is the Docker build context for both the docker and E2B backends, so
-copying the file in is a one-liner.
+The last two matter only if you run the upstream suite in its original per-task sandbox, where
+the fetcher that actually executes is the one baked into
+`savatar101/env-data-agent-train:base` -- and that copy imports `huggingface_hub` and falls back
+to a hardcoded `HF_BUCKET` default when the variable is absent, so rewriting only `task.toml`
+would not fail, it would quietly keep fetching from the upstream Hugging Face bucket. They are
+kept so the tarball stays internally consistent.
 
 `KAGGLE_DATASET_NAME` and `BUCKET_PREFIX` are left alone: the prefixes already match the store's
 `<owner>__<dataset>` layout one-for-one, which is what made this swap a rename rather than a
@@ -44,7 +43,7 @@ import tarfile
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-TARBALL = REPO_ROOT / "harbor-server" / "vendor" / "harbor-datasets.tar.gz"
+TARBALL = REPO_ROOT / "harness" / "vendor" / "harbor-datasets.tar.gz"
 FETCHER = REPO_ROOT / "tools" / "pull_bucket.py"
 
 BASE_URL = "https://sujit-hf-datasets-d0dgfkeee4fxepga.b01.azurefd.net"
