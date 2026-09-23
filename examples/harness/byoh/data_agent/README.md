@@ -6,9 +6,9 @@ collection -- a suite of deterministic data-analysis agent tasks (built from
 task drops an agent into a sandboxed Jupyter-style workspace with a question
 about a dataset; Harbor's own deterministic grader scores the agent's answer.
 
-Unlike [`../code_repair`](../code_repair), the agent loop, the sandbox, and the
-grader are not implemented in this sample at all -- Harbor already owns all
-three. This sample is therefore three pieces instead of two:
+Unlike a typical BYOH sample, the agent loop, the sandbox, and the grader are
+not implemented in this sample at all -- Harbor already owns all three. This
+sample is therefore three pieces instead of two:
 
 - [`harbor-server/`](./harbor-server) -- a standalone `openenv.harbor` server.
   Deploy this once; it serves the Data Agent dataset over Harbor's Task API and
@@ -80,8 +80,17 @@ az acr login --name "<registry>"
 
 Local login does **not** grant the RLE service permission to pull your image.
 An administrator must grant that separately to the Foundry **project's
-system-assigned managed identity**. See [`../code_repair/README.md`](../code_repair/README.md#before-the-first-publish)
-for the full role-assignment steps -- they are identical here.
+system-assigned managed identity**, not your user or the parent account identity.
+Find the project's ARM resource ID in Azure portal (it ends in
+`/accounts/<account>/projects/<project>`, not the project's HTTPS endpoint).
+Ensure the project's system-assigned identity is enabled, then get its
+principal ID and the registry scope:
+
+```text
+az resource show --ids "<project-arm-resource-id>" --query identity.principalId --output tsv
+az acr show --name "<registry>" --query id --output tsv
+az role assignment create --assignee-object-id "<project-principal-id>" --assignee-principal-type ServicePrincipal --role AcrPull --scope "<registry-resource-id>"
+```
 
 ## 1. Deploy `harbor-server`
 
@@ -173,9 +182,11 @@ selection lives entirely in `--agent-input`.
 
 ## Reference: how RLE invokes your harness
 
-See [`../code_repair/README.md`](../code_repair/README.md#reference-how-rle-invokes-your-harness)
-for the full `/invoke`/poll/withdraw contract -- it is identical here. The one
-difference is what `agent/app.py` does with `rollout_context` once it has it:
+The full `/invoke`/poll/withdraw contract is documented in `agent/app.py`'s
+module docstring. In short: RLE invokes a harness asynchronously -- the start
+request only starts work, and the answer is collected from a per-invocation
+resource RLE derives from the registered URL. What `agent/app.py` does with
+`rollout_context` once it has it is the one thing worth calling out here:
 instead of calling the model directly, it hands `model_endpoint`/`model_api_key`
 to `harbor-server`'s `/correlated-rollouts/{rollout_id}`, which in turn calls
 Harbor's `run_rollout(llm_url=..., api_key=...)` and lets Harbor's agent loop

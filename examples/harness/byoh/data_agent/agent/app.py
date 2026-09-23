@@ -3,9 +3,9 @@
 Deploy this anywhere reachable over HTTPS, then point ``rle/rle.toml``'s
 ``baseUrl`` at ``<this-url>/invoke`` and run ``azd ai rle publish``.
 
-Unlike ``../../code_repair``, this harness does not run its own agent loop.
-The agent loop, sandbox, and tool calls all live inside a separately deployed
-Harbor environment server (``../harbor-server``) -- Hugging Face's `OpenEnv`
+Unlike a harness that runs its own agent loop, this shim does not. The agent
+loop, sandbox, and tool calls all live inside a separately deployed Harbor
+environment server (``../harbor-server``) -- Hugging Face's `OpenEnv`
 packaging of the `Harbor` project, the harness behind the
 `FineEnvs/data-agent-harbor-*` datasets on Hugging Face. This shim's only job
 is translating between RLE's `Harness`/`BYOH` invocation contract and Harbor's

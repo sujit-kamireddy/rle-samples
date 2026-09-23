@@ -1,17 +1,16 @@
 """RLE harness container for the FineEnvs data-agent tasks.
 
-Unlike ``../../code_repair``'s `rle/`, this environment owns no sandbox and
-mocks no tools: the sandbox, the agent loop, and Harbor's own grader all run
-inside the separately deployed ``../harbor-server``, driven by ``../agent``.
-This environment exists only so RLE has something to `/reset` and `/grade` --
-the two calls the `Harness`/`BYOH` subtype always makes regardless of what the
-harness itself does.
+This environment owns no sandbox and mocks no tools: the sandbox, the agent
+loop, and Harbor's own grader all run inside the separately deployed
+``../harbor-server``, driven by ``../agent``. This environment exists only so
+RLE has something to `/reset` and `/grade` -- the two calls the
+`Harness`/`BYOH` subtype always makes regardless of what the harness itself
+does.
 
 `/reset` is close to a no-op: this sample's harness ignores whatever it
 returns (`--agent-input` on the `azd ai rle rollout` command line already
 carries the Harbor task selector -- `task_index`, `split`, `harness`,
-`sandbox` -- so the issue text `code_repair`'s `/reset` hands over has no
-equivalent here).
+`sandbox` -- so `/reset` has no per-task payload to hand over here).
 
 `/grade` cannot re-run Harbor's own verifier -- it never touches the sandbox
 that ran it, and by the time `/grade` is called that sandbox may already be
