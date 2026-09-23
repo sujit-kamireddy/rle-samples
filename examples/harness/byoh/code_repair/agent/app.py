@@ -26,10 +26,10 @@ projects can legitimately send the same one to a shared harness.
          "operation_id": "...",
          "agent_input": {"...": "agent-specific input"},
          "rollout_context": {
-           "model_endpoint": "https://.../v1",
-           "model_api_key": "...",
-           "sandbox_tools_endpoint": "https://.../tools",
-           "sandbox_tools_token": "..."
+           "capture_proxy_endpoint": "https://.../rle/v1.0/capture-proxy/v1",
+           "capture_proxy_session_key": "...",
+           "sandbox_tools_endpoint": "https://.../rollouts/<rollout-id>/tools",
+           "sandbox_tools_bearer_token": "..."
          }
        }
 
@@ -88,10 +88,10 @@ RETRY_AFTER_MS = 500
 
 
 class RolloutContext(BaseModel):
-    model_endpoint: str
-    model_api_key: str
+    capture_proxy_endpoint: str
+    capture_proxy_session_key: str
     sandbox_tools_endpoint: str
-    sandbox_tools_token: str
+    sandbox_tools_bearer_token: str
 
 
 class InvocationRequest(BaseModel):
@@ -164,8 +164,8 @@ def create_model_client(rollout_context: RolloutContext) -> AsyncOpenAI:
     harness expects, while recording a detailed trajectory for the rollout graph.
     """
     return AsyncOpenAI(
-        base_url=rollout_context.model_endpoint,
-        api_key=rollout_context.model_api_key,
+        base_url=rollout_context.capture_proxy_endpoint,
+        api_key=rollout_context.capture_proxy_session_key,
     )
 
 
@@ -178,7 +178,7 @@ async def call_tool(rollout_context: RolloutContext, tool_name: str, arguments: 
             # which RLE forwards to the sandbox as a path it does not serve.
             f"{rollout_context.sandbox_tools_endpoint}/{tool_name}",
             json=arguments,
-            headers={"Authorization": f"Bearer {rollout_context.sandbox_tools_token}"},
+            headers={"Authorization": f"Bearer {rollout_context.sandbox_tools_bearer_token}"},
         )
         response.raise_for_status()
         return response.json()

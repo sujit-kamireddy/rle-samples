@@ -238,10 +238,10 @@ POST <base-url>/invoke
   "operation_id": "...",
   "agent_input": {"...": "agent-specific input"},
   "rollout_context": {
-    "model_endpoint": "...",
-    "model_api_key": "...",
+    "capture_proxy_endpoint": "...",
+    "capture_proxy_session_key": "...",
     "sandbox_tools_endpoint": "...",
-    "sandbox_tools_token": "..."
+    "sandbox_tools_bearer_token": "..."
   }
 }
 

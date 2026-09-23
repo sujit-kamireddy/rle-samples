@@ -41,10 +41,10 @@ projects can legitimately send the same one to a shared harness.
            "sandbox": "e2b"
          },
          "rollout_context": {
-           "model_endpoint": "https://.../v1",
-           "model_api_key": "...",
-           "sandbox_tools_endpoint": "https://.../tools",
-           "sandbox_tools_token": "..."
+           "capture_proxy_endpoint": "https://.../rle/v1.0/capture-proxy/v1",
+           "capture_proxy_session_key": "...",
+           "sandbox_tools_endpoint": "https://.../rollouts/<rollout-id>/tools",
+           "sandbox_tools_bearer_token": "..."
          }
        }
 
@@ -118,14 +118,15 @@ _HARBOR_ROLLOUT_TIMEOUT_S = float(os.environ.get("HARBOR_ROLLOUT_TIMEOUT_S", "18
 
 
 class RolloutContext(BaseModel):
-    model_endpoint: str
-    model_api_key: str
-    # RLE always sends these two regardless of whether a harness uses them.
-    # This sample's harness does not: there is no sandbox or tool to mock here
-    # (see `../rle/server/env.py`'s module docstring), so nothing calls out to
-    # `sandbox_tools_endpoint`.
+    # These names are RLE's wire contract, not ours. `capture_proxy_*` is the
+    # model route; `sandbox_tools_endpoint` addresses the per-rollout container
+    # that also serves `/reset` and `/grade` (tools are a sibling of those, not
+    # a path under them), and `sandbox_tools_bearer_token` is a rollout-scoped
+    # capability that expires with the rollout.
+    capture_proxy_endpoint: str
+    capture_proxy_session_key: str
     sandbox_tools_endpoint: str
-    sandbox_tools_token: str
+    sandbox_tools_bearer_token: str
 
 
 class InvocationRequest(BaseModel):
@@ -223,8 +224,8 @@ async def run_harbor_rollout(rollout_id: str, rollout_context: RolloutContext, a
                 # `code_repair/agent/app.py`'s `create_model_client` does for a
                 # harness that calls the model directly. Here Harbor makes the
                 # call, but the endpoint it is told to call is still RLE's.
-                "llm_url": rollout_context.model_endpoint,
-                "api_key": rollout_context.model_api_key,
+                "llm_url": rollout_context.capture_proxy_endpoint,
+                "api_key": rollout_context.capture_proxy_session_key,
             },
         )
         response.raise_for_status()

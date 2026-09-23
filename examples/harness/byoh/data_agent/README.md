@@ -205,7 +205,8 @@ module docstring. In short: RLE invokes a harness asynchronously -- the start
 request only starts work, and the answer is collected from a per-invocation
 resource RLE derives from the registered URL. What `agent/app.py` does with
 `rollout_context` once it has it is the one thing worth calling out here:
-instead of calling the model directly, it hands `model_endpoint`/`model_api_key`
+instead of calling the model directly, it hands
+`capture_proxy_endpoint`/`capture_proxy_session_key`
 to `harbor-server`'s `/correlated-rollouts/{rollout_id}`, which in turn calls
 Harbor's `run_rollout(llm_url=..., api_key=...)` and lets Harbor's agent loop
 make the calls.
