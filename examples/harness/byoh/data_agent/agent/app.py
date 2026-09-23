@@ -59,14 +59,15 @@ projects can legitimately send the same one to a shared harness.
        GET <base-url>/rollouts/{operation_id}
 
        200 {"status": "running"}
-       200 {"status": "succeeded", "output_text": "{\"reward\": 0.83, \"task_name\": \"...\", ...}"}
+       200 {"status": "succeeded", "output_text": "{\"answer_text\": \"...\", \"split\": \"...\", ...}"}
        200 {"status": "failed", "error": {"message": "..."}}
 
-   ``output_text`` is a JSON string, not free text: Harbor's own verifier
-   result (`reward`, `task_name`, `ok`, ...), produced by `run_harbor_rollout`
-   below. RLE forwards this same string to `../rle`'s `/grade` verbatim, as
-   `agent_response` -- that is how `reward` gets there. This shim never
-   computes `reward` itself, only relays what harbor-server's verifier said.
+   ``output_text`` is a JSON string, not free text: the sandbox's own raw
+   answer (`answer_text`) plus the task selector, produced by
+   `run_harbor_rollout` below. RLE forwards this same string to `../rle`'s
+   `/grade` verbatim, as `agent_response` -- that is how the answer gets
+   there. This shim never computes or even sees a `reward`; `/grade` grades
+   `answer_text` itself, against its own vendored copy of Harbor's grader.
 
 3. Withdraw. If RLE stops waiting -- the caller disconnected, or the rollout
    deadline passed -- it DELETEs the rollout resource so the harness can stop
@@ -103,8 +104,9 @@ RETRY_AFTER_MS = 500
 # The separately deployed harbor-server (../harbor-server) that owns the
 # sandbox, the agent loop, and Harbor's own grader. This shim never runs any
 # of that itself -- it only tells Harbor which task to run and which model
-# endpoint to call. It never reports the result to RLE directly -- see
-# `run_harbor_rollout` for why that channel is deliberately not trusted.
+# endpoint to call, and relays back the sandbox's raw answer text. See
+# `run_harbor_rollout` for what it relays and why grading it is `../rle`'s
+# job, not this shim's.
 HARBOR_SERVER_URL = os.environ["HARBOR_SERVER_URL"]
 DEFAULT_SPLIT = os.environ.get("HARBOR_SPLIT", "FineEnvs/data-agent-harbor-train")
 DEFAULT_HARNESS = os.environ.get("HARBOR_HARNESS", "opencode")
@@ -195,13 +197,13 @@ async def run_harbor_rollout(rollout_id: str, rollout_context: RolloutContext, a
     `HarborEnv.run_rollout` directly only to get harbor-server's own request logging
     for free; the two otherwise trigger the identical rollout.
 
-    Returns the verifier's own result (`reward`, `task_name`, ...) as a JSON string,
-    which becomes this invocation's `output_text`. RLE hands that same string back
-    verbatim as `agent_response` on the `/grade` call (see `../rle/server/env.py`),
-    which is what lets `/grade` read `reward` straight out of it instead of calling
-    anything else. This shim never computes or adjusts `reward` itself -- it only
-    relays what harbor-server's verifier reported -- so a correctly running harness
-    has nothing to gain by not simply passing it along.
+    Returns the sandbox's raw answer text (`answer_text`, harvested by harbor-server
+    from `/workdir/answer.txt` before its sandbox was torn down) plus the task
+    selector, as a JSON string that becomes this invocation's `output_text`. RLE
+    hands that same string back verbatim as `agent_response` on the `/grade` call
+    (see `../rle/server/env.py`), which is what lets `/grade` grade it there --
+    this shim never computes or even sees a `reward`, so it has nothing to lie
+    about beyond whether it ran the rollout at all.
     """
     task_index = agent_input.get("task_index", 0)
     split = agent_input.get("split", DEFAULT_SPLIT)
@@ -235,10 +237,9 @@ async def run_harbor_rollout(rollout_id: str, rollout_context: RolloutContext, a
     # `agent_response` -- keep the key names in sync with that.
     return json.dumps(
         {
-            "task_name": result.get("task_name"),
-            "reward": result.get("reward"),
-            "rewards": result.get("rewards"),
-            "n_turns": result.get("n_turns"),
+            "split": split,
+            "task_index": task_index,
+            "answer_text": result.get("answer_text"),
             "ok": result.get("ok", True),
             "error": result.get("error"),
         }

@@ -146,40 +146,65 @@ os.environ.setdefault("ENABLE_WEB_INTERFACE", "true")
 app = build_app(datasets=_DATASETS, llm_url=_LLM_URL, model=_MODEL, llm=_LLM)
 
 
-# --- Correlated rollouts: an authoritative result store keyed by RLE's rollout id -----------------
+# --- Run rollout and surface the sandbox's own answer text ----------------------------------------
 #
 # `../agent` (untrusted: it runs wherever a customer deploys it) is the only side that can trigger a
-# rollout, because only it is handed the model endpoint. But it must not also be the only side that
-# can report the reward -- a harness that lies about `reward` would otherwise go unnoticed, since
-# RLE never re-runs Harbor's own verifier itself. So triggering and reading are split: `../agent`
-# POSTs here to start a run, but reads nothing back that RLE will trust. `../rle`'s `/grade` GETs the
-# same rollout_id straight from this server -- the one place the verifier's result actually landed --
-# instead of trusting whatever `../agent` says.
+# rollout, because only it is handed the model endpoint. But `../rle`'s `/grade` must not trust
+# whatever `reward` `../agent` reports, because Harbor's grader is public and deterministic: a
+# harness that simply echoed back `EXPECTED_ANSWER` would score perfectly without doing any work. So
+# this endpoint hands `../agent` the raw *answer text* Harbor's sandbox produced, not a reward --
+# `/grade` computes the reward itself, from that text, using its own vendored copy of the grader (see
+# `../rle/server/env.py`). `../agent` still cannot fabricate a better score for itself: it can only
+# relay -- or fail to relay -- whatever the sandbox actually wrote.
+#
+# The answer text is not part of `HarborRolloutResult` (OpenEnv's own result schema has no such
+# field): it only ever exists as `/workdir/answer.txt` inside the now-torn-down sandbox. Getting it
+# out requires declaring it as a Harbor `artifacts` entry in `task.toml` (see the vendored dataset)
+# so Harbor's own `ArtifactHandler` copies it onto this container's local disk, under
+# `<trials_dir>/<trial_name>/artifacts/workdir/answer.txt`, before the sandbox is torn down --
+# `openenv.harbor.environment._trials_dir()` is the same default (`/tmp/openenv-harbor-trials`,
+# overridable via `OPENENV_HARBOR_TRIALS_DIR`) `HarborEnv` already uses internally.
 #
 # The POST calls this same server's own `run_rollout` MCP tool over a loopback HTTP connection rather
 # than reimplementing engine resolution and capture-level probing here: `HarborEnv` is the same client
-# `../agent` would otherwise call directly, so nothing about how a rollout runs changes, only who is
-# allowed to read the result afterward.
+# `../agent` would otherwise call directly, so nothing about how a rollout runs changes.
 import asyncio
-import threading
+from pathlib import Path
 from typing import Any
 
 from fastapi import Body
-from fastapi.responses import JSONResponse
 from openenv.harbor.client import HarborEnv
 
-_CORRELATED_RESULTS: dict[str, dict[str, Any]] = {}
-_CORRELATED_RESULTS_LOCK = threading.Lock()
 _SELF_URL = f"http://127.0.0.1:{os.environ.get('PORT', '8000')}"
+_TRIALS_DIR = Path(os.environ.get("OPENENV_HARBOR_TRIALS_DIR", "/tmp/openenv-harbor-trials"))
+
+
+def _read_answer_text(trial_name: str | None) -> str | None:
+    """Reads the artifact-collected copy of `/workdir/answer.txt` for a finished trial.
+
+    Returns `None` (never raises) when the trial name is missing or the file was never collected --
+    an older, unpatched `task.toml` (no `artifacts` entry), or a rollout that failed before the agent
+    wrote an answer. `/grade` treats a missing answer as an ungraded (zero-reward) rollout, the same
+    way it already treats a missing `agent_response`.
+    """
+    if not trial_name:
+        return None
+    # Harbor's `ArtifactHandler` mirrors an absolute container source path under `artifacts/`,
+    # stripping the leading "/": `/workdir/answer.txt` -> `artifacts/workdir/answer.txt`.
+    path = _TRIALS_DIR / trial_name / "artifacts" / "workdir" / "answer.txt"
+    try:
+        return path.read_text().strip()
+    except OSError:
+        return None
 
 
 @app.post("/correlated-rollouts/{rollout_id}")
 async def run_correlated_rollout(rollout_id: str, payload: dict[str, Any] = Body(...)) -> dict[str, Any]:
-    """Runs one rollout and records the authoritative result under `rollout_id`.
+    """Runs one rollout and hands `../agent` the sandbox's own answer text.
 
-    Re-posting the same `rollout_id` overwrites the prior result -- there is one rollout per id in
-    practice (RLE mints a fresh one per invocation), and overwriting rather than rejecting means a
-    harness retry after a transient failure does not have to invent a new id to get an answer through.
+    The path keeps its historical name (RLE's `rollout_id` in the URL is useful for log
+    correlation) even though nothing is stored under it anymore -- see the module note above for
+    why `../rle`'s `/grade` no longer needs to read anything back from this server.
     """
 
     def _call() -> Any:
@@ -187,19 +212,9 @@ async def run_correlated_rollout(rollout_id: str, payload: dict[str, Any] = Body
             return env.run_rollout(**payload)
 
     result = await asyncio.to_thread(_call)
-    with _CORRELATED_RESULTS_LOCK:
-        _CORRELATED_RESULTS[rollout_id] = result.model_dump()
-    return result.model_dump()
-
-
-@app.get("/correlated-rollouts/{rollout_id}")
-async def get_correlated_rollout(rollout_id: str) -> JSONResponse:
-    """What `../rle`'s `/grade` calls: the verifier's own result, not a harness's retelling of it."""
-    with _CORRELATED_RESULTS_LOCK:
-        stored = _CORRELATED_RESULTS.get(rollout_id)
-    if stored is None:
-        return JSONResponse({"error": "not_found"}, status_code=404)
-    return JSONResponse(stored)
+    dumped = result.model_dump()
+    answer_text = await asyncio.to_thread(_read_answer_text, dumped.get("trial_name"))
+    return {**dumped, "answer_text": answer_text}
 
 
 def main() -> None:

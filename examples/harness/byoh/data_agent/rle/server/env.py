@@ -12,23 +12,34 @@ returns (`--agent-input` on the `azd ai rle rollout` command line already
 carries the Harbor task selector -- `task_index`, `split`, `harness`,
 `sandbox` -- so `/reset` has no per-task payload to hand over here).
 
-`/grade` reads `reward` straight out of ``agent_response`` -- the JSON string
-``../agent``'s `/invoke` returned as `output_text`, which RLE forwards to
-`/grade` verbatim in the request body. That string is Harbor's own verifier
-result (see ``../agent/app.py``'s `run_harbor_rollout`): `../agent` only
-relays it, it never computes `reward` itself. Nothing here calls out to
-`harbor-server` or anywhere else -- `/grade` is a pure parse of data RLE
-already handed it.
+`/grade` computes `reward` itself, rather than trusting a number `../agent`
+reports: `reward` alone is unforgeable-*looking* but cheap to fabricate,
+since Harbor's grader (vendored below, byte-identical across every task in
+this dataset) is a pure, public function of `(gold, candidate)` -- a
+misbehaving harness could compute the winning `candidate` string and just
+claim the score it produces. What `/grade` trusts instead is the *raw
+answer text* the sandbox produced (`answer_text`, harvested by
+`../harbor-server` from `/workdir/answer.txt` via Harbor's own `artifacts`
+mechanism -- see `../harbor-server/server/app.py`), which it grades here
+with its own copy of the same deterministic function Harbor itself runs.
+This still trusts that `answer_text` is what the sandbox actually wrote
+(nothing outside the sandbox can prove that independently), but it removes
+the ability to claim an arbitrary `reward` for an arbitrary answer.
 """
 
 from __future__ import annotations
 
+import gzip
 import json
+from functools import lru_cache
+from pathlib import Path
 from typing import Any, Optional
 from uuid import uuid4
 
 from fastapi import Body
 from pydantic import Field
+
+from .vendor.grader import grade as _grade
 
 from openenv.core.env_server.http_server import create_app
 from openenv.core.env_server.interfaces import Environment
@@ -40,6 +51,24 @@ from openenv.core.env_server.types import (
     ResetResponse,
     State,
 )
+
+_VENDOR_DIR = Path(__file__).parent / "vendor"
+_TASK_META_DIR = _VENDOR_DIR / "task-meta"
+
+
+def _task_meta_path(split: str) -> Path:
+    # Matches the on-disk convention the vendored dataset tarball itself
+    # uses for HF repo ids (`FineEnvs/data-agent-harbor-train` ->
+    # `FineEnvs__data-agent-harbor-train`) -- see `../harbor-server`'s
+    # dataset vendoring script for the same substitution.
+    return _TASK_META_DIR / f"{split.replace('/', '__')}.json.gz"
+
+
+@lru_cache(maxsize=8)
+def _load_task_meta(split: str) -> list[dict[str, Any]]:
+    path = _task_meta_path(split)
+    with gzip.open(path, "rt", encoding="utf-8") as fh:
+        return json.load(fh)
 
 
 class DataAgentAction(Action):
@@ -55,7 +84,7 @@ class DataAgentObservation(Observation):
 
 
 class DataAgentEnvironment(Environment[DataAgentAction, DataAgentObservation, State]):
-    """Holds no rollout state: `/grade` reads `agent_response`, not anything stored here."""
+    """Holds no rollout state: `/grade` grades `agent_response`, not anything stored here."""
 
     def __init__(self) -> None:
         super().__init__()
@@ -136,14 +165,14 @@ async def grade_rollout(
     rollout: dict[str, Any] = Body(default_factory=dict),
     agent_response: str = Body(default=""),
 ) -> dict[str, Any]:
-    """Parses Harbor's verifier result out of `agent_response`.
+    """Grades `answer_text` out of `agent_response` with Harbor's own grader.
 
     `agent_response` is `../agent`'s `/invoke` `output_text`, forwarded by RLE
     verbatim in this request's body -- see `run_harbor_rollout` in
-    `../agent/app.py` for what it contains. `../agent` never computes
-    `reward` itself; it only relays what harbor-server's verifier already
-    produced, so parsing it here costs nothing a live fetch would have
-    bought.
+    `../agent/app.py` for what it contains: the task selector (`split`,
+    `task_index`) and the sandbox's raw `answer_text`, nothing more. `reward`
+    is computed here, not read out of anything `../agent` sent -- see this
+    module's docstring for why.
     """
     del rollout
     try:
@@ -160,20 +189,46 @@ async def grade_rollout(
             "is_success": False,
             "info": {"reason": "agent_response was missing or not the expected JSON."},
         }
-    reward = reported.get("reward")
+
     ok = bool(reported.get("ok", True))
+    answer_text = reported.get("answer_text")
+    split = reported.get("split")
+    task_index = reported.get("task_index")
+
+    if not ok or answer_text is None or split is None or task_index is None:
+        return {
+            "reward": 0.0,
+            "is_success": False,
+            "info": {
+                "reason": "Harbor rollout did not complete or did not report an answer.",
+                "ok": ok,
+                "error": reported.get("error"),
+            },
+        }
+
+    try:
+        task_meta_list = _load_task_meta(split)
+        task_meta = task_meta_list[task_index]
+    except (FileNotFoundError, IndexError, TypeError) as exc:
+        return {
+            "reward": 0.0,
+            "is_success": False,
+            "info": {"reason": f"No vendored task metadata for split={split!r} task_index={task_index!r}: {exc}"},
+        }
+
+    result = _grade(
+        task_meta["expected_answer"],
+        answer_text,
+        reward_mode=task_meta.get("reward_mode") or "",
+        abs_tol=float(task_meta.get("atol") or 1e-3),
+        rel_tol=float(task_meta.get("rtol") or 1e-3),
+    )
     return {
-        "reward": float(reward) if reward is not None else 0.0,
-        # `ok` reports whether Harbor's own agent loop and sandbox completed
-        # without error; `reward` can still be a real (possibly zero) score
-        # even when `ok` is false, so surface both rather than collapsing
-        # them into one flag.
-        "is_success": ok and reward is not None and reward > 0,
+        "reward": result.reward,
+        "is_success": result.reward > 0,
         "info": {
-            "task_name": reported.get("task_name"),
-            "n_turns": reported.get("n_turns"),
-            "ok": ok,
-            "error": reported.get("error"),
+            "task_name": task_meta.get("task_name"),
+            "method": result.method,
         },
     }
 

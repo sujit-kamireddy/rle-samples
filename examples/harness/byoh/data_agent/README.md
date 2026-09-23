@@ -14,8 +14,9 @@ sample is therefore three pieces instead of two:
   Deploy this once; it serves the Data Agent dataset over Harbor's Task API and
   exposes one `run_rollout` MCP tool that boots a sandbox, runs the agent loop
   against whatever model endpoint it is told to call, and grades the result.
-  It also exposes `POST`/`GET /correlated-rollouts/{rollout_id}` -- see the
-  reward note below -- and bakes both the dataset and its own `openenv`
+  It also exposes `POST /correlated-rollouts/{rollout_id}` -- see the answer
+  note below -- and bakes both the dataset (patched so every task declares
+  `/workdir/answer.txt` as a Harbor `artifacts` entry) and its own `openenv`
   dependency in as vendored files, so its image builds and runs with no
   network dependency at all.
 - [`agent/`](./agent) -- the harness RLE actually invokes (`Harness`/`BYOH`'s
@@ -24,18 +25,32 @@ sample is therefore three pieces instead of two:
   `/correlated-rollouts/{rollout_id}`, which triggers a `run_rollout` call
   keyed by that rollout id, passing RLE's capture proxy as the model endpoint
   so every call Harbor's agent makes is recorded in the rollout graph.
-- [`rle/`](./rle) -- the RLE container. Its `/grade` cannot re-run Harbor's
-  verifier (it never touches the sandbox that ran it), so it independently
-  `GET`s `harbor-server`'s `/correlated-rollouts/{rollout_id}` using RLE's own
-  `x-rle-rollout-id` header, rather than trusting anything `agent/` reports.
+- [`rle/`](./rle) -- the RLE container. `/grade` never re-runs Harbor's
+  verifier and never trusts a `reward` `agent/` reports; it grades the
+  sandbox's own raw answer text itself, with its own vendored copy of
+  Harbor's deterministic grader (see the answer note below).
 
 **Why not have `agent/` just report the reward?** `agent/` is untrusted,
-customer-hosted code -- nothing stops it from reporting a reward Harbor never
-actually produced. RLE injects the same rollout id (`x-rle-rollout-id`) on
-both its call to `agent/`'s `/invoke` and its call to `rle/`'s `/grade`; this
-sample uses that shared, server-owned, non-forgeable id as the correlation
-key so `/grade` can fetch Harbor's own recorded result independently instead
-of trusting the harness.
+customer-hosted code, and Harbor's grader is a public, deterministic function
+of `(gold, candidate)` -- nothing stops a misbehaving harness from computing
+the winning `candidate` string and simply reporting whatever `reward` it
+wants. So `rle/`'s `/grade` computes `reward` itself rather than reading it
+out of anything `agent/` sends.
+
+What it does trust is the *raw answer text* the sandbox produced
+(`answer_text`): `harbor-server` declares `/workdir/answer.txt` as a Harbor
+`artifacts` entry in every task's `task.toml`, which makes Harbor's own
+`ArtifactHandler` copy that file onto `harbor-server`'s local disk before the
+sandbox is torn down -- OpenEnv's public result schema has no such field, so
+this is the only way to get it out at all. `harbor-server` hands that text
+back to `agent/`, which relays it verbatim to RLE as `output_text`; RLE
+forwards it to `/grade` as `agent_response`, and `/grade` grades it with the
+same deterministic grader Harbor itself runs (vendored into
+`rle/server/vendor/grader.py`, byte-identical across every task in this
+dataset) against a vendored per-task answer key
+(`rle/server/vendor/task-meta/`). `agent/` still cannot fabricate a better
+score for itself: it can only relay -- or fail to relay -- whatever the
+sandbox actually wrote.
 
 Running `azd ai rle init --type Harness --subtype BYOH --sample data_agent`
 copies this exact `agent/` + `rle/` pair as your starting point; `harbor-server/`
@@ -127,13 +142,15 @@ Harbor.
 `rle/server/env.py`'s `/reset` is close to a no-op -- the Harbor task selector
 (`task_index`, `split`, `harness`, `sandbox`) travels in `--agent-input`, not
 in whatever `/reset` returns. `/grade` doesn't call out anywhere: it parses
-`reward` straight out of `agent_response`, the same JSON string `agent/`'s
-`/invoke` returned as `output_text`, which RLE forwards to `/grade` verbatim.
-`agent/` never computes `reward` itself -- it only relays what Harbor's own
-verifier produced (see `agent/app.py`'s `run_harbor_rollout`) -- so `/grade`
-reading it directly costs nothing a live fetch would have bought. Adapt the
-reward shaping in `/grade` if you want something other than Harbor's raw
-verifier score.
+`answer_text`, `task_index`, and `split` out of `agent_response` (the same
+JSON string `agent/`'s `/invoke` returned as `output_text`, which RLE
+forwards to `/grade` verbatim), looks up that task's answer key in the
+vendored `rle/server/vendor/task-meta/` metadata, and grades it with the
+vendored copy of Harbor's own deterministic grader
+(`rle/server/vendor/grader.py`). `agent/` never computes or even sees a
+`reward` -- it only relays what the sandbox wrote (see `agent/app.py`'s
+`run_harbor_rollout`). Adapt `rle/server/env.py`'s `grade_rollout` if you
+want reward shaping other than Harbor's raw verifier score.
 
 `azd ai rle run` is supported only for `Gym: OpenEnv` environments, so iterate
 here by publishing a version and running a rollout (steps 4 and 5).

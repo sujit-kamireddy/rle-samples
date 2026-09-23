@@ -12,12 +12,15 @@ Adapted from `openenv.harbor`'s reference server
 Beyond defaulting `OPENENV_DATASETS` to `FineEnvs/data-agent-harbor-train`,
 this version adds:
 
-- `POST`/`GET /correlated-rollouts/{rollout_id}` -- the reward-hacking fix
-  described in `../README.md`. `POST` loopback-triggers a `run_rollout` call
-  and stores the full result keyed by `rollout_id`; `GET` returns it (404 if
-  nothing is recorded yet). `../agent` calls `POST` to trigger a rollout;
-  `../rle`'s `/grade` calls `GET` to fetch the authoritative result
-  independently, rather than trusting whatever `../agent` reports.
+- `POST /correlated-rollouts/{rollout_id}` -- the reward-hacking fix
+  described in `../README.md`. Loopback-triggers a `run_rollout` call, reads
+  the sandbox's own `/workdir/answer.txt` (collected via a Harbor
+  `artifacts` entry patched into every task's `task.toml` -- see
+  `vendor/harbor-datasets/`) off local disk before the sandbox is torn down,
+  and returns it as `answer_text` alongside the rollout result in the same
+  response. `../agent` calls this to trigger a rollout and relays
+  `answer_text` on to RLE; `../rle`'s `/grade` grades that text itself
+  rather than trusting any score `../agent` reports.
 - `vendor/harbor-datasets/` -- the full `FineEnvs/data-agent-harbor-train`
   task suite (5,000 tasks, ~196MB), baked into the image via a plain
   Dockerfile `COPY` instead of a build-time `prefetch()` download. A fresh
