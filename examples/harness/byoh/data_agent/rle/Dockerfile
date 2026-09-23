@@ -27,14 +27,9 @@ RUN if [ -n "${PIP_FALLBACK_INDEX_URL}" ] && \
         export PIP_INDEX_URL="${PIP_FALLBACK_INDEX_URL}"; \
     fi; \
     rm -rf /tmp/idxprobe; \
-    pip install --no-cache-dir --index-url "${PIP_INDEX_URL}" openenv httpx
+    pip install --no-cache-dir --index-url "${PIP_INDEX_URL}" openenv
 
 COPY server/ /app/server/
-
-# Reachable at /grade time so it can fetch this rollout's authoritative
-# result -- see server/env.py's module docstring for why /grade fetches
-# rather than trusts what ../agent reports.
-ENV HARBOR_SERVER_URL=""
 
 RUN python -c "import server.env as m; print('RLE harness server OK:', m.app)"
 

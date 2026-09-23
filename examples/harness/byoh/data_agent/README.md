@@ -126,13 +126,14 @@ Harbor.
 
 `rle/server/env.py`'s `/reset` is close to a no-op -- the Harbor task selector
 (`task_index`, `split`, `harness`, `sandbox`) travels in `--agent-input`, not
-in whatever `/reset` returns. `/grade` doesn't hold any rollout state itself;
-it reads the `x-rle-rollout-id` header RLE attaches to the request and `GET`s
-`harbor-server`'s `/correlated-rollouts/{rollout_id}` for the authoritative
-result, defaulting to `reward=0.0` if nothing is recorded yet (rollout still
-running, or the id doesn't exist). Adapt the reward shaping in `/grade` if you
-want something other than Harbor's raw verifier score. Both `rle/` and
-`harbor-server` need to agree on `HARBOR_SERVER_URL` for this to work.
+in whatever `/reset` returns. `/grade` doesn't call out anywhere: it parses
+`reward` straight out of `agent_response`, the same JSON string `agent/`'s
+`/invoke` returned as `output_text`, which RLE forwards to `/grade` verbatim.
+`agent/` never computes `reward` itself -- it only relays what Harbor's own
+verifier produced (see `agent/app.py`'s `run_harbor_rollout`) -- so `/grade`
+reading it directly costs nothing a live fetch would have bought. Adapt the
+reward shaping in `/grade` if you want something other than Harbor's raw
+verifier score.
 
 `azd ai rle run` is supported only for `Gym: OpenEnv` environments, so iterate
 here by publishing a version and running a rollout (steps 4 and 5).

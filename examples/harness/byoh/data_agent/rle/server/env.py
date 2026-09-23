@@ -12,29 +12,22 @@ returns (`--agent-input` on the `azd ai rle rollout` command line already
 carries the Harbor task selector -- `task_index`, `split`, `harness`,
 `sandbox` -- so `/reset` has no per-task payload to hand over here).
 
-`/grade` cannot re-run Harbor's own verifier -- it never touches the sandbox
-that ran it, and by the time `/grade` is called that sandbox may already be
-gone. But it does not have to trust ``../agent`` either. RLE attaches the
-same rollout id to every call it makes for one rollout, as the
-`x-rle-rollout-id` header -- on this container's `/reset` and `/grade` calls,
-and as the `rollout_id` field in ``../agent``'s `/invoke` body. ``../agent``
-uses that id to trigger the run on harbor-server
-(`POST /correlated-rollouts/{rollout_id}`); `/grade` here uses the *same* id
-to fetch harbor-server's own record of what happened
-(`GET /correlated-rollouts/{rollout_id}`) directly, over the network, without
-going through ``../agent`` at all. So a harness that lies about the reward
-gains nothing: nothing downstream of Harbor's own verifier ever reads what
-``../agent`` says.
+`/grade` reads `reward` straight out of ``agent_response`` -- the JSON string
+``../agent``'s `/invoke` returned as `output_text`, which RLE forwards to
+`/grade` verbatim in the request body. That string is Harbor's own verifier
+result (see ``../agent/app.py``'s `run_harbor_rollout`): `../agent` only
+relays it, it never computes `reward` itself. Nothing here calls out to
+`harbor-server` or anywhere else -- `/grade` is a pure parse of data RLE
+already handed it.
 """
 
 from __future__ import annotations
 
-import os
+import json
 from typing import Any, Optional
 from uuid import uuid4
 
-import httpx
-from fastapi import Body, Request
+from fastapi import Body
 from pydantic import Field
 
 from openenv.core.env_server.http_server import create_app
@@ -47,17 +40,6 @@ from openenv.core.env_server.types import (
     ResetResponse,
     State,
 )
-
-# The same harbor-server ../agent drives. `/grade` reaches it directly,
-# independent of ../agent, to fetch the rollout id it is grading.
-HARBOR_SERVER_URL = os.environ["HARBOR_SERVER_URL"]
-# RLE's own header name for the rollout id it correlates every call by
-# (`RleSandboxRequestHeaders.RolloutId` in RLE's sandbox client) -- server-set,
-# never caller-supplied, so a harness cannot forge it.
-ROLLOUT_ID_HEADER = "x-rle-rollout-id"
-# harbor-server's `run_rollout` can run for minutes; a grade call has to wait
-# at least that long for a legitimately still-running rollout to land.
-GRADE_FETCH_TIMEOUT_S = float(os.environ.get("DATA_AGENT_GRADE_TIMEOUT_S", "1800"))
 
 
 class DataAgentAction(Action):
@@ -73,7 +55,7 @@ class DataAgentObservation(Observation):
 
 
 class DataAgentEnvironment(Environment[DataAgentAction, DataAgentObservation, State]):
-    """Holds no rollout state: `/grade` fetches everything it needs from harbor-server."""
+    """Holds no rollout state: `/grade` reads `agent_response`, not anything stored here."""
 
     def __init__(self) -> None:
         super().__init__()
@@ -149,31 +131,34 @@ async def env_reset(request: ResetRequest = Body(default_factory=ResetRequest)) 
     return await _reset_endpoint(request)
 
 
-async def _fetch_harbor_result(rollout_id: str) -> Optional[dict[str, Any]]:
-    async with httpx.AsyncClient(timeout=GRADE_FETCH_TIMEOUT_S) as client:
-        response = await client.get(f"{HARBOR_SERVER_URL}/correlated-rollouts/{rollout_id}")
-        if response.status_code == 404:
-            return None
-        response.raise_for_status()
-        return response.json()
-
-
 @app.post("/grade")
-async def grade_rollout(request: Request, rollout: dict[str, Any] = Body(default_factory=dict)) -> dict[str, Any]:
-    """Fetches Harbor's own reward for this rollout id, straight from harbor-server."""
+async def grade_rollout(
+    rollout: dict[str, Any] = Body(default_factory=dict),
+    agent_response: str = Body(default=""),
+) -> dict[str, Any]:
+    """Parses Harbor's verifier result out of `agent_response`.
+
+    `agent_response` is `../agent`'s `/invoke` `output_text`, forwarded by RLE
+    verbatim in this request's body -- see `run_harbor_rollout` in
+    `../agent/app.py` for what it contains. `../agent` never computes
+    `reward` itself; it only relays what harbor-server's verifier already
+    produced, so parsing it here costs nothing a live fetch would have
+    bought.
+    """
     del rollout
-    rollout_id = request.headers.get(ROLLOUT_ID_HEADER)
-    reported = await _fetch_harbor_result(rollout_id) if rollout_id else None
-    if reported is None:
-        # Either RLE sent no rollout id (older region -- see the `_env/`
-        # aliases' rationale above), or harbor-server never recorded a
-        # result for it: `../agent` was withdrawn, crashed, or never
-        # started before grading. Score zero rather than hang -- nothing
-        # else in this container bounds how long `/grade` waits.
+    try:
+        reported = json.loads(agent_response) if agent_response else None
+    except ValueError:
+        reported = None
+    if not isinstance(reported, dict):
+        # `../agent` was withdrawn or crashed before it ever posted an
+        # outcome, or it returned something this shim did not produce. Score
+        # zero rather than raise: a malformed report is not grounds to fail
+        # the whole rollout.
         return {
             "reward": 0.0,
             "is_success": False,
-            "info": {"reason": "No result recorded on harbor-server for this rollout id."},
+            "info": {"reason": "agent_response was missing or not the expected JSON."},
         }
     reward = reported.get("reward")
     ok = bool(reported.get("ok", True))
@@ -194,5 +179,8 @@ async def grade_rollout(request: Request, rollout: dict[str, Any] = Body(default
 
 
 @app.post("/_env/grade")
-async def env_grade_rollout(request: Request, rollout: dict[str, Any] = Body(default_factory=dict)) -> dict[str, Any]:
-    return await grade_rollout(request, rollout)
+async def env_grade_rollout(
+    rollout: dict[str, Any] = Body(default_factory=dict),
+    agent_response: str = Body(default=""),
+) -> dict[str, Any]:
+    return await grade_rollout(rollout, agent_response)

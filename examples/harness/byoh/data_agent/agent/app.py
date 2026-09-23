@@ -59,8 +59,14 @@ projects can legitimately send the same one to a shared harness.
        GET <base-url>/rollouts/{operation_id}
 
        200 {"status": "running"}
-       200 {"status": "succeeded", "output_text": "..."}
+       200 {"status": "succeeded", "output_text": "{\"reward\": 0.83, \"task_name\": \"...\", ...}"}
        200 {"status": "failed", "error": {"message": "..."}}
+
+   ``output_text`` is a JSON string, not free text: Harbor's own verifier
+   result (`reward`, `task_name`, `ok`, ...), produced by `run_harbor_rollout`
+   below. RLE forwards this same string to `../rle`'s `/grade` verbatim, as
+   `agent_response` -- that is how `reward` gets there. This shim never
+   computes `reward` itself, only relays what harbor-server's verifier said.
 
 3. Withdraw. If RLE stops waiting -- the caller disconnected, or the rollout
    deadline passed -- it DELETEs the rollout resource so the harness can stop
@@ -78,6 +84,7 @@ validate it before dispatching to Harbor).
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import os
 from typing import Any
@@ -185,13 +192,16 @@ async def run_harbor_rollout(rollout_id: str, rollout_context: RolloutContext, a
     """Asks the deployed harbor-server to run one task, pointed at RLE's model.
 
     Posts to harbor-server's `/correlated-rollouts/{rollout_id}` rather than calling
-    `HarborEnv.run_rollout` directly. The two look similar -- both trigger the same
-    rollout -- but only the correlated endpoint also has harbor-server keep its own
-    copy of the result under `rollout_id`, which is what lets `../rle`'s `/grade` get
-    the verifier's answer straight from harbor-server instead of trusting whatever
-    this process (a harness deployed wherever a customer runs it) says it was. See
-    harbor-server's `server/app.py` for why: this shim could otherwise misreport
-    `reward` and nothing downstream would catch it.
+    `HarborEnv.run_rollout` directly only to get harbor-server's own request logging
+    for free; the two otherwise trigger the identical rollout.
+
+    Returns the verifier's own result (`reward`, `task_name`, ...) as a JSON string,
+    which becomes this invocation's `output_text`. RLE hands that same string back
+    verbatim as `agent_response` on the `/grade` call (see `../rle/server/env.py`),
+    which is what lets `/grade` read `reward` straight out of it instead of calling
+    anything else. This shim never computes or adjusts `reward` itself -- it only
+    relays what harbor-server's verifier reported -- so a correctly running harness
+    has nothing to gain by not simply passing it along.
     """
     task_index = agent_input.get("task_index", 0)
     split = agent_input.get("split", DEFAULT_SPLIT)
@@ -221,7 +231,18 @@ async def run_harbor_rollout(rollout_id: str, rollout_context: RolloutContext, a
     if not result.get("ok", True):
         raise RuntimeError(result.get("error") or "Harbor rollout failed with no error message")
 
-    return f"task={result.get('task_name')} reward={result.get('reward')} turns={result.get('n_turns')}"
+    # `../rle/server/env.py`'s `/grade` parses this same JSON back out of
+    # `agent_response` -- keep the key names in sync with that.
+    return json.dumps(
+        {
+            "task_name": result.get("task_name"),
+            "reward": result.get("reward"),
+            "rewards": result.get("rewards"),
+            "n_turns": result.get("n_turns"),
+            "ok": result.get("ok", True),
+            "error": result.get("error"),
+        }
+    )
 
 
 async def run_rollout(request: InvocationRequest) -> None:
