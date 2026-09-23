@@ -78,13 +78,23 @@ def _resolve_dataset(spec: str) -> str:
     )
 
 
-_DATASETS = [
-    _resolve_dataset(d.strip())
-    for d in os.environ.get(
-        "OPENENV_DATASETS", "FineEnvs/data-agent-harbor-train"
-    ).split(",")
-    if d.strip()
-]
+# Resolved eagerly so a misconfigured deployment fails at startup rather than on its first
+# rollout -- but only when a dataset is actually needed. The direct path runs from
+# `vendor/task-index.json.gz` and its image deliberately ships no task suite (see the Dockerfile),
+# so resolving here would raise at import and the container would never boot. openenv's task
+# endpoints (`/{env}/task`, `/{env}/splits`) are the only thing an empty list disables, and those
+# are a debugging surface, not the rollout path.
+_DATASETS = (
+    []
+    if os.environ.get("ROLLOUT_BACKEND", "direct").strip().lower() == "direct"
+    else [
+        _resolve_dataset(d.strip())
+        for d in os.environ.get(
+            "OPENENV_DATASETS", "FineEnvs/data-agent-harbor-train"
+        ).split(",")
+        if d.strip()
+    ]
+)
 _LLM_URL = os.environ.get("OPENENV_LLM_URL", "")
 _MODEL = os.environ.get("OPENENV_MODEL", "")
 _API_KEY = os.environ.get("OPENENV_LLM_API_KEY", "") or None
@@ -235,15 +245,26 @@ app = build_app(datasets=_DATASETS, llm_url=_LLM_URL, model=_MODEL, llm=_LLM)
 # The tradeoff is depending on a private method; the openenv wheel is vendored and pinned, so an
 # upgrade is the point to re-check it.
 import asyncio
+import logging
 from typing import Any
 
 from fastapi import Body
 from openenv.harbor.environment import HarborEnvironment
 from openenv.harbor.models import HarborRolloutResult
 
-from . import rollout_tools
+from . import opencode_direct, rollout_tools
+
+logger = logging.getLogger(__name__)
 
 rollout_tools.install()
+
+# Which rollout path serves `/correlated-rollouts/`. `direct` runs `opencode` in this container
+# (`server/opencode_direct.py`); `harbor` keeps the original path, which hands the rollout to
+# Harbor and a third-party sandbox. `direct` is the default because the Harbor path sends the
+# task's data and the agent's execution to an external provider -- every sandbox backend Harbor
+# ships is somebody else's cloud. The switch exists so the old path stays reachable while the new
+# one is being proven, not as a long-term option.
+_ROLLOUT_BACKEND = os.environ.get("ROLLOUT_BACKEND", "direct").strip().lower()
 
 # `_run_rollout` declares no defaults for these; `HarborEnv.run_rollout` supplied them client-side,
 # so they have to be supplied here instead.
@@ -293,6 +314,10 @@ async def run_correlated_rollout(rollout_id: str, payload: dict[str, Any] = Body
     call_kwargs = {**_ROLLOUT_DEFAULTS, **payload}
     endpoint = str(call_kwargs.pop("sandbox_tools_endpoint", "") or "")
     token = str(call_kwargs.pop("sandbox_tools_bearer_token", "") or "")
+
+    if _ROLLOUT_BACKEND == "direct":
+        return await _run_direct(rollout_id, call_kwargs, endpoint, token)
+
     # `../agent` and `../rle` agree on a logical dataset id (`FineEnvs/data-agent-harbor-train`),
     # and `../rle` derives its vendored answer-key filename from it. Where that suite physically
     # lives is this server's business alone, so the translation to an on-disk path happens here
@@ -307,6 +332,31 @@ async def run_correlated_rollout(rollout_id: str, payload: dict[str, Any] = Body
     dumped = result.model_dump()
     answer_text = await asyncio.to_thread(_read_answer_text, dumped.get("trial_name"))
     return {**dumped, "answer_text": answer_text}
+
+
+async def _run_direct(
+    rollout_id: str, call_kwargs: dict[str, Any], endpoint: str, token: str
+) -> dict[str, Any]:
+    """Runs the rollout in this container, returning the Harbor path's response shape.
+
+    `split` is accepted and echoed but not used to locate anything: the direct path runs from the
+    baked index, which is built from one suite. Echoing it keeps `../agent`'s response identical
+    across both backends, so `../rle`'s `/grade` cannot tell which one ran.
+    """
+    try:
+        result = await opencode_direct.run_rollout(
+            task_index=int(call_kwargs.get("task_index", 0)),
+            model=_MODEL,
+            llm_url=str(call_kwargs.get("llm_url") or _LLM_URL),
+            api_key=str(call_kwargs.get("api_key") or ""),
+            compliance_endpoint=endpoint,
+            compliance_token=token,
+            rollout_id=rollout_id,
+        )
+    except opencode_direct.RolloutError as exc:
+        logger.warning("rollout %s failed: %s", rollout_id, exc)
+        return {"ok": False, "error": str(exc), "answer_text": None}
+    return result
 
 
 def main() -> None:
