@@ -1,4 +1,4 @@
-"""RLE rollout container for the FineEnvs data-agent tasks.
+"""RLE rollout container for the spreadsheet query agent (FineEnvs data-agent tasks).
 
 A plain FastAPI app speaking exactly the four things RLE's `Harness`/`BYOH`
 subtype asks of a rollout container -- `/health`, `/reset`, `/tools/<name>`
@@ -144,7 +144,7 @@ def _load_task_meta(split: str) -> list[dict[str, Any]]:
         return json.load(fh)
 
 
-app = FastAPI(title="data-agent-rle")
+app = FastAPI(title="spreadsheet-query-agent-rle")
 
 
 @app.get("/health")
