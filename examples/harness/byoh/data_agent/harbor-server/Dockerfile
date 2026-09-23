@@ -49,16 +49,19 @@ RUN if [ -n "${PIP_FALLBACK_INDEX_URL}" ] && \
     uv pip install --system --no-cache --index-url "${PIP_INDEX_URL}" --find-links ./vendor/wheels .
 
 # Bake the task suite into the image rather than downloading it on a rollout's
-# first request. Vendored as plain files in this repo (see
-# vendor/harbor-datasets/) rather than fetched here, so `docker build` never
-# needs HF Hub network access either -- this is a straight local COPY. It is
-# small (~196MB of task defs, instructions, and graders -- the per-task data
-# itself is pulled from a bucket at *sandbox* build time, not stored here).
-# Override OPENENV_DATASETS below (and vendor the matching directory) to bake
-# a different split.
+# first request. Vendored as a single tarball in this repo
+# (vendor/harbor-datasets.tar.gz, ~2.5MB compressed) rather than fetched here
+# or checked in as 30,002 loose files, so `docker build` never needs HF Hub
+# network access either -- this is a local COPY + tar extraction. The
+# per-task data itself is pulled from a bucket at *sandbox* build time, not
+# stored here. Override OPENENV_DATASETS below (and vendor the matching
+# tarball) to bake a different split.
 ARG DATASETS=FineEnvs/data-agent-harbor-train
 ENV OPENENV_DATASET_CACHE=/opt/harbor-datasets
-COPY vendor/harbor-datasets/ ${OPENENV_DATASET_CACHE}/
+COPY vendor/harbor-datasets.tar.gz /tmp/harbor-datasets.tar.gz
+RUN mkdir -p "${OPENENV_DATASET_CACHE}" \
+    && tar xzf /tmp/harbor-datasets.tar.gz -C "${OPENENV_DATASET_CACHE}" \
+    && rm /tmp/harbor-datasets.tar.gz
 
 ENV ENABLE_WEB_INTERFACE=true
 ENV PORT=8000

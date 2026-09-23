@@ -14,15 +14,28 @@ three. This sample is therefore three pieces instead of two:
   Deploy this once; it serves the Data Agent dataset over Harbor's Task API and
   exposes one `run_rollout` MCP tool that boots a sandbox, runs the agent loop
   against whatever model endpoint it is told to call, and grades the result.
+  It also exposes `POST`/`GET /correlated-rollouts/{rollout_id}` -- see the
+  reward note below -- and bakes both the dataset and its own `openenv`
+  dependency in as vendored files, so its image builds and runs with no
+  network dependency at all.
 - [`agent/`](./agent) -- the harness RLE actually invokes (`Harness`/`BYOH`'s
   `agent/`). It implements RLE's `/invoke`/poll/withdraw contract, but instead
-  of running its own agent loop it makes one `run_rollout` call against
-  `harbor-server`, passing RLE's capture proxy as the model endpoint so every
-  call Harbor's agent makes is recorded in the rollout graph.
+  of running its own agent loop it `POST`s to `harbor-server`'s
+  `/correlated-rollouts/{rollout_id}`, which triggers a `run_rollout` call
+  keyed by that rollout id, passing RLE's capture proxy as the model endpoint
+  so every call Harbor's agent makes is recorded in the rollout graph.
 - [`rle/`](./rle) -- the RLE container. Its `/grade` cannot re-run Harbor's
-  verifier (it never touches the sandbox that ran it), so `agent/` posts
-  Harbor's reward to a `harbor.report_result` tool as its last step, and
-  `/grade` reads it back from there.
+  verifier (it never touches the sandbox that ran it), so it independently
+  `GET`s `harbor-server`'s `/correlated-rollouts/{rollout_id}` using RLE's own
+  `x-rle-rollout-id` header, rather than trusting anything `agent/` reports.
+
+**Why not have `agent/` just report the reward?** `agent/` is untrusted,
+customer-hosted code -- nothing stops it from reporting a reward Harbor never
+actually produced. RLE injects the same rollout id (`x-rle-rollout-id`) on
+both its call to `agent/`'s `/invoke` and its call to `rle/`'s `/grade`; this
+sample uses that shared, server-owned, non-forgeable id as the correlation
+key so `/grade` can fetch Harbor's own recorded result independently instead
+of trusting the harness.
 
 Running `azd ai rle init --type Harness --subtype BYOH --sample data_agent`
 copies this exact `agent/` + `rle/` pair as your starting point; `harbor-server/`
@@ -104,10 +117,13 @@ Harbor.
 
 `rle/server/env.py`'s `/reset` is close to a no-op -- the Harbor task selector
 (`task_index`, `split`, `harness`, `sandbox`) travels in `--agent-input`, not
-in whatever `/reset` returns. `/tools/harbor.report_result` is the one tool
-this sample's harness calls, and `/grade` reports back whatever reward was
-last recorded there. Adapt the reward shaping in `/grade` if you want
-something other than Harbor's raw verifier score.
+in whatever `/reset` returns. `/grade` doesn't hold any rollout state itself;
+it reads the `x-rle-rollout-id` header RLE attaches to the request and `GET`s
+`harbor-server`'s `/correlated-rollouts/{rollout_id}` for the authoritative
+result, defaulting to `reward=0.0` if nothing is recorded yet (rollout still
+running, or the id doesn't exist). Adapt the reward shaping in `/grade` if you
+want something other than Harbor's raw verifier score. Both `rle/` and
+`harbor-server` need to agree on `HARBOR_SERVER_URL` for this to work.
 
 `azd ai rle run` is supported only for `Gym: OpenEnv` environments, so iterate
 here by publishing a version and running a rollout (steps 4 and 5).
@@ -161,5 +177,6 @@ See [`../code_repair/README.md`](../code_repair/README.md#reference-how-rle-invo
 for the full `/invoke`/poll/withdraw contract -- it is identical here. The one
 difference is what `agent/app.py` does with `rollout_context` once it has it:
 instead of calling the model directly, it hands `model_endpoint`/`model_api_key`
-to Harbor's `run_rollout(llm_url=..., api_key=...)` and lets Harbor's agent
-loop make the calls.
+to `harbor-server`'s `/correlated-rollouts/{rollout_id}`, which in turn calls
+Harbor's `run_rollout(llm_url=..., api_key=...)` and lets Harbor's agent loop
+make the calls.

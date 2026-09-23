@@ -8,10 +8,31 @@ every model call an agent makes is recorded with token ids and logprobs (when
 the endpoint supports it).
 
 Adapted from `openenv.harbor`'s reference server
-([`openenv/envs/harbor_env/server/app.py`](https://github.com/huggingface/OpenEnv/blob/main/envs/harbor_env/server/app.py));
-the only change is defaulting `OPENENV_DATASETS` to
-`FineEnvs/data-agent-harbor-train`. `openenv>=0.5.0` on PyPI already ships
-`openenv.harbor`, so this image needs no vendoring step.
+([`openenv/envs/harbor_env/server/app.py`](https://github.com/huggingface/OpenEnv/blob/main/envs/harbor_env/server/app.py)).
+Beyond defaulting `OPENENV_DATASETS` to `FineEnvs/data-agent-harbor-train`,
+this version adds:
+
+- `POST`/`GET /correlated-rollouts/{rollout_id}` -- the reward-hacking fix
+  described in `../README.md`. `POST` loopback-triggers a `run_rollout` call
+  and stores the full result keyed by `rollout_id`; `GET` returns it (404 if
+  nothing is recorded yet). `../agent` calls `POST` to trigger a rollout;
+  `../rle`'s `/grade` calls `GET` to fetch the authoritative result
+  independently, rather than trusting whatever `../agent` reports.
+- `vendor/harbor-datasets/` -- the full `FineEnvs/data-agent-harbor-train`
+  task suite (5,000 tasks, ~196MB), baked into the image via a plain
+  Dockerfile `COPY` instead of a build-time `prefetch()` download. A fresh
+  container serves every task the moment it passes its health check, with no
+  Hugging Face Hub reachability needed at build *or* run time
+  (`HF_HUB_OFFLINE=1`). Re-vendor by running `prefetch()` yourself against a
+  different `OPENENV_DATASET_CACHE` and copying the result in, if you need a
+  different split.
+- `vendor/wheels/` -- a pinned `openenv==0.5.0` wheel, downloaded straight
+  from PyPI. Needed because this sample requires `openenv>=0.5.0` for
+  `openenv.harbor`, but the internal package feed proxy (the
+  `PIP_FALLBACK_INDEX_URL` this Dockerfile falls back to when public PyPI is
+  unreachable from the build environment) mirrors PyPI with a lag and may
+  only have older releases. `--find-links` lets `uv` pick the vendored wheel
+  up without ever hitting the network for this one package.
 
 This container owns the sandbox, the agent loop, and Harbor's own grader for
 every task. It has no RLE awareness at all -- `../agent` is what bridges it to
@@ -23,7 +44,11 @@ RLE's `Harness`/`BYOH` contract, and `../rle` is what RLE itself talks to. See
 ```bash
 cd harbor-server
 python3.12 -m venv .venv && source .venv/bin/activate
+pip install ./vendor/wheels/openenv-0.5.0-py3-none-any.whl
 pip install -e .
+mkdir -p /tmp/harbor-datasets && tar xzf vendor/harbor-datasets.tar.gz -C /tmp/harbor-datasets
+OPENENV_DATASET_CACHE=/tmp/harbor-datasets \
+HF_HUB_OFFLINE=1 \
 OPENENV_LLM_URL=https://api.openai.com/v1 \
 OPENENV_LLM_API_KEY=$OPENAI_API_KEY \
 OPENENV_MODEL=gpt-5-mini \
