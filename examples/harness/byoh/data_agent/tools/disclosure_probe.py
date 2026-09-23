@@ -19,6 +19,7 @@ Not part of the deployed system; a measurement tool.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import threading
 from datetime import datetime, timezone
@@ -44,6 +45,10 @@ class Handler(BaseHTTPRequestHandler):
             "rollout": self.headers.get("x-rollout-id", ""),
             # Recorded as a boolean, never stored: the point is whether the agent sent one.
             "authorized": auth.lower().startswith("bearer ") and len(auth) > 10,
+            # Correlation key for concurrent batches. The agent's `curl` sends no rollout header,
+            # so the only thing tying a disclosure to its task is the per-rollout bearer token.
+            # Fingerprinted rather than stored, so a real RLE token never lands in the log.
+            "token_fp": hashlib.sha256(auth.split(" ", 1)[-1].encode()).hexdigest()[:12] if auth else "",
             "body": body,
         }
         with _LOCK:
