@@ -23,7 +23,7 @@ Two harness subtypes exist:
 
 Each subtype directory holds one directory per named sample — today
 `hosted-agent/` holds a single `code_repair/`, and `byoh/` holds both
-`code_repair/` and [`spreadsheet_query_agent/`](./byoh/spreadsheet_query_agent) — alongside a
+`code_repair/` and [`data_code_agent/`](./byoh/data_code_agent) — alongside a
 `catalog.toml` listing which samples `azd ai rle init` offers. Pick one with
 `--sample <name>`; when a subtype has only one visible sample the CLI
 scaffolds it without prompting.
@@ -38,7 +38,7 @@ separately:
   scaffolds, filled in with a concrete task setup, mock tools, and grader
   (`rle/server/env.py`), plus `rle/rle.toml` and `rle/Dockerfile`.
 
-[`byoh/spreadsheet_query_agent`](./byoh/spreadsheet_query_agent) wraps Hugging Face's
+[`byoh/data_code_agent`](./byoh/data_code_agent) wraps Hugging Face's
 `FineEnvs/data-agent` collection — 5,000 data-analysis tasks over real CSVs —
 and grades a second axis on top of answer correctness: whether the agent
 correctly judged the data it analysed to be sensitive, and filed a disclosure.

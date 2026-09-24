@@ -1,4 +1,4 @@
-"""Example BYOH agent harness for the spreadsheet query agent RLE.
+"""Example BYOH agent harness for the data-code agent RLE.
 
 Deploy this anywhere reachable over HTTPS, then point ``rle/rle.toml``'s
 ``baseUrl`` at ``<this-url>/invoke`` and run ``azd ai rle publish``.
@@ -91,9 +91,9 @@ from pydantic import AliasChoices, BaseModel, ConfigDict, Field
 
 import opencode_direct
 
-app = FastAPI(title="byoh-spreadsheet-query-agent")
+app = FastAPI(title="byoh-data-code-agent")
 
-logger = logging.getLogger("byoh-spreadsheet-query-agent")
+logger = logging.getLogger("byoh-data-code-agent")
 
 RETRY_AFTER_MS = 500
 

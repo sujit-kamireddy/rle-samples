@@ -20,8 +20,8 @@
 name = "code_repair"
 visible = false
 
-# spreadsheet_query_agent is staged for internal use only, same rationale as
+# data_code_agent is staged for internal use only, same rationale as
 # code_repair above.
 [[sample]]
-name = "spreadsheet_query_agent"
+name = "data_code_agent"
 visible = false

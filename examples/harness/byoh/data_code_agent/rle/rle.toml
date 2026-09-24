@@ -1,5 +1,5 @@
 [rle]
-name = "spreadsheet_query_agent_byoh"
+name = "data_code_agent_byoh"
 version = "0.1.0"
 type = "Harness"
 subtype = "BYOH"
