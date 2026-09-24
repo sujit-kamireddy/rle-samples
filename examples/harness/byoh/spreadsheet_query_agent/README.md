@@ -44,6 +44,10 @@ wrote.
 Running `azd ai rle init --type Harness --subtype BYOH --sample spreadsheet_query_agent`
 copies this exact `agent/` + `rle/` pair as your starting point.
 
+Alongside them, [`job_data/`](./job_data) holds the training-job input manifests
+(`train.jsonl`/`validation.jsonl`) that `azd ai rle train` uploads -- one row per
+task, distinct from the answer keys baked into `rle/`'s own image. See step 5.
+
 ## Compliance disclosure: grading judgement, not just answers
 
 The dataset alone grades one thing -- is the answer right. This sample adds a
@@ -225,7 +229,7 @@ Set `baseUrl` in `rle/rle.toml` to your deployed agent's invocation URL:
 ```toml
 [rle]
 name = "spreadsheet_query_agent_byoh"
-version = "0.1.0"
+version = "1.0.0"
 type = "Harness"
 subtype = "BYOH"
 baseUrl = "https://<your-deployed-agent-host>/invoke"
@@ -264,6 +268,47 @@ scores zero if the harness reports a different one.
 It stays optional: `--task '{}'` pins nothing and grades on the harness's
 report, which is the right choice when you are the one running the harness and
 want one less thing to keep in sync.
+
+## 5. Start a training job
+
+`job_data/` holds the training-job input manifests: one row per task, each
+carrying the same selector a rollout takes.
+
+```jsonl
+{"task": {"split": "FineEnvs/data-agent-harbor-train", "task_index": 0}, "agent_input": {"split": "FineEnvs/data-agent-harbor-train", "task_index": 0}}
+```
+
+The selector is repeated for the reason given above -- `task` pins the task at
+`/reset`, `agent_input` selects it in the harness -- and the Harness recipe
+reads both fields from each row. `train.jsonl` holds the first 1,000 tasks;
+`validation.jsonl` holds the last 200, so the two never overlap.
+
+`rle/rle.toml` records how this environment is trained, so a run needs no flags:
+
+```toml
+[train]
+model = "qwen3-32b-1"
+training_file = "../job_data/train.jsonl"
+validation_file = "../job_data/validation.jsonl"
+
+[train.options]
+group_size = 4
+max_concurrent_rollouts = 8
+```
+
+```bash
+cd rle
+azd ai rle train
+```
+
+Use `--task-count` to train on only the first N tasks while checking the
+environment end to end, which is cheaper than waiting on the full dataset:
+
+```bash
+azd ai rle train --task-count 8
+```
+
+Add `--follow` to mirror the run's logs and metrics locally while it runs.
 
 ## Reference: how RLE invokes your harness
 
