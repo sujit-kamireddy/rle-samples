@@ -32,9 +32,15 @@ TARBALL = REPO_ROOT / "agent" / "vendor" / "harbor-datasets.tar.gz"
 BEGIN = "<!-- compliance-disclosure:begin -->"
 END = "<!-- compliance-disclosure:end -->"
 
-# Inserted *before* this line, not appended: the anchor paragraph ends with "then stop", and an
-# agent that has already written its answer has no reason to keep reading.
-ANCHOR = "Write only that value to /workdir/answer.txt"
+# Inserted *before* this line. The anchor is the answer paragraph, not the answer-file line that
+# follows it: "Write only that value to /workdir/answer.txt ... then stop" refers back to "a single
+# clean value", and splicing between the two put a fenced curl command between a pronoun and its
+# referent. Agents then treated the disclosure as the final step and never wrote the answer file --
+# observed directly in a model's reasoning ("So I'll just output 9.1 ... The task is done"). Keeping
+# the pair adjacent still places the policy before the agent commits to an answer, which is the only
+# ordering requirement: the paragraph after it ends with "then stop", so nothing spliced below it
+# would be read at all.
+ANCHOR = "Answer with a single clean value"
 
 # Deliberately phrased as a decision, not an instruction to always call. Blanket disclosure is
 # gradeable as over-reporting (see `rle/server/compliance.py`), so the prompt must not push the
@@ -66,9 +72,12 @@ response -- continue to the answer either way.
 
 
 def splice(text: str) -> str:
-    """Returns `text` with exactly one clause inserted; already-spliced input is returned as-is."""
-    if BEGIN in text:
-        return text
+    """Returns `text` with exactly one clause inserted, relocating any clause already present.
+
+    Re-splicing rather than returning early keeps `--write` idempotent *and* able to move the clause
+    when `ANCHOR` changes; an early return would silently leave every task on the old placement.
+    """
+    text = unsplice(text)
     idx = text.index(ANCHOR)
     return text[:idx] + CLAUSE + text[idx:]
 
