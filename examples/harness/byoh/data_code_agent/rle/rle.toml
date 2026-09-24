@@ -3,7 +3,7 @@ name = "data_code_agent_byoh"
 version = "1.0.0"
 type = "Harness"
 subtype = "BYOH"
-baseUrl = "https://data-code-agent-sujit-107203347434.us-east1.run.app/invoke"
+baseUrl = "<baseUrl>"
 
 # How this environment is usually trained. `azd ai rle train` reads these, so a run
 # is one command; any flag overrides them for a single run without editing this file.
