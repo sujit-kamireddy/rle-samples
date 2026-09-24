@@ -167,6 +167,40 @@ No extra dependencies beyond `requirements.txt` and `pytest`; the tests drive
 `opencode_direct` with the `opencode` invocation stubbed, so they need neither a
 model endpoint nor the task suite.
 
+## Reading the logs
+
+RLE polls `/invoke/rollouts/{operation_id}` every 500ms for the whole rollout, so
+the access log would otherwise carry several hundred identical `200`s per rollout
+and bury everything the rollout itself reports. Those lines are filtered out here.
+Nothing is lost: the polls that carry information are logged instead, one line each
+-- the poll that delivers the result, and any poll naming a rollout this process
+does not have. `POST /invoke` and `DELETE /invoke/rollouts/...` are left alone.
+
+That covers the lines this container writes. On Cloud Run the platform logs every
+request a second time, as its own `httpRequest` entry, and no container-side change
+can suppress those. Drop them when reading, by asking only for this container's
+streams:
+
+```bash
+gcloud logging read \
+  'resource.type=cloud_run_revision
+   AND resource.labels.service_name=<your-service>
+   AND logName:("stdout" OR "stderr")' \
+  --limit 100 --format='value(textPayload)'
+```
+
+For a live stream use `gcloud alpha logging tail` (it needs the `alpha` component)
+with the same resource filter. Two caveats, both found the hard way on gcloud
+586.0.0: the `logName:(...)` clause above is rejected there, and
+`--format='value(textPayload)'` silences the stream entirely, so tail wants the
+plain filter and its default output.
+
+```bash
+gcloud alpha logging tail \
+  'resource.type=cloud_run_revision
+   AND resource.labels.service_name=<your-service>'
+```
+
 ## Build and deploy
 
 ```bash
