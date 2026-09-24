@@ -68,6 +68,50 @@ _BASE_URL_PROVIDERS = frozenset({"anthropic", "google", "openai"})
 
 _DEFAULT_AGENT_TIMEOUT_SEC = 600.0
 
+# These two numbers are not preferences -- they are this harness's half of a contract with
+# whatever serves the model, and getting them wrong is what makes a long rollout die without
+# an answer.
+#
+# opencode compacts the transcript when its running token total reaches
+# `limit.context - min(20000, limit.output)`, so `limit.output` is the headroom it holds back
+# for the reply. The server, meanwhile, adds its own default output budget to the prompt and
+# rejects the pair once it passes the model's window. If the two budgets disagree, opencode
+# compacts too late by exactly the difference and the request is refused with
+# "Requested prompt tokens + max_tokens exceeds the maximum context length" -- which reaches
+# the agent as an opaque 502 and a rollout that never writes an answer.
+#
+# So `_DEFAULT_OUTPUT_TOKENS` tracks the capture proxy's own default budget rather than being
+# chosen independently, and the context sits below the model's window to absorb the overshoot
+# of a single turn that lands a large tool result after the last compaction check.
+_DEFAULT_OUTPUT_TOKENS = 8192
+_DEFAULT_CONTEXT_TOKENS = 30720
+
+# Compaction cannot save a transcript from a single oversized tool result. opencode checks its
+# running total *between* steps, so one tool call that returns more than the whole window leaves
+# the next request already over the limit, with nothing to compact away. opencode's own guard is
+# far too loose to prevent that here: it truncates tool output at 2000 lines or 50KiB, and 50KiB
+# of numeric CSV is roughly 34k tokens -- more than this window holds. Observed exactly that: a
+# single `read` of an 801-line CSV took the prompt from 7,456 to 41,387 tokens in one step and
+# killed the episode.
+#
+# `opencode` reads `AGENTS.md` from its working directory, which is the only per-rollout lever
+# this harness has over how the agent spends its context. These are operating rules for a small
+# window, not hints about the answer -- the task, the data and the grading are untouched.
+_WORKSPACE_RULES = """# Working rules
+
+You have a small context window. Reading a data file in full will overflow it and end the
+session with no answer, so treat the transcript as the scarce resource it is.
+
+- Never print a data file in full -- no `cat`, and no whole-file `read` of anything in the input
+  directory. That applies however large the file looks; CSV rows are dense in tokens.
+- Inspect data by computing over it. Write a Python script and run it; `pandas` and `numpy` are
+  installed. `df.shape`, `df.columns`, `df.dtypes` and `df.head()` tell you the structure without
+  spending the window on the contents.
+- Print only what you need to see. Aggregate, filter or slice first, and keep each command's
+  output to a few lines.
+- Write the answer to the file the task names, exactly as instructed.
+"""
+
 
 class RolloutError(RuntimeError):
     """A rollout that could not be completed. The message reaches RLE as the failure reason."""
@@ -119,6 +163,36 @@ def _split_model(model: str) -> tuple[str, str]:
     return DEFAULT_PROVIDER, model
 
 
+def _env_int(name: str, default: int) -> int:
+    """Read a positive integer override, ignoring anything unusable.
+
+    A malformed budget must not take the rollout down: falling back to the default keeps
+    the request inside the window, which is the whole point of sending one.
+    """
+    raw = os.environ.get(name, "").strip()
+    if not raw:
+        return default
+    try:
+        value = int(raw)
+    except ValueError:
+        return default
+    return value if value > 0 else default
+
+
+def _write_workspace_rules(config_dir: Path, work: Path) -> None:
+    """Puts the working rules where `opencode` will actually read them.
+
+    `opencode` gathers instructions from two sources: `AGENTS.md` next to its config, which it
+    always reads, and `AGENTS.md`/`CONTEXT.md` found from the project root, which it locates
+    through VCS detection. This harness runs opencode on `OPENCODE_FAKE_VCS` rather than in a
+    real repository, and the project-root lookup does not fire -- writing only that copy is
+    silently a no-op. Both are written so the rules do not depend on which path works.
+    """
+    config_dir.mkdir(parents=True, exist_ok=True)
+    (config_dir / "AGENTS.md").write_text(_WORKSPACE_RULES)
+    (work / "AGENTS.md").write_text(_WORKSPACE_RULES)
+
+
 def _opencode_config(model: str, base_url: str) -> dict[str, Any]:
     """Builds the `opencode.json` that registers the model and points it at the capture proxy.
 
@@ -126,9 +200,20 @@ def _opencode_config(model: str, base_url: str) -> dict[str, Any]:
     anywhere else, and the failure mode is a silent call to the real provider rather than an error.
     Registering the model at all is what lets opencode accept a name that is not in its built-in
     registry, which every RLE-trained checkpoint is.
+
+    `limit` does not reach the request: opencode's `/v1/responses` path sends no output budget
+    at all, whatever the model declares. What `limit` does is set the point at which opencode
+    compacts the transcript, which is the only lever this harness has over how large a prompt
+    it can present. See `_DEFAULT_OUTPUT_TOKENS` for why those two numbers are chosen together.
     """
     provider, model_id = _split_model(model)
-    provider_config: dict[str, Any] = {"models": {model_id: {}}}
+    model_config: dict[str, Any] = {
+        "limit": {
+            "context": _env_int("MODEL_CONTEXT_TOKENS", _DEFAULT_CONTEXT_TOKENS),
+            "output": _env_int("MODEL_OUTPUT_TOKENS", _DEFAULT_OUTPUT_TOKENS),
+        }
+    }
+    provider_config: dict[str, Any] = {"models": {model_id: model_config}}
     if base_url and provider in _BASE_URL_PROVIDERS:
         provider_config["options"] = {"baseURL": base_url}
     return {"provider": {provider: provider_config}}
@@ -198,7 +283,36 @@ async def run_rollout(
     finally:
         # `ignore_errors` because a finished rollout should not fail on cleanup; the worst case is
         # a leftover directory, which the next container restart clears.
-        shutil.rmtree(work, ignore_errors=True)
+        #
+        # KEEP_ROLLOUT_DIR keeps it instead. A rollout that grades zero leaves nothing behind to
+        # explain why -- the agent's transcript, the files it saw and the answer it did or did not
+        # write all live here -- and the window to catch it mid-run is a few seconds.
+        if not os.environ.get("KEEP_ROLLOUT_DIR"):
+            shutil.rmtree(work, ignore_errors=True)
+        else:
+            logger.warning("KEEP_ROLLOUT_DIR set; leaving %s in place", work)
+
+
+def _with_file_list(instruction: str, input_dir: Path) -> str:
+    """Fills in the file list the instruction promises but leaves unrendered.
+
+    This is a repair, not an embellishment. 4801 of the 5000 tasks name their files outright,
+    one `- <name>` per line in sorted order; the remaining 199 carry the literal placeholder
+    `- (see <dir>)` instead, which is upstream's renderer failing to substitute. Filling it in
+    puts those 199 back in the format the other 96% already ship, which is why the output here
+    is that same sorted `- <name>` -- a task the agent sees should not depend on which side of
+    a rendering bug it landed on.
+
+    Nothing else about the task changes: the schema is still the agent's to discover, which is
+    what the instruction's "inspect the data first" step asks for.
+    """
+    placeholder = f"- (see {input_dir})"
+    if placeholder not in instruction:
+        return instruction
+    names = sorted(entry.name for entry in input_dir.iterdir() if entry.is_file())
+    if not names:
+        return instruction
+    return instruction.replace(placeholder, "\n".join(f"- {name}" for name in names))
 
 
 async def _run_in(
@@ -228,12 +342,19 @@ async def _run_in(
         .replace(TASK_INPUT_DIR, str(input_dir))
         .replace(TASK_ANSWER_FILE, str(answer_file))
     )
+    instruction = _with_file_list(instruction, input_dir)
 
     config_dir = home / ".config" / "opencode"
     config_dir.mkdir(parents=True)
     (config_dir / "opencode.json").write_text(
         json.dumps(_opencode_config(model, llm_url), indent=2)
     )
+
+    # `opencode` collects instructions from two places: `AGENTS.md` beside its config, which is
+    # always read, and `AGENTS.md`/`CONTEXT.md` discovered from the project root, which depends
+    # on VCS detection and did not fire here (this harness runs on `OPENCODE_FAKE_VCS`, not a
+    # real repository). Write both, so the rules do not hinge on that discovery working.
+    _write_workspace_rules(config_dir, work)
 
     env = {
         **os.environ,
@@ -258,22 +379,34 @@ async def _run_in(
     provider, model_id = _split_model(model)
     if rlog is not None:
         rlog.event("opencode_started", provider=provider, model=model_id, timeout_sec=row["agent_timeout_sec"])
-    output = await _run(
-        [
-            "opencode",
-            f"--model={provider}/{model_id}",
-            "run",
-            "--format=json",
-            "--thinking",
-            "--dangerously-skip-permissions",
-            "--",
-            instruction,
-        ],
-        cwd=work,
-        env=env,
-        timeout_sec=float(row["agent_timeout_sec"]),
-        what="opencode",
-    )
+    try:
+        output = await _run(
+            [
+                "opencode",
+                f"--model={provider}/{model_id}",
+                "run",
+                "--format=json",
+                "--thinking",
+                "--dangerously-skip-permissions",
+                "--",
+                instruction,
+            ],
+            cwd=work,
+            env=env,
+            timeout_sec=float(row["agent_timeout_sec"]),
+            what="opencode",
+        )
+    except RolloutError as exc:
+        # The agent lost this episode on its own terms: it talked itself past the model's
+        # context window, ran out of time, or crashed. `../rle/server/env.py` already grades
+        # `ok: False` as a zero, which is the honest score for an episode that produced no
+        # answer. Reporting it as a harness failure instead would abort the entire training
+        # run over one bad episode, which is how a single runaway transcript takes down a
+        # job that the other rollouts in its group were completing normally.
+        logger.warning("task %s ended without an answer: %s", row["name"], exc)
+        if rlog is not None:
+            rlog.event("opencode_failed", error=str(exc))
+        return {"ok": False, "error": str(exc), "answer_text": None}
     if rlog is not None:
         rlog.event("opencode_finished", output_chars=len(output))
 
