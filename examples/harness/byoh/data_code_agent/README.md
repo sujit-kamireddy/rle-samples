@@ -1,4 +1,4 @@
-# BYOH (Bring Your Own Harness) example: spreadsheet query agent
+# BYOH (Bring Your Own Harness) example: data-code agent
 
 Wraps Hugging Face's [`FineEnvs/data-agent`](https://huggingface.co/collections/FineEnvs/data-agent)
 collection -- 5,000 deterministic data-analysis tasks built from
@@ -41,7 +41,7 @@ every task in this dataset). `agent/` still cannot fabricate a better score for
 itself: it can only relay -- or fail to relay -- whatever the agent actually
 wrote.
 
-Running `azd ai rle init --type Harness --subtype BYOH --sample spreadsheet_query_agent`
+Running `azd ai rle init --type Harness --subtype BYOH --sample data_code_agent`
 copies this exact `agent/` + `rle/` pair as your starting point.
 
 ## Compliance disclosure: grading judgement, not just answers
@@ -167,12 +167,12 @@ input files on local disk and runs its own agent process.
 
 ```bash
 cd agent
-docker build -t spreadsheet-query-agent-byoh:latest .
+docker build -t data-code-agent-byoh:latest .
 docker run --rm -p 8080:8080 \
   -e MODEL_URL=https://api.openai.com/v1 \
   -e MODEL_API_KEY=$OPENAI_API_KEY \
   -e MODEL_ID=gpt-5-mini \
-  spreadsheet-query-agent-byoh:latest
+  data-code-agent-byoh:latest
 ```
 
 For Podman, replace `docker` with `podman` in both commands. Confirm `/health` on
@@ -224,7 +224,7 @@ Set `baseUrl` in `rle/rle.toml` to your deployed agent's invocation URL:
 
 ```toml
 [rle]
-name = "spreadsheet_query_agent_byoh"
+name = "data_code_agent_byoh"
 version = "0.1.0"
 type = "Harness"
 subtype = "BYOH"

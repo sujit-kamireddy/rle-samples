@@ -170,12 +170,12 @@ model endpoint nor the task suite.
 ## Build and deploy
 
 ```bash
-docker build -t spreadsheet-query-agent:local .
+docker build -t data-code-agent:local .
 docker run --rm -p 8080:8080 \
   -e MODEL_URL=https://api.openai.com/v1 \
   -e MODEL_API_KEY=$OPENAI_API_KEY \
   -e MODEL_ID=gpt-5-mini \
-  spreadsheet-query-agent:local
+  data-code-agent:local
 ```
 
 Push this image anywhere RLE can reach over HTTPS (Azure Container Apps, your own
