@@ -48,6 +48,9 @@ Alongside them, [`job_data/`](./job_data) holds the training-job input manifests
 (`train.jsonl`/`validation.jsonl`) that `azd ai rle train` uploads -- one row per
 task, distinct from the answer keys baked into `rle/`'s own image. See step 5.
 
+For the current hosted BYOH training setup and Loom dashboard, see
+[`RLE-BYOH-training.md`](../../RLE-BYOH-training.md).
+
 ## Compliance disclosure: grading judgement, not just answers
 
 The dataset alone grades one thing -- is the answer right. This sample adds a
