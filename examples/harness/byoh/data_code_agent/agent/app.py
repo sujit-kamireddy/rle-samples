@@ -90,6 +90,9 @@ from fastapi.responses import JSONResponse
 from pydantic import AliasChoices, BaseModel, ConfigDict, Field
 
 import opencode_direct
+import telemetry
+
+telemetry.configure()
 
 app = FastAPI(title="byoh-data-code-agent")
 
@@ -223,7 +226,67 @@ class RolloutStore:
 ROLLOUTS = RolloutStore()
 
 
-async def run_harness_rollout(rollout_id: str, rollout_context: RolloutContext, agent_input: dict[str, Any]) -> str:
+async def _resolve_rollout_model(endpoint: str, api_key: str) -> str:
+    """Returns the model id this rollout's capture proxy serves.
+
+    RLE binds the model to the rollout, not to this deployment: the proxy named in
+    `rollout_context.model_endpoint` serves whatever checkpoint the training session samples,
+    and nothing in the invoke payload names it. `MODEL_ID` names a model on the *default*
+    endpoint and is resolved once at import, so reusing it here hands `opencode` an id the
+    rollout is not running. The calls still reach the proxy and still get captured, which is
+    what makes this worth resolving rather than assuming: `opencode` applies the named model's
+    tool-calling and reasoning conventions to a different model, so the agent burns its turns
+    and never writes an answer, and the rollout grades zero with no error anywhere.
+    """
+    headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        response = await client.get(f"{endpoint.rstrip('/')}/models", headers=headers)
+    response.raise_for_status()
+    served = [m["id"] for m in response.json().get("data", []) if m.get("id")]
+    # Only an unambiguous answer is usable, for the same reason as the startup probe.
+    return served[0] if len(served) == 1 else ""
+
+
+async def _rollout_model(rollout_context: RolloutContext, rlog: telemetry.RolloutLog) -> str:
+    """Picks the model id to hand `opencode` for one rollout.
+
+    Prefers what the rollout's own proxy reports; falls back to `MODEL_ID` so a local run
+    against a plain endpoint still works. Failing to resolve is worth a warning rather than
+    silence, because the fallback is the wrong model under RLE.
+    """
+    if rollout_context.model_endpoint:
+        try:
+            resolved = await _resolve_rollout_model(
+                rollout_context.model_endpoint, rollout_context.model_api_key
+            )
+        except Exception as exc:  # noqa: BLE001 - an unreachable /models must not end the rollout
+            rlog.event(
+                "model_resolution_failed",
+                level=logging.WARNING,
+                endpoint=rollout_context.model_endpoint,
+                error=f"{type(exc).__name__}: {exc}",
+                fallback_model=_MODEL or None,
+            )
+        else:
+            if resolved:
+                rlog.event("model_resolved", model=resolved, endpoint=rollout_context.model_endpoint)
+                return resolved
+            rlog.event(
+                "model_resolution_ambiguous",
+                level=logging.WARNING,
+                endpoint=rollout_context.model_endpoint,
+                fallback_model=_MODEL or None,
+            )
+    if not _MODEL:
+        raise RuntimeError(
+            "no model to run: this rollout's endpoint named none and MODEL_ID is unset"
+        )
+    return _MODEL
+
+
+async def run_harness_rollout(
+    rollout_id: str, rollout_context: RolloutContext, agent_input: dict[str, Any], rlog: telemetry.RolloutLog
+) -> str:
     """Runs one task and returns the agent's own answer text, as a JSON string.
 
     `opencode` runs here, in this container, as a child process of this service --
@@ -240,11 +303,25 @@ async def run_harness_rollout(rollout_id: str, rollout_context: RolloutContext, 
     """
     task_index = int(agent_input.get("task_index", 0))
     split = agent_input.get("split", DEFAULT_SPLIT)
+    model = await _rollout_model(rollout_context, rlog)
+    rlog.event(
+        "task_selected",
+        task_index=task_index,
+        split=split,
+        model=model,
+        # Correlation for the side-by-side demo: the model endpoint and sandbox-tools endpoint
+        # RLE handed this rollout, so a Cloud Run log line can be matched against the
+        # `azd ai rle rollout` CLI's own "model-call capture" / "sandbox" stages by URL, not just
+        # by rollout_id.
+        model_url=rollout_context.model_endpoint or _LLM_URL or None,
+        sandbox_tools_url=rollout_context.sandbox_tools_endpoint or None,
+        compliance_capability=bool(rollout_context.sandbox_tools_endpoint and rollout_context.sandbox_tools_token),
+    )
 
     try:
         result = await opencode_direct.run_rollout(
             task_index=task_index,
-            model=_MODEL,
+            model=model,
             llm_url=rollout_context.model_endpoint or _LLM_URL,
             api_key=rollout_context.model_api_key or "",
             # Not rollout parameters: this is the capability the agent needs in
@@ -254,12 +331,22 @@ async def run_harness_rollout(rollout_id: str, rollout_context: RolloutContext, 
             compliance_endpoint=rollout_context.sandbox_tools_endpoint,
             compliance_token=rollout_context.sandbox_tools_token,
             rollout_id=rollout_id,
+            rlog=rlog,
         )
     except opencode_direct.RolloutError as exc:
+        rlog.event("rollout_error", level=logging.ERROR, error=str(exc))
         raise RuntimeError(str(exc)) from exc
 
     if not result.get("ok", True):
-        raise RuntimeError(result.get("error") or "Rollout failed with no error message")
+        # A rollout the agent lost is not a harness failure: `../rle/server/env.py` grades
+        # `ok: False` as a zero. Only the setup faults above -- which raise -- are failures.
+        rlog.event("rollout_no_answer", level=logging.WARNING, error=result.get("error"))
+
+    rlog.event(
+        "answer_ready",
+        answer_chars=len(result.get("answer_text") or ""),
+        answer_present=result.get("answer_text") is not None,
+    )
 
     # `../rle/server/env.py`'s `/grade` parses this same JSON back out of
     # `agent_response` -- keep the key names in sync with that.
@@ -280,26 +367,41 @@ async def run_rollout(request: InvocationRequest) -> None:
     Nothing is raised out of here. The start request has already been answered by
     the time this runs, so a failure has nowhere to go except the poll resource.
     """
+    rlog = telemetry.RolloutLog(logger, request.rollout_id, request.operation_id)
     try:
         output_text = await run_harness_rollout(
-            request.rollout_id, request.rollout_context, request.agent_input
+            request.rollout_id, request.rollout_context, request.agent_input, rlog
         )
     except asyncio.CancelledError:
         # RLE withdrew the rollout, which already removed it from the store.
-        logger.info("Rollout %s withdrawn", request.rollout_id)
+        rlog.event("rollout_withdrawn")
         raise
     except Exception as error:  # noqa: BLE001 - every failure has to reach the poll
         # RLE deliberately does not echo this wording back to the caller, so an
         # async harness that does not log it has no record of why it failed.
-        logger.exception("Rollout %s failed", request.rollout_id)
+        rlog.event("rollout_failed", level=logging.ERROR, error=str(error))
         ROLLOUTS.fail(request.operation_id, str(error))
         return
+    rlog.event("rollout_succeeded")
     ROLLOUTS.succeed(request.operation_id, output_text)
 
 
 @app.post("/invoke", status_code=202)
 async def invoke(request: InvocationRequest) -> dict[str, int]:
     """Takes ownership of the rollout and returns immediately."""
+    logger.info(
+        "invoke received",
+        extra={
+            "rollout_id": request.rollout_id,
+            "operation_id": request.operation_id,
+            "event": "invoke_received",
+            "fields": {
+                "agent_input": request.agent_input,
+                "model_url": request.rollout_context.model_endpoint or None,
+                "sandbox_tools_url": request.rollout_context.sandbox_tools_endpoint or None,
+            },
+        },
+    )
     task = asyncio.create_task(run_rollout(request))
     ROLLOUTS.accept(request.operation_id, task)
     return {"retry_after_ms": RETRY_AFTER_MS}
@@ -321,6 +423,10 @@ async def withdraw(operation_id: str) -> Response:
     Idempotent on purpose: a repeat or a late arrival must not be an error, or
     RLE would record a cleanup failure for work that is already gone.
     """
+    logger.info(
+        "withdraw received",
+        extra={"operation_id": operation_id, "rollout_id": "", "event": "withdraw_received", "fields": {}},
+    )
     ROLLOUTS.withdraw(operation_id)
     return Response(status_code=204)
 

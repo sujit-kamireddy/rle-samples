@@ -105,8 +105,18 @@ def task_row(task_index: int) -> dict[str, Any]:
 
 
 def _split_model(model: str) -> tuple[str, str]:
+    """Splits `provider/model`, but only where the prefix really names a provider.
+
+    Model ids are not reliably provider-qualified: RLE serves checkpoints under their upstream
+    id, and those carry a namespace of their own (`Qwen/Qwen3-32B`, `MAI/MAI-Code-1.1-Flash`).
+    Partitioning on the first `/` unconditionally reads that namespace as a provider, which
+    leaves `_opencode_config` unable to attach `baseURL` -- so the agent silently calls the real
+    provider instead of the capture proxy, and nothing is captured.
+    """
     provider, sep, model_id = model.partition("/")
-    return (provider, model_id) if sep else (DEFAULT_PROVIDER, model)
+    if sep and provider in _BASE_URL_PROVIDERS:
+        return provider, model_id
+    return DEFAULT_PROVIDER, model
 
 
 def _opencode_config(model: str, base_url: str) -> dict[str, Any]:
@@ -167,6 +177,7 @@ async def run_rollout(
     compliance_endpoint: str = "",
     compliance_token: str = "",
     rollout_id: str = "",
+    rlog: Any = None,
 ) -> dict[str, Any]:
     """Runs one task end to end and returns the agent's own answer text."""
     row = task_row(task_index)
@@ -182,6 +193,7 @@ async def run_rollout(
             api_key=api_key,
             compliance_endpoint=compliance_endpoint,
             compliance_token=compliance_token,
+            rlog=rlog,
         )
     finally:
         # `ignore_errors` because a finished rollout should not fail on cleanup; the worst case is
@@ -198,13 +210,18 @@ async def _run_in(
     api_key: str,
     compliance_endpoint: str,
     compliance_token: str,
+    rlog: Any = None,
 ) -> dict[str, Any]:
     input_dir = work / "input"
     answer_file = work / "answer.txt"
     home = work / "home"
     home.mkdir(parents=True)
 
+    if rlog is not None:
+        rlog.event("fetching_inputs", task_name=row.get("name"))
     await _fetch_inputs(row, input_dir, work)
+    if rlog is not None:
+        rlog.event("inputs_fetched")
 
     instruction = (
         row["instruction"]
@@ -239,6 +256,8 @@ async def _run_in(
         env["COMPLIANCE_TOKEN"] = compliance_token
 
     provider, model_id = _split_model(model)
+    if rlog is not None:
+        rlog.event("opencode_started", provider=provider, model=model_id, timeout_sec=row["agent_timeout_sec"])
     output = await _run(
         [
             "opencode",
@@ -255,6 +274,8 @@ async def _run_in(
         timeout_sec=float(row["agent_timeout_sec"]),
         what="opencode",
     )
+    if rlog is not None:
+        rlog.event("opencode_finished", output_chars=len(output))
 
     answer_text = _read_answer(answer_file)
     if answer_text is None:
@@ -263,6 +284,8 @@ async def _run_in(
             row["name"],
             output[-500:],
         )
+    if rlog is not None:
+        rlog.event("answer_read", answer_present=answer_text is not None)
     return {"ok": True, "error": None, "answer_text": answer_text}
 
 

@@ -70,7 +70,7 @@ def test_invocation_uses_rles_operation_id_rather_than_minting_one():
 
 def test_dispatch_acknowledges_with_202_and_a_poll_interval(monkeypatch):
     """RLE checks for `202` exactly, and holds `retry_after_ms` to [250, 15000]."""
-    async def never_finishes(rollout_id, rollout_context, agent_input):
+    async def never_finishes(rollout_id, rollout_context, agent_input, rlog):
         import asyncio
 
         await asyncio.sleep(3600)
@@ -97,7 +97,7 @@ def test_dispatch_acknowledges_with_202_and_a_poll_interval(monkeypatch):
 
 
 def test_poll_reports_the_answer_under_output_text(monkeypatch):
-    async def succeeds(rollout_id, rollout_context, agent_input):
+    async def succeeds(rollout_id, rollout_context, agent_input, rlog):
         return "Web Development"
 
     monkeypatch.setattr("app.run_harness_rollout", succeeds)
@@ -118,7 +118,7 @@ def test_poll_reports_the_answer_under_output_text(monkeypatch):
 
 def test_a_failed_rollout_is_reported_on_the_poll_not_the_dispatch(monkeypatch):
     """The dispatch is already answered by the time work starts, so a failure has nowhere else to go."""
-    async def explodes(rollout_id, rollout_context, agent_input):
+    async def explodes(rollout_id, rollout_context, agent_input, rlog):
         raise RuntimeError("sandbox refused to start")
 
     monkeypatch.setattr("app.run_harness_rollout", explodes)

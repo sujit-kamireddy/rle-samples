@@ -57,7 +57,7 @@ RUN if [ -n "${PIP_FALLBACK_INDEX_URL}" ] && \
     rm -rf /tmp/idxprobe; \
     pip install --no-cache-dir --index-url "${PIP_INDEX_URL}" -r requirements.txt
 
-COPY app.py opencode_direct.py ./
+COPY app.py opencode_direct.py telemetry.py ./
 
 # The task suite is deliberately NOT baked into this image.
 #
