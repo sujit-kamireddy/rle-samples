@@ -8,7 +8,9 @@ system.
 
 from __future__ import annotations
 
+import asyncio
 import gzip
+import inspect
 import json
 from pathlib import Path
 
@@ -72,6 +74,52 @@ def test_opencode_config_defaults_the_provider():
     assert "my-checkpoint" in config["provider"]["openai"]["models"]
 
 
+def test_opencode_config_declares_an_output_budget():
+    """An absent budget is what makes Loom reject a prompt that is well inside the window.
+
+    opencode only sends `max_output_tokens` when the model declares a limit, and the capture
+    proxy can lower a budget that is present but never invent one -- so without this the
+    request carries no budget and Loom's own default decides whether the rollout survives.
+    """
+    config = od._opencode_config("my-checkpoint", "https://capture.example/v1")
+    limit = config["provider"]["openai"]["models"]["my-checkpoint"]["limit"]
+    assert limit["output"] == od._DEFAULT_OUTPUT_TOKENS
+    assert limit["context"] == od._DEFAULT_CONTEXT_TOKENS
+
+
+def test_output_budget_is_overridable(monkeypatch):
+    monkeypatch.setenv("MODEL_OUTPUT_TOKENS", "512")
+    monkeypatch.setenv("MODEL_CONTEXT_TOKENS", "16384")
+    limit = od._opencode_config("m", "https://capture.example/v1")["provider"]["openai"]["models"]["m"]["limit"]
+    assert limit == {"context": 16384, "output": 512}
+
+
+@pytest.mark.parametrize("value", ["", "   ", "nonsense", "0", "-1"])
+def test_unusable_budget_overrides_fall_back(monkeypatch, value):
+    """A malformed override must not remove the budget; that reinstates the failure."""
+    monkeypatch.setenv("MODEL_OUTPUT_TOKENS", value)
+    limit = od._opencode_config("m", "https://capture.example/v1")["provider"]["openai"]["models"]["m"]["limit"]
+    assert limit["output"] == od._DEFAULT_OUTPUT_TOKENS
+
+
+def test_namespaced_checkpoint_ids_keep_the_capture_proxy():
+    """`Qwen/Qwen3-32B` names a checkpoint, not a provider.
+
+    Reading that namespace as a provider drops `baseURL`, because only real providers take
+    one -- and the agent then calls the real provider instead of the capture proxy, so the
+    rollout captures nothing.
+    """
+    for model in ("Qwen/Qwen3-32B", "MAI/MAI-Code-1.1-Flash"):
+        assert od._split_model(model) == ("openai", model)
+        provider = od._opencode_config(model, "https://capture.example/v1")["provider"]["openai"]
+        assert model in provider["models"]
+        assert provider["options"]["baseURL"] == "https://capture.example/v1"
+
+
+def test_a_real_provider_prefix_is_still_honoured():
+    assert od._split_model("anthropic/claude-sonnet-4") == ("anthropic", "claude-sonnet-4")
+
+
 def test_instruction_paths_are_rewritten_into_the_rollout_dir(rows):
     """Two concurrent rollouts must not share the hardcoded task paths."""
     instruction = rows[0]["instruction"]
@@ -86,3 +134,163 @@ def test_instruction_paths_are_rewritten_into_the_rollout_dir(rows):
 def test_compliance_clause_survived_into_the_index(rows):
     """The disclosure demo depends on this text reaching the agent."""
     assert "report_sensitive_data_access" in rows[0]["instruction"]
+
+
+def test_the_promised_file_list_is_filled_in(tmp_path):
+    """The filled list must match what the other 4801 tasks already ship: sorted `- <name>`."""
+    input_dir = tmp_path / "input"
+    input_dir.mkdir()
+    for name in ("us-east-1.csv", "ap-south-1.csv"):
+        (input_dir / name).write_text("1,2\n")
+    instruction = f"Files (in {input_dir}, no subfolders):\n- (see {input_dir})\n\nQuestion:"
+    filled = od._with_file_list(instruction, input_dir)
+    assert "- ap-south-1.csv\n- us-east-1.csv" in filled
+    assert "(see " not in filled
+
+
+def test_the_placeholder_is_a_minority_of_the_suite(rows):
+    """Pins the premise of `_with_file_list`.
+
+    Filling the placeholder is only a repair while most tasks render a real list; if upstream
+    ever ships the placeholder everywhere, it is deliberate and we would be the ones diverging.
+    """
+    placeholder = sum(1 for r in rows if "- (see /home/user/input)" in r["instruction"])
+    assert 0 < placeholder < len(rows) / 10, placeholder
+
+
+def test_our_rendering_matches_a_real_multi_file_task(rows, tmp_path):
+    """Builds the list from the filenames of a task that ships its own, and compares."""
+    marker = "Files (in /home/user/input, no subfolders):\n"
+    for row in rows:
+        body = row["instruction"].split(marker, 1)[-1].split("\n\n", 1)[0]
+        names = [line[2:] for line in body.splitlines() if line.startswith("- ")]
+        if len(names) < 2 or body.strip() == "- (see /home/user/input)":
+            continue
+        input_dir = tmp_path / "input"
+        input_dir.mkdir()
+        for name in names:
+            (input_dir / name).write_text("1\n")
+        rendered = od._with_file_list(f"- (see {input_dir})", input_dir)
+        assert rendered == body.strip(), row["name"]
+        return
+    pytest.fail("no multi-file task found to compare against")
+
+
+def test_an_instruction_without_the_placeholder_is_untouched(tmp_path):
+    input_dir = tmp_path / "input"
+    input_dir.mkdir()
+    (input_dir / "a.csv").write_text("1\n")
+    instruction = "Files:\n- a.csv\n"
+    assert od._with_file_list(instruction, input_dir) == instruction
+
+
+def test_an_empty_input_dir_leaves_the_placeholder_alone(tmp_path):
+    """Better the original text than a heading with nothing under it."""
+    input_dir = tmp_path / "input"
+    input_dir.mkdir()
+    instruction = f"- (see {input_dir})"
+    assert od._with_file_list(instruction, input_dir) == instruction
+
+
+def test_a_lost_episode_is_graded_not_failed(monkeypatch, tmp_path):
+    """opencode failing is the agent losing the episode, not the harness breaking.
+
+    The distinction decides whether one runaway transcript scores zero or aborts the
+    whole training run, so it is asserted rather than left to the caller's judgement.
+    """
+    row = od._index()[0]
+
+    async def explode(*args, **kwargs):
+        raise od.RolloutError("opencode exited 1: context window exceeded")
+
+    async def no_fetch(*args, **kwargs):
+        return None
+
+    monkeypatch.setattr(od, "_run", explode)
+    monkeypatch.setattr(od, "_fetch_inputs", no_fetch)
+
+    result = asyncio.run(
+        od.run_rollout(
+            task_index=0,
+            model="openai/stub",
+            llm_url="http://127.0.0.1:1",
+            api_key="k",
+            rollout_id="r1",
+            work_root=tmp_path,
+        )
+        if "work_root" in inspect.signature(od.run_rollout).parameters
+        else od.run_rollout(
+            task_index=0,
+            model="openai/stub",
+            llm_url="http://127.0.0.1:1",
+            api_key="k",
+            rollout_id="r1",
+        )
+    )
+
+    assert result["ok"] is False
+    assert result["answer_text"] is None
+    assert "context window exceeded" in result["error"]
+    assert row["name"]
+
+
+def test_the_compaction_budget_fits_the_training_window():
+    """opencode compacts at `context - min(20000, output)`, then the server adds `output`.
+
+    The sum of those is the largest request this harness can produce, so it has to stay under
+    the training session's window. When it does not, opencode compacts too late by exactly the
+    difference and every long rollout dies with "Requested prompt tokens + max_tokens exceeds
+    the maximum context length" -- as a 502 with no answer, not as anything that names a budget.
+    """
+    window = 32768
+    reserved = min(20000, od._DEFAULT_OUTPUT_TOKENS)
+    compaction_threshold = od._DEFAULT_CONTEXT_TOKENS - reserved
+
+    assert compaction_threshold > 0
+    assert compaction_threshold + od._DEFAULT_OUTPUT_TOKENS < window
+
+
+def test_the_workspace_rules_steer_the_agent_off_whole_file_reads():
+    """One oversized tool result overflows the window before compaction can run.
+
+    opencode truncates tool output at 2000 lines or 50KiB, and 50KiB of numeric CSV is more
+    tokens than this window holds, so its own guard does not bound the prompt. These rules are
+    the harness's only per-rollout lever over that, and they have to keep naming both ways an
+    agent dumps a file into the transcript.
+    """
+    rules = od._WORKSPACE_RULES
+
+    assert "cat" in rules
+    assert "read" in rules
+    assert "pandas" in rules
+
+
+def test_the_workspace_rules_give_away_nothing_about_the_answer():
+    """These rules ship into the agent's working directory, which is the reward-hacking surface.
+
+    `../rle` holds the grading key precisely so the agent cannot reach it; a file this harness
+    writes next to the agent must not reintroduce what that separation exists to prevent.
+    """
+    rules = od._WORKSPACE_RULES.lower()
+
+    for leak in ("gold", "expected_answer", "verifier", "reward", "grade"):
+        assert leak not in rules
+
+
+def test_the_rules_are_written_where_opencode_actually_reads_them(tmp_path):
+    """The config-dir copy is the delivered one; the project copy is only a fallback.
+
+    opencode always reads `AGENTS.md` beside its config, but finds a project-root copy through
+    VCS detection -- which does not fire here, because this harness runs opencode on
+    `OPENCODE_FAKE_VCS` rather than in a real repository. Writing only the project copy is
+    silently a no-op, which is exactly what happened before this was pinned down, so the
+    config-dir copy is the assertion that matters.
+    """
+    config_dir = tmp_path / "home" / ".config" / "opencode"
+    work = tmp_path / "work"
+    work.mkdir()
+
+    od._write_workspace_rules(config_dir, work)
+
+    assert (config_dir / "AGENTS.md").read_text() == od._WORKSPACE_RULES
+    assert (work / "AGENTS.md").read_text() == od._WORKSPACE_RULES

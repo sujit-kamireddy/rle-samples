@@ -223,6 +223,58 @@ class RolloutStore:
 ROLLOUTS = RolloutStore()
 
 
+async def _resolve_rollout_model(endpoint: str, api_key: str) -> str:
+    """Returns the model id this rollout's capture proxy serves.
+
+    RLE binds the model to the rollout, not to this deployment: the proxy named in
+    `rollout_context.model_endpoint` serves whatever checkpoint the training session samples,
+    and nothing in the invoke payload names it. `MODEL_ID` names a model on the *default*
+    endpoint and is resolved once at import, so reusing it here hands `opencode` an id the
+    rollout is not running. The calls still reach the proxy and still get captured, which is
+    what makes this worth resolving rather than assuming: `opencode` applies the named model's
+    tool-calling and reasoning conventions to a different model, so the agent burns its turns
+    and never writes an answer, and the rollout grades zero with no error anywhere.
+    """
+    headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        response = await client.get(f"{endpoint.rstrip('/')}/models", headers=headers)
+    response.raise_for_status()
+    served = [m["id"] for m in response.json().get("data", []) if m.get("id")]
+    # Only an unambiguous answer is usable, for the same reason as the startup probe.
+    return served[0] if len(served) == 1 else ""
+
+
+async def _rollout_model(rollout_context: RolloutContext) -> str:
+    """Picks the model id to hand `opencode` for one rollout.
+
+    Prefers what the rollout's own proxy reports; falls back to `MODEL_ID` so a local run
+    against a plain endpoint still works. Failing to resolve is worth a warning rather than
+    silence, because the fallback is the wrong model under RLE.
+    """
+    if rollout_context.model_endpoint:
+        try:
+            resolved = await _resolve_rollout_model(
+                rollout_context.model_endpoint, rollout_context.model_api_key
+            )
+        except Exception as exc:  # noqa: BLE001 - an unreachable /models must not end the rollout
+            logger.warning(
+                "could not list models at %s: %s: %s; falling back to MODEL_ID=%r",
+                rollout_context.model_endpoint, type(exc).__name__, exc, _MODEL,
+            )
+        else:
+            if resolved:
+                return resolved
+            logger.warning(
+                "%s named no single model; falling back to MODEL_ID=%r",
+                rollout_context.model_endpoint, _MODEL,
+            )
+    if not _MODEL:
+        raise RuntimeError(
+            "no model to run: this rollout's endpoint named none and MODEL_ID is unset"
+        )
+    return _MODEL
+
+
 async def run_harness_rollout(rollout_id: str, rollout_context: RolloutContext, agent_input: dict[str, Any]) -> str:
     """Runs one task and returns the agent's own answer text, as a JSON string.
 
@@ -240,11 +292,12 @@ async def run_harness_rollout(rollout_id: str, rollout_context: RolloutContext, 
     """
     task_index = int(agent_input.get("task_index", 0))
     split = agent_input.get("split", DEFAULT_SPLIT)
+    model = await _rollout_model(rollout_context)
 
     try:
         result = await opencode_direct.run_rollout(
             task_index=task_index,
-            model=_MODEL,
+            model=model,
             llm_url=rollout_context.model_endpoint or _LLM_URL,
             api_key=rollout_context.model_api_key or "",
             # Not rollout parameters: this is the capability the agent needs in
@@ -259,7 +312,9 @@ async def run_harness_rollout(rollout_id: str, rollout_context: RolloutContext, 
         raise RuntimeError(str(exc)) from exc
 
     if not result.get("ok", True):
-        raise RuntimeError(result.get("error") or "Rollout failed with no error message")
+        # A rollout the agent lost is not a harness failure: `../rle/server/env.py` grades
+        # `ok: False` as a zero. Only the setup faults above -- which raise -- are failures.
+        logger.warning("Rollout %s produced no answer: %s", rollout_id, result.get("error"))
 
     # `../rle/server/env.py`'s `/grade` parses this same JSON back out of
     # `agent_response` -- keep the key names in sync with that.
