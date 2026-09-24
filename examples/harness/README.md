@@ -59,6 +59,3 @@ API.
 
 See each sample's own README for the deploy → wire → register → publish
 flow.
-
-For a PowerShell walkthrough of the published data-code BYOH harness, training
-job, and Loom dashboard, see [`RLE-BYOH-training.md`](./RLE-BYOH-training.md).
