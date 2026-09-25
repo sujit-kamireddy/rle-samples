@@ -12,6 +12,8 @@ import asyncio
 import gzip
 import inspect
 import json
+import os
+import sys
 from pathlib import Path
 
 import pytest
@@ -232,6 +234,153 @@ def test_a_lost_episode_is_graded_not_failed(monkeypatch, tmp_path):
     assert result["answer_text"] is None
     assert "context window exceeded" in result["error"]
     assert row["name"]
+
+
+def test_opencode_session_id_requires_one_session():
+    event = json.dumps({"type": "step-finish", "sessionID": "ses_first"})
+    assert od._opencode_session_id(f"diagnostic line\n{event}\n{event}") == "ses_first"
+    assert od._opencode_session_id(event + '\n{"sessionID":"ses_second"}') is None
+    assert od._opencode_session_id('{"type":"step-finish"}\nnot JSON') is None
+
+
+def test_a_timed_out_opencode_preserves_safe_progress(tmp_path):
+    async def run():
+        return await od._run(
+            [sys.executable, "-u", "-c",
+             "import json,time; print(json.dumps({'type':'step-start','secret':'SECRET-OUTPUT'}), flush=True); time.sleep(10)"],
+            cwd=tmp_path,
+            env=os.environ.copy(),
+            timeout_sec=0.2,
+            what="opencode",
+        )
+
+    with pytest.raises(od.RolloutError) as exc:
+        asyncio.run(run())
+    assert "1 steps started" in str(exc.value)
+    assert "last=step-start" in str(exc.value)
+    assert "SECRET-OUTPUT" not in str(exc.value)
+
+
+def test_missing_answer_resumes_the_same_session(monkeypatch, tmp_path):
+    calls = []
+
+    async def no_fetch(*args, **kwargs):
+        pass
+
+    async def run(command, *, cwd, env, timeout_sec, what):
+        calls.append((command, cwd, env, timeout_sec, what))
+        if len(calls) == 2:
+            (cwd / "answer.txt").write_text(" 42 \n")
+        return '{"type":"step-finish","sessionID":"ses_this_rollout"}\n'
+
+    monkeypatch.setattr(od, "_fetch_inputs", no_fetch)
+    monkeypatch.setattr(od, "_run", run)
+    result = asyncio.run(od._run_in(
+        work=tmp_path,
+        row={"name": "test", "instruction": "Write /workdir/answer.txt", "agent_timeout_sec": 600},
+        model="Qwen/Qwen3-32B",
+        llm_url="https://capture.invalid/v1",
+        api_key="rollout-key",
+        compliance_endpoint="https://tools.invalid",
+        compliance_token="rollout-token",
+    ))
+
+    assert result == {"ok": True, "error": None, "answer_text": "42"}
+    assert len(calls) == 2
+    assert "--session" not in calls[0][0]
+    assert calls[1][0][calls[1][0].index("--session") + 1] == "ses_this_rollout"
+    assert str(tmp_path / "answer.txt") in calls[1][0][-1]
+    assert calls[1][1] == calls[0][1] == tmp_path
+    assert calls[1][2]["XDG_DATA_HOME"] == calls[0][2]["XDG_DATA_HOME"]
+    assert calls[1][2]["OPENAI_API_KEY"] == calls[0][2]["OPENAI_API_KEY"]
+    assert 0 < calls[1][3] <= od._ANSWER_RETRY_TIMEOUT_SEC
+
+
+@pytest.mark.parametrize("first_output", [
+    '{"type":"step-finish","sessionID":"ses_this_rollout"}\n',
+    "no session events\n",
+])
+def test_missing_answer_stays_a_zero_reward_outcome(monkeypatch, tmp_path, caplog, first_output):
+    calls = []
+
+    async def no_fetch(*args, **kwargs):
+        pass
+
+    async def run(command, *, cwd, env, timeout_sec, what):
+        calls.append(command)
+        (cwd / "answer.txt").write_text(" \n")
+        return first_output + "SECRET-OUTPUT"
+
+    monkeypatch.setattr(od, "_fetch_inputs", no_fetch)
+    monkeypatch.setattr(od, "_run", run)
+    result = asyncio.run(od._run_in(
+        work=tmp_path,
+        row={"name": "test", "instruction": "Write /workdir/answer.txt", "agent_timeout_sec": 600},
+        model="Qwen/Qwen3-32B",
+        llm_url="https://capture.invalid/v1",
+        api_key="rollout-key",
+        compliance_endpoint="",
+        compliance_token="",
+    ))
+
+    assert result == {"ok": False, "error": "agent did not write answer.txt", "answer_text": None}
+    assert len(calls) == (2 if "ses_this_rollout" in first_output else 1)
+    assert "SECRET-OUTPUT" not in caplog.text
+
+
+def test_existing_answer_does_not_trigger_retry(monkeypatch, tmp_path):
+    calls = []
+
+    async def no_fetch(*args, **kwargs):
+        pass
+
+    async def run(command, *, cwd, env, timeout_sec, what):
+        calls.append(command)
+        (cwd / "answer.txt").write_text("answer")
+        return "no session events"
+
+    monkeypatch.setattr(od, "_fetch_inputs", no_fetch)
+    monkeypatch.setattr(od, "_run", run)
+    result = asyncio.run(od._run_in(
+        work=tmp_path,
+        row={"name": "test", "instruction": "Write /workdir/answer.txt", "agent_timeout_sec": 600},
+        model="Qwen/Qwen3-32B",
+        llm_url="https://capture.invalid/v1",
+        api_key="rollout-key",
+        compliance_endpoint="",
+        compliance_token="",
+    ))
+
+    assert result == {"ok": True, "error": None, "answer_text": "answer"}
+    assert len(calls) == 1
+
+
+def test_failed_answer_retry_is_an_explicit_agent_failure(monkeypatch, tmp_path):
+    calls = []
+
+    async def no_fetch(*args, **kwargs):
+        pass
+
+    async def run(command, *, cwd, env, timeout_sec, what):
+        calls.append(command)
+        if len(calls) == 2:
+            raise od.RolloutError("opencode answer retry exceeded 120s")
+        return '{"type":"step-finish","sessionID":"ses_this_rollout"}\n'
+
+    monkeypatch.setattr(od, "_fetch_inputs", no_fetch)
+    monkeypatch.setattr(od, "_run", run)
+    result = asyncio.run(od._run_in(
+        work=tmp_path,
+        row={"name": "test", "instruction": "Write /workdir/answer.txt", "agent_timeout_sec": 600},
+        model="Qwen/Qwen3-32B",
+        llm_url="https://capture.invalid/v1",
+        api_key="rollout-key",
+        compliance_endpoint="",
+        compliance_token="",
+    ))
+
+    assert len(calls) == 2
+    assert result == {"ok": False, "error": "opencode answer retry exceeded 120s", "answer_text": None}
 
 
 def test_the_compaction_budget_fits_the_training_window():
