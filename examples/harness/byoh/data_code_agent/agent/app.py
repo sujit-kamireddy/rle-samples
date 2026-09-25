@@ -82,6 +82,7 @@ import asyncio
 import json
 import logging
 import os
+import sys
 from typing import Any
 
 import httpx
@@ -96,6 +97,62 @@ app = FastAPI(title="byoh-data-code-agent")
 logger = logging.getLogger("byoh-data-code-agent")
 
 RETRY_AFTER_MS = 500
+
+POLL_PATH_MARKER = "/invoke/rollouts/"
+
+
+class PollAccessNoiseFilter(logging.Filter):
+    """Keeps RLE's poll loop out of the access log.
+
+    RLE polls every ``RETRY_AFTER_MS``, so a two-minute rollout writes hundreds of
+    identical ``200``s and buries the rollout's own lines. Dropping them loses
+    nothing: the polls that matter -- the one carrying the result, and any that
+    name a rollout this process does not have -- are logged by ``poll`` itself.
+
+    Uvicorn logs access records with the args tuple
+    ``(client_addr, method, full_path, http_version, status_code)``, so the method is
+    ``args[1]`` and the path ``args[2]``. Anything shaped differently is left alone
+    rather than guessed at, which keeps an uvicorn change from silently swallowing
+    the access log.
+
+    Only ``GET`` is dropped. ``DELETE`` on the same path is RLE withdrawing a rollout
+    -- rare, and worth a line.
+    """
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        args = record.args
+        if not isinstance(args, tuple) or len(args) < 3:
+            return True
+        return not (str(args[1]) == "GET" and POLL_PATH_MARKER in str(args[2]))
+
+
+logging.getLogger("uvicorn.access").addFilter(PollAccessNoiseFilter())
+
+
+def _configure_logging() -> None:
+    """Gives this harness's logger a handler of its own, at INFO.
+
+    Without this the only reason anything here is visible is ``logging.lastResort``,
+    which is fixed at ``WARNING`` -- so every ``logger.info`` is dropped, including
+    the one line that says a rollout finished. The format is bare because the log
+    sink already stamps each line with a timestamp and severity; repeating them
+    spends columns that the rollout's own output needs.
+
+    Idempotent, so importing this module twice does not double every line.
+    """
+    if any(getattr(h, "_byoh_harness", False) for h in logger.handlers):
+        return
+    handler = logging.StreamHandler(sys.stdout)
+    handler.setFormatter(logging.Formatter("%(message)s"))
+    handler._byoh_harness = True  # type: ignore[attr-defined]
+    logger.addHandler(handler)
+    logger.setLevel(logging.INFO)
+    # Already has a handler; propagating as well would print every line twice
+    # under uvicorn, which configures the root logger.
+    logger.propagate = False
+
+
+_configure_logging()
 
 DEFAULT_SPLIT = os.environ.get("HARNESS_SPLIT", "FineEnvs/data-agent-harbor-train")
 
@@ -190,6 +247,13 @@ class RolloutStore:
         # task; dropping this would let the garbage collector cancel the rollout
         # partway through.
         self._tasks: dict[str, asyncio.Task[None]] = {}
+        # Which rollouts have had an outcome logged, keyed by
+        # ``(operation_id, kind)``. RLE keeps polling until it reads a terminal
+        # status, and the state stays readable afterwards, so without this the one
+        # line worth printing would print on every poll. The kind keeps an
+        # unknown-rollout poll from claiming the slot its own result needs, which
+        # would silence the outcome if the two ever raced.
+        self._reported: set[tuple[str, str]] = set()
 
     def accept(self, operation_id: str, task: asyncio.Task[None]) -> None:
         self._states[operation_id] = {"status": "running"}
@@ -208,9 +272,18 @@ class RolloutStore:
     def withdraw(self, operation_id: str) -> None:
         """Forgets the rollout and stops its agent loop."""
         self._states.pop(operation_id, None)
+        self._reported = {key for key in self._reported if key[0] != operation_id}
         task = self._tasks.pop(operation_id, None)
         if task is not None:
             task.cancel()
+
+    def claim_report(self, operation_id: str, kind: str) -> bool:
+        """True the first time this outcome is claimed for logging, False after."""
+        key = (operation_id, kind)
+        if key in self._reported:
+            return False
+        self._reported.add(key)
+        return True
 
     def _finish(self, operation_id: str, state: dict[str, Any]) -> None:
         # A withdrawn rollout is gone. Recording an outcome for it would
@@ -362,10 +435,19 @@ async def invoke(request: InvocationRequest) -> dict[str, int]:
 
 @app.get("/invoke/rollouts/{operation_id}")
 async def poll(operation_id: str) -> JSONResponse:
-    """Reports whether the rollout is still running, and its answer once it is not."""
+    """Reports whether the rollout is still running, and its answer once it is not.
+
+    The access-log line for this route is filtered out, so the running case is
+    deliberately silent and the two cases worth seeing are logged here instead.
+    """
     state = ROLLOUTS.read(operation_id)
     if state is None:
+        if ROLLOUTS.claim_report(operation_id, "unknown"):
+            logger.warning("POLL  %s  unknown rollout", operation_id)
         return JSONResponse({"error": "not_found"}, status_code=404)
+    status = state.get("status")
+    if status != "running" and ROLLOUTS.claim_report(operation_id, "outcome"):
+        logger.info("POLL  %s  %s -- result delivered", operation_id, status)
     return JSONResponse(state)
 
 
