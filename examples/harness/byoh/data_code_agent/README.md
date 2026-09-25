@@ -137,6 +137,43 @@ export AZD_CONTAINER_RUNTIME=podman
 export DOCKER_COMMAND="$AZD_CONTAINER_RUNTIME"
 ```
 
+### Docker: build with BuildKit
+
+`azd ai rle publish` shells out to a plain `docker build`, so whichever builder
+your Docker install defaults to is the one that produces the published image.
+The classic (pre-BuildKit) builder writes the layers it creates with Docker
+media types while passing base-image layers through unchanged as OCI. The
+result is an OCI manifest that references one
+`application/vnd.docker.image.rootfs.diff.tar.gzip` layer. Registries accept
+that mix, so `publish` succeeds, but the RLE service cannot convert it into a
+disk image. `azd ai rle list` then shows `DISK IMAGE = Failed`, and
+`azd ai rle show <name>` reports:
+
+```text
+OperationFailed: InternalServerError This usually means the environment's
+container image could not be pulled ...
+```
+
+That text points at registry permissions, but the image, the pull, and the role
+assignments are all fine -- only the manifest is malformed. Enable BuildKit in
+the **same terminal** used for `publish`:
+
+```bash
+export DOCKER_BUILDKIT=1
+```
+
+Podman always writes OCI media types and needs no equivalent setting.
+
+To check a published image, every layer should be an OCI type:
+
+```bash
+docker buildx imagetools inspect --raw "<registry>.azurecr.io/<repo>:<tag>" | grep mediaType
+```
+
+A `vnd.docker.image.rootfs.diff.tar.gzip` layer in that output is the failure
+signature. The layer contents are already correct, so rebuilding with BuildKit
+and publishing a new version is all that is needed.
+
 ### Before the first publish
 
 Sign in and authenticate the selected runtime to ACR (use the registry
