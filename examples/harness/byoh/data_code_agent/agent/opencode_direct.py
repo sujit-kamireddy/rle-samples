@@ -37,6 +37,7 @@ import gzip
 import json
 import logging
 import os
+import re
 import shutil
 import sys
 import tempfile
@@ -85,6 +86,7 @@ _DEFAULT_AGENT_TIMEOUT_SEC = 600.0
 # of a single turn that lands a large tool result after the last compaction check.
 _DEFAULT_OUTPUT_TOKENS = 8192
 _DEFAULT_CONTEXT_TOKENS = 30720
+_ANSWER_RETRY_TIMEOUT_SEC = 120.0
 
 # Compaction cannot save a transcript from a single oversized tool result. opencode checks its
 # running total *between* steps, so one tool call that returns more than the whole window leaves
@@ -240,17 +242,58 @@ async def _run(
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.STDOUT,
     )
+    communication = asyncio.create_task(proc.communicate())
     try:
-        stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=timeout_sec)
+        stdout, _ = await asyncio.wait_for(asyncio.shield(communication), timeout=timeout_sec)
     except asyncio.TimeoutError:
-        proc.kill()
-        await proc.wait()
-        raise RolloutError(f"{what} exceeded {timeout_sec:.0f}s") from None
+        if proc.returncode is None:
+            proc.kill()
+        stdout, _ = await communication
+        raise RolloutError(
+            f"{what} exceeded {timeout_sec:.0f}s; {_opencode_progress(stdout or b'')}"
+        ) from None
+    except asyncio.CancelledError:
+        if proc.returncode is None:
+            proc.kill()
+        await communication
+        raise
 
     output = stdout.decode("utf-8", "replace") if stdout else ""
     if proc.returncode != 0:
         raise RolloutError(f"{what} exited {proc.returncode}: {output[-2000:]}")
     return output
+
+
+def _opencode_progress(output: bytes) -> str:
+    """Summarize timed-out JSON events without logging tool results or task data."""
+    steps = len(re.findall(rb'"type"\s*:\s*"step-start"', output))
+    completed = len(re.findall(rb'"type"\s*:\s*"step-finish"', output))
+    tools = len(re.findall(rb'"type"\s*:\s*"tool"', output))
+    last = "none"
+    for line in reversed(output[-32768:].splitlines()):
+        try:
+            event = json.loads(line)
+        except ValueError:
+            continue
+        if isinstance(event, dict) and isinstance(event.get("type"), str):
+            last = event["type"]
+            break
+    return f"OpenCode progress: {steps} steps started, {completed} finished, {tools} tool events; last={last}"
+
+
+def _opencode_session_id(output: str) -> str | None:
+    """Find the single session in OpenCode's JSON event stream."""
+    sessions: set[str] = set()
+    for line in output.splitlines():
+        try:
+            event = json.loads(line)
+        except ValueError:
+            continue
+        if isinstance(event, dict):
+            session_id = event.get("sessionID")
+            if isinstance(session_id, str) and session_id.startswith("ses_"):
+                sessions.add(session_id)
+    return next(iter(sessions)) if len(sessions) == 1 else None
 
 
 async def run_rollout(
@@ -370,6 +413,8 @@ async def _run_in(
         env["COMPLIANCE_TOKEN"] = compliance_token
 
     provider, model_id = _split_model(model)
+    timeout_sec = float(row["agent_timeout_sec"])
+    started_at = asyncio.get_running_loop().time()
     try:
         output = await _run(
             [
@@ -384,7 +429,7 @@ async def _run_in(
             ],
             cwd=work,
             env=env,
-            timeout_sec=float(row["agent_timeout_sec"]),
+            timeout_sec=timeout_sec,
             what="opencode",
         )
     except RolloutError as exc:
@@ -399,12 +444,42 @@ async def _run_in(
 
     answer_text = _read_answer(answer_file)
     if answer_text is None:
-        logger.warning(
-            "task %s produced no answer file; agent output tail: %s",
-            row["name"],
-            output[-500:],
-        )
-    return {"ok": True, "error": None, "answer_text": answer_text}
+        session_id = _opencode_session_id(output)
+        remaining = timeout_sec - (asyncio.get_running_loop().time() - started_at)
+        if session_id and remaining > 1:
+            try:
+                await _run(
+                    [
+                        "opencode",
+                        f"--model={provider}/{model_id}",
+                        "run",
+                        "--session",
+                        session_id,
+                        "--format=json",
+                        "--thinking",
+                        "--dangerously-skip-permissions",
+                        "--",
+                        f"The required answer file is still missing. Continue this task in the same session "
+                        f"and use a tool to write your final answer to {answer_file}. "
+                        "Do not finish until the file contains the answer.",
+                    ],
+                    cwd=work,
+                    env=env,
+                    timeout_sec=min(remaining, _ANSWER_RETRY_TIMEOUT_SEC),
+                    what="opencode answer retry",
+                )
+            except RolloutError as exc:
+                reason = str(exc).split(": ", 1)[0]
+                logger.warning("task %s %s", row["name"], reason)
+                return {"ok": False, "error": reason, "answer_text": None}
+            answer_text = _read_answer(answer_file)
+        if answer_text is None:
+            logger.warning("task %s produced no answer file after opencode finished", row["name"])
+    return {
+        "ok": answer_text is not None,
+        "error": None if answer_text is not None else "agent did not write answer.txt",
+        "answer_text": answer_text,
+    }
 
 
 async def _fetch_inputs(row: dict[str, Any], input_dir: Path, work: Path) -> None:
@@ -436,12 +511,12 @@ async def _fetch_inputs(row: dict[str, Any], input_dir: Path, work: Path) -> Non
 
 
 def _read_answer(answer_file: Path) -> str | None:
-    """Returns the agent's answer, or `None` when it never wrote one.
+    """Returns the agent's answer, or `None` when it wrote no non-empty answer.
 
     A missing file is not an error here: `/grade` already treats a missing answer as an ungraded,
     zero-reward rollout, and that is a truer record of what happened than failing the rollout.
     """
     try:
-        return answer_file.read_text().strip()
+        return answer_file.read_text().strip() or None
     except OSError:
         return None

@@ -63,6 +63,20 @@ private directory and both paths are rewritten to point inside it. Nothing
 downstream depends on the original strings: `/grade` is handed the answer *text*,
 never a path. See `opencode_direct.py`.
 
+If OpenCode exits normally without a non-empty `answer.txt`, the harness resumes
+the same OpenCode session once, using the remaining task timeout (at most 120
+seconds), and asks it to write the file. It does not substitute the agent's chat
+message for the required artifact. If the file is still missing, the harness
+reports `ok: false` with a missing-answer error; `/grade` records a zero-reward
+rollout rather than silently treating it as a successful answer.
+
+The example keeps rollout state in memory. On Cloud Run, keep it to one instance
+unless you replace that store with shared state: a poll can reach a different
+instance and return 404, and a restart loses in-flight rollouts. Size the
+instance for the intended parallelism; four concurrent OpenCode rollouts
+exceeded a 4 GiB limit in testing, while a 16 GiB instance completed training
+without out-of-memory restarts.
+
 The per-rollout compliance credentials (`sandbox_tools_endpoint` /
 `sandbox_tools_token`, which RLE sends on `/invoke`) are lifted out of the
 rollout context and set as `COMPLIANCE_ENDPOINT` / `COMPLIANCE_TOKEN` on that
