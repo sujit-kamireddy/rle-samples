@@ -14,7 +14,6 @@ This copies a working sample out of the samples repo. Pick the closest one:
 | --- | --- |
 | one prompt, one graded answer, no tools | `math_rl` |
 | multi-turn with a tool the policy may call | `code_rl` |
-| grounded in a real repository checkout | `code_repair` |
 
 ### 2. Adapt, in dependency order
 

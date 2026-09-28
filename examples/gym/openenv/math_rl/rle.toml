@@ -1,27 +1,130 @@
+# Gym/OpenEnv environment for the math_rl sample.
+#
+# Every setting `rle.toml` accepts is listed here, including the ones this
+# environment leaves unset -- those are commented out, with their default and
+# their validation rule, so the whole surface is visible in one file. The
+# manifest is parsed in *strict* mode: an unknown key is a hard error, so
+# uncommenting a line is always safe but inventing one is not.
+#
+# `[rle]` and `[defaults]` describe the published version and are immutable once
+# published. `[train]` is local-only and never published.
+
+# Manifest schema version. Optional; the only accepted value is "1.0.0", which
+# is also what is assumed when it is omitted. Required as soon as [defaults] is
+# supplied.
 schema_version = "1.0.0"
 
 [rle]
+# snake_case, starting with a letter.
 name = "math_rl"
+# Semantic version, MAJOR.MINOR.PATCH. Immutable: publishing a change means a
+# new version.
 version = "1.0.0"
+# "Gym" or "Harness".
 type = "Gym"
+# "OpenEnv" for Gym; "HostedAgent" or "BYOH" for Harness.
 subtype = "OpenEnv"
 
-# Required for Execute Rollout to treat this as an enabled Gym/OpenEnv target.
+# agentName, agentVersion and baseUrl are Harness-only and are all rejected for
+# a Gym target: RLE reaches this environment through the sandbox it schedules
+# from the published image, so there is no address to register.
+# agentName = "..."
+# agentVersion = "..."
+# baseUrl = "..."
+
+# Pins the environment container independently of `version`, for build scripts
+# that tag images. Not used by the CLI itself -- `azd ai rle publish` takes the
+# image as an argument -- but declared so a pinned tag does not fail the strict
+# parse.
+# imageTag = "1.0.0"
+
+
+# ---------------------------------------------------------------------------
+# [defaults] -- published with the version and returned by the service. Every
+# value here is optional and none of them has a service-side default: omitted
+# means absent. Supplying any of them requires schema_version = "1.0.0".
+# ---------------------------------------------------------------------------
+
+# [defaults.model]
+# Informational. Stored with the version; Execute Rollout never reads it.
+# Maximum 256 characters.
+# name = "qwen3-32b-1"
+# The transcript renderer for the policy. Persisted, but not promoted into the
+# sampler's own configuration. Maximum 256 characters. Accepted values include
+# mai_harmony, mai_harmony_internal, qwen3_instruct, qwen3, qwen3_ext,
+# qwen3_disable_thinking, qwen3_5, qwen3_5_ext, qwen3_5_disable_thinking,
+# qwen3_5_ext_disable_thinking.
+# renderer_name = "qwen3_ext"
+
+[defaults.reinforcement]
+# Maximum turns in one episode. Integer > 0, and required for Gym/OpenEnv --
+# it is what makes Execute Rollout treat this as an enabled Gym target. The
+# effective value is min(value, 32), so asking for more than 32 changes
+# nothing.
+#
 # math_rl is single-turn (server/math_rl_environment.py always returns
 # done=True after the first step), so one step per episode is all it uses.
-[defaults.reinforcement]
 max_episode_steps = 1
 
-# Room for one model turn. Left unset the request inherits whatever the sampler
-# defaults to (1024 tokens today), which stops a reasoning model mid-thought and
-# submits a truncated answer. The budget is dominated by the reasoning, not by the
-# answer, so a two-digit result still needs thousands of tokens: measured against
-# Qwen3-32B, 4096 truncated 2 of 3 sampled problems, while the longest run that
-# finished on its own used 6252.
+# Output budget for a single model turn. Integer > 0, and the effective value
+# is min(value, 8192) -- so 8192 is both the cap and what an omitted setting
+# gets. It is set explicitly anyway, so the budget this environment was tuned
+# against stays visible and survives a change to the service cap. The budget is
+# dominated by the reasoning, not by the answer, so a two-digit result still
+# needs thousands of tokens: measured against Qwen3-32B, 4096 truncated 2 of 3
+# sampled problems, while the longest run that finished on its own used 6252.
 max_completion_tokens = 8192
 
+# [defaults.reinforcement.hyperparameters]
+# Passed through to Training Jobs; RLE's rollout path ignores them. Each is
+# optional and has no default.
+# n_epochs = 1                     # integer > 0
+# batch_size = 8                   # integer > 0; unrelated to grpo.groups_per_batch
+# learning_rate_multiplier = 1.0   # finite float > 0
+# eval_interval = 10               # integer > 0
+# eval_samples = 32                # integer > 0
+# compute_multiplier = 1.0         # finite float > 0
+# reasoning_effort = "medium"      # exactly "low", "medium" or "high"
+
+# [defaults.grpo]
+# Recipe-level GRPO settings. Stored with the version and read by Training
+# Jobs; RLE itself never consumes them.
+# group_size = 8                   # integer > 0
+# groups_per_batch = 128           # integer > 0
+# max_steps = 150                  # integer > 0
+
+[defaults.gym_openenv]
+# Required for Gym/OpenEnv: names the action property that receives the model's
+# completion text verbatim. Must be a property the environment's own action
+# model declares, which is why it has no default. Maximum 128 characters.
+#
 # Names the MathAction property that receives the model's completion text.
 # Every other action property RLE finds in GET /schema is offered to the model
 # as a tool; math_rl declares only this one, so it has no tools.
-[defaults.gym_openenv]
 model_response_field = "answer_text"
+
+
+# ---------------------------------------------------------------------------
+# [train] -- how this environment is usually trained, so a run is one command.
+# Local-only: never published, free to change without republishing, and any
+# flag on `azd ai rle train` overrides it for a single run.
+# ---------------------------------------------------------------------------
+# [train]
+# Base model to train. Only RL-enabled models are accepted.
+# model = "qwen3-32b-1"
+# Paths are relative to this file.
+# training_file = "./job_data/train.jsonl"
+# validation_file = "./job_data/validation.jsonl"
+# Appended to the fine-tuned model name, to tell runs apart.
+# suffix = "math-rl"
+# Per-run override of defaults.reinforcement.max_episode_steps. Integer > 0.
+# max_episode_steps = 1
+
+# Free-form options forwarded to the training service, which owns the
+# vocabulary and validates it per recipe -- an unsupported key is rejected by
+# name, with the supported set. `azd ai rle train --task-count N` sets
+# max_train_examples.
+# [train.options]
+# group_size = 4                   # rollouts per GRPO group; needs at least 2
+# max_concurrent_rollouts = 8      # how many rollouts run at once
+# max_train_examples = 16          # caps rows read from training_file

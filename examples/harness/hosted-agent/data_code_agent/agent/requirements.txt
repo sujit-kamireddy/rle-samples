@@ -1,0 +1,10 @@
+# The Responses protocol host Foundry calls. `main.py` builds its
+# `ResponsesAgentServerHost` from it and reads the rollout headers out of
+# `ResponseContext.client_headers`, which the host populates from the
+# `x-client-` prefix RLE uses.
+azure-ai-agentserver-core>=2.1.0
+azure-ai-agentserver-responses>=2.1.0
+
+# Used to ask this rollout's capture proxy which model it serves; see
+# `_resolve_rollout_model`.
+httpx>=0.27
