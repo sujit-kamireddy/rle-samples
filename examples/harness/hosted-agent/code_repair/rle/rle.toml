@@ -1,7 +1,128 @@
+# Hosted Agent harness for the code_repair RLE.
+#
+# Every setting `rle.toml` accepts is listed here, including the ones this
+# environment leaves unset -- those are commented out, with their default and
+# their validation rule, so the whole surface is visible in one file. The
+# manifest is parsed in *strict* mode: an unknown key is a hard error, so
+# uncommenting a line is always safe but inventing one is not.
+#
+# `[rle]` and `[defaults]` describe the published version and are immutable once
+# published. `[train]` is local-only and never published.
+
+# Manifest schema version. Optional; the only accepted value is "1.0.0", which
+# is also what is assumed when it is omitted.
+schema_version = "1.0.0"
+
 [rle]
+# snake_case, starting with a letter.
 name = "code_repair_hosted_agent"
+# Semantic version, MAJOR.MINOR.PATCH. Immutable: publishing a change means a
+# new version.
 version = "1.1.0"
+# "Gym" or "Harness".
 type = "Harness"
+# "HostedAgent" or "BYOH" for Harness; "OpenEnv" for Gym.
 subtype = "HostedAgent"
+
+# The registered Foundry Hosted Agent RLE calls for each rollout. RLE resolves
+# it against the project and posts to
+# {project}/agents/{agentName}/endpoint/protocols/openai/responses.
 agentName = "code-repair-agent"
+# A positive integer, or "draft-{unix-timestamp}" for an unpublished draft.
+# Recorded as target metadata only -- RLE does not send it to the agent, so the
+# container cannot read its own version.
 agentVersion = "1"
+
+# baseUrl is BYOH-only and is rejected for HostedAgent. The BYOH copy of this
+# sample (`azd ai rle init --type Harness --subtype BYOH --sample code_repair`)
+# sets it instead.
+# baseUrl = "https://your-harness.example.com/invoke"
+
+# Pins the harness container independently of `version`, for build scripts that
+# tag images. Not used by the CLI itself -- `azd ai rle publish` takes the image
+# as an argument -- but declared so a pinned tag does not fail the strict parse.
+# imageTag = "1.0.0"
+
+
+# ---------------------------------------------------------------------------
+# [defaults] -- published with the version and returned by the service. Every
+# value here is optional and none of them has a service-side default: omitted
+# means absent. Supplying any of them requires schema_version = "1.0.0".
+#
+# For the Harness type RLE consumes none of these: the harness owns the model
+# call, so they are carried for downstream Training Jobs. They are listed in
+# full anyway, because they are what a training job reads when it is not given
+# flags.
+# ---------------------------------------------------------------------------
+
+# [defaults.model]
+# Informational. Stored with the version; Execute Rollout never reads it.
+# Maximum 256 characters.
+# name = "qwen3-32b-1"
+# The transcript renderer for the policy. Persisted, but not promoted into the
+# sampler's own configuration. Maximum 256 characters. Accepted values include
+# mai_harmony, mai_harmony_internal, qwen3_instruct, qwen3, qwen3_ext,
+# qwen3_disable_thinking, qwen3_5, qwen3_5_ext, qwen3_5_disable_thinking,
+# qwen3_5_ext_disable_thinking.
+# renderer_name = "qwen3_ext"
+
+# [defaults.reinforcement]
+# Both of these are Gym/OpenEnv controls for RLE's own policy loop. A Harness
+# drives the model itself, so they are inert here and are left unset.
+#
+# Maximum turns in one episode. Integer > 0. Required for Gym/OpenEnv, where
+# the effective value is min(value, 32).
+# max_episode_steps = 8
+# Output budget for a single model turn. Integer > 0. Effective value is
+# min(value, 8192); omitted, a Gym rollout gets the service cap of 8192.
+# max_completion_tokens = 4096
+
+# [defaults.reinforcement.hyperparameters]
+# Passed through to Training Jobs. Each is optional and has no default.
+# n_epochs = 1                     # integer > 0
+# batch_size = 8                   # integer > 0; unrelated to grpo.groups_per_batch
+# learning_rate_multiplier = 1.0   # finite float > 0
+# eval_interval = 10               # integer > 0
+# eval_samples = 32                # integer > 0
+# compute_multiplier = 1.0         # finite float > 0
+# reasoning_effort = "medium"      # exactly "low", "medium" or "high"
+
+# [defaults.grpo]
+# Recipe-level GRPO settings. Stored with the version and read by Training
+# Jobs; RLE itself never consumes them.
+# group_size = 8                   # integer > 0
+# groups_per_batch = 128           # integer > 0
+# max_steps = 150                  # integer > 0
+
+# [defaults.gym_openenv]
+# Gym/OpenEnv only, and required there: names the action property that receives
+# the model completion verbatim. Must be a property the environment's own
+# action model declares, which is why it has no default. Maximum 128
+# characters. Not valid for a Harness.
+# model_response_field = "response"
+
+
+# ---------------------------------------------------------------------------
+# [train] -- how this environment is usually trained, so a run is one command.
+# Local-only: never published, free to change without republishing, and any
+# flag on `azd ai rle train` overrides it for a single run.
+# ---------------------------------------------------------------------------
+# [train]
+# Base model to train. Only RL-enabled models are accepted.
+# model = "qwen3-32b-1"
+# Paths are relative to this file.
+# training_file = "../job_data/train.jsonl"
+# validation_file = "../job_data/validation.jsonl"
+# Appended to the fine-tuned model name, to tell runs apart.
+# suffix = "code-repair"
+# Per-run override of defaults.reinforcement.max_episode_steps. Integer > 0.
+# max_episode_steps = 8
+
+# Free-form options forwarded to the training service, which owns the
+# vocabulary and validates it per recipe -- an unsupported key is rejected by
+# name, with the supported set. `azd ai rle train --task-count N` sets
+# max_train_examples.
+# [train.options]
+# group_size = 4                   # rollouts per GRPO group; needs at least 2
+# max_concurrent_rollouts = 8      # how many rollouts run at once
+# max_train_examples = 16          # caps rows read from training_file

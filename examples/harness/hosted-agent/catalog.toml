@@ -9,8 +9,8 @@
 # an entry with visible = false. The azd CLI's AZD_AI_RLE_ENABLE_ALL
 # environment variable bypasses this filter for internal testing.
 #
-# When a subtype has exactly one visible sample, `azd ai rle init` scaffolds it
-# without prompting.
+# `azd ai rle init` always prompts with the visible samples, even when only one
+# is available, so the chosen sample is always stated back to the user.
 
 # code_repair is staged for internal use only. The Harness RLE type is itself
 # gated behind AZD_AI_RLE_ENABLE_ALL, which also bypasses this filter, so this
@@ -19,3 +19,7 @@
 [[sample]]
 name = "code_repair"
 visible = false
+
+[[sample]]
+name = "data_code_agent"
+visible = true
