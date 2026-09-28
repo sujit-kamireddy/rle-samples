@@ -63,8 +63,7 @@ for agents running as a Foundry Hosted Agent version, and
 [`examples/harness/byoh/`](./examples/harness/byoh) for bring-your-own
 harnesses deployed anywhere and registered by base URL. Each subtype holds
 one directory per sample — today
-[`code_repair`](./examples/harness/byoh/code_repair) under both, plus
-[`data_code_agent`](./examples/harness/byoh/data_code_agent) under `byoh` — and each
+[`data_code_agent`](./examples/harness/byoh/data_code_agent) under both — and each
 sample includes the agent/harness code and the paired RLE code (task setup,
 mock tools, grader), plus a README covering deploy → wire → publish. Because
 the agent side is always specific to your own harness,
@@ -74,8 +73,8 @@ folders show how to build and wire the other half.
 Each subtype has its own
 [`catalog.toml`](./examples/harness/byoh/catalog.toml), with the same
 visibility rules as the Gym/OpenEnv one. Pick a sample with
-`azd ai rle init --sample <name>`; with only one visible sample, that subtype
-scaffolds it without prompting.
+`azd ai rle init --sample <name>`, or let the CLI prompt — it always does,
+even when only one sample is visible.
 
 When a sample is initialized through `azd ai rle init <folder-name>`, the CLI
 updates `rle.name` to the target folder name. Before publishing another

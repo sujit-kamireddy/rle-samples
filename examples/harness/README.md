@@ -21,12 +21,11 @@ Two harness subtypes exist:
 | `HostedAgent` | A Foundry Hosted Agent version | [`hosted-agent/`](./hosted-agent) |
 | `BYOH` (Bring Your Own Harness) | Anywhere you register a base URL | [`byoh/`](./byoh) |
 
-Each subtype directory holds one directory per named sample — today
-`hosted-agent/` holds a single `code_repair/`, and `byoh/` holds both
-`code_repair/` and [`data_code_agent/`](./byoh/data_code_agent) — alongside a
+Each subtype directory holds one directory per named sample — today both
+hold a single [`data_code_agent/`](./byoh/data_code_agent) — alongside a
 `catalog.toml` listing which samples `azd ai rle init` offers. Pick one with
-`--sample <name>`; when a subtype has only one visible sample the CLI
-scaffolds it without prompting.
+`--sample <name>`, or let the CLI prompt: it always does, even when only one
+sample is visible.
 
 Each sample ships two independent pieces that get deployed and published
 separately:
@@ -47,15 +46,14 @@ its `rle/` vendors the dataset's own grader, so the two pieces are
 self-contained — see its own README for how they fit
 together.
 
-Both `code_repair` samples wrap the same real SWE-bench-Lite instance
-(`psf__requests-3362`, a real `psf/requests` issue, pinned repo checkout, and
-real regression test — see either sample's README for details), and are
-intentionally near-identical at the code level: `rle/` is byte-for-byte the
-same in both, since RLE does not care which harness subtype invokes it, and
-each `agent/`'s core `run_agent_loop` is the same agent loop. `BYOH` differs
-only by adding an HTTP invocation endpoint for RLE to call; `HostedAgent`
-instead reads rollout context from request headers on its existing Responses
-API.
+The two `data_code_agent` samples are the same environment under both
+subtypes, and are intentionally near-identical at the code level: `rle/` is
+the same in both, since RLE does not care which harness subtype invokes it,
+and `agent/opencode_direct.py` — the agent loop itself — is shared verbatim.
+Only the entrypoint differs. `BYOH` adds an HTTP invocation endpoint RLE
+POSTs to and then polls, and reads the rollout context out of the request
+body; `HostedAgent` serves the Responses API and reads the same context off
+`x-client-rle-*` request headers, answering synchronously.
 
 See each sample's own README for the deploy → wire → register → publish
 flow.

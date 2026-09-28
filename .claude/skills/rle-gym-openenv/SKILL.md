@@ -49,8 +49,8 @@ bugs — and several of them fail *silently*, grading a real reward for the wron
 references below rather than inferring the contract from one working sample.
 
 Start from a sample instead of a blank folder: `azd ai rle init` copies one out of this repo.
-`examples/gym/openenv/math_rl` is the single-turn, no-tools case; `code_rl` is the case with a tool;
-`code_repair` is the repo-checkout case.
+`examples/gym/openenv/math_rl` is the single-turn, no-tools case; `code_rl` is the multi-turn case
+with a tool the policy may call.
 
 {{ references/anatomy.md }}
 

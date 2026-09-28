@@ -16,7 +16,3 @@ visible = true
 [[sample]]
 name = "math_rl"
 visible = true
-
-[[sample]]
-name = "code_repair"
-visible = false
