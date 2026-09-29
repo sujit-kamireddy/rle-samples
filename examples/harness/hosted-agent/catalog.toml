@@ -15,3 +15,7 @@
 [[sample]]
 name = "data_code_agent"
 visible = true
+
+[[sample]]
+name = "competitive_intelligence_agent"
+visible = true
