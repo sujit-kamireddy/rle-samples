@@ -26,6 +26,24 @@ land close to the same curve.
 | `tools/verify_dataset.py` | proves the two never share a scenario |
 | `tools/smoke_grade.py` | proves a local RLE container grades the answer key highest |
 
+## Getting this sample
+
+This sample is hidden in the samples catalog, so `azd ai rle init` will not
+offer it or accept `--sample competitive_intelligence_agent` by default. Opt in
+with the same environment variable that reveals the CLI's other internal
+surfaces:
+
+```bash
+export AZD_AI_RLE_ENABLE_ALL=true
+azd ai rle init --harness hosted-agent --sample competitive_intelligence_agent
+```
+
+Without it the CLI reports `rle_sample_not_found` and lists only the visible
+samples. Nothing else about the sample is gated: the containers, the manifest
+and both tools work the same once the directory is on disk, whether it arrived
+through `init` or a plain clone. Visibility is set in
+`examples/harness/hosted-agent/catalog.toml`.
+
 ## The recorded result
 
 Reward is the weighted rubric below, on a 0 to 1 scale. `verdict` is the share

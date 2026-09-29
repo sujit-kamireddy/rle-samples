@@ -9,8 +9,10 @@
 # an entry with visible = false. The azd CLI's AZD_AI_RLE_ENABLE_ALL
 # environment variable bypasses this filter for internal testing.
 #
-# `azd ai rle init` always prompts with the visible samples, even when only one
-# is available, so the chosen sample is always stated back to the user.
+# With several samples visible, `azd ai rle init` prompts for a choice. With
+# exactly one, it selects that sample without prompting (init.go's
+# resolveHarnessSampleName returns early before reaching the picker), so
+# hiding a sample here can turn the prompt off rather than just shorten it.
 
 [[sample]]
 name = "data_code_agent"
@@ -18,4 +20,7 @@ visible = true
 
 [[sample]]
 name = "competitive_intelligence_agent"
-visible = true
+# Hidden pending review. Reachable for internal testing with
+# AZD_AI_RLE_ENABLE_ALL=true, which bypasses this filter for both the
+# interactive picker and an explicit --sample.
+visible = false
