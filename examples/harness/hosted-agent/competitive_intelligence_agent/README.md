@@ -44,6 +44,17 @@ and both tools work the same once the directory is on disk, whether it arrived
 through `init` or a plain clone. Visibility is set in
 `examples/harness/hosted-agent/catalog.toml`.
 
+Every command below is written against the sample root, so set it once and the
+blocks can be pasted in any order:
+
+```bash
+cd <the sample directory>
+export SAMPLE="$PWD"
+```
+
+`jq` is used to split rows out of the dataset in step 4. Everything else needs
+only `docker`, `azd` and `python`.
+
 ## The recorded result
 
 Reward is the weighted rubric below, on a 0 to 1 scale. `verdict` is the share
@@ -291,7 +302,7 @@ store, the report ledger, the OneLake publisher) left out because a rollout
 does not use them.
 
 ```bash
-cd agent
+cd "$SAMPLE/agent"
 docker build -t competitive-intelligence-agent:latest .
 docker run --rm -p 8088:8088 competitive-intelligence-agent:latest
 ```
@@ -336,16 +347,16 @@ reward measured there means, because it is the same code path.
 Build and smoke-test it before publishing:
 
 ```bash
-cd rle
+cd "$SAMPLE/rle"
 docker build -t competitive-intelligence-rle:latest .
 docker run --rm -p 8000:8000 competitive-intelligence-rle:latest
 ```
 
-Then, from the sample root in a second terminal:
+Then, in a second terminal:
 
 ```bash
 curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:8000/health
-python tools/smoke_grade.py
+python "$SAMPLE/tools/smoke_grade.py"
 ```
 
 The build itself imports the app and fails there if a dependency is missing,
@@ -380,7 +391,7 @@ agentVersion = "1"
 Then publish from the folder holding `rle.toml`:
 
 ```bash
-cd rle
+cd "$SAMPLE/rle"
 azd ai rle publish
 ```
 
@@ -391,11 +402,15 @@ Registered versions are immutable, so bump `version` before republishing.
 Check the loop end to end before paying for a training run:
 
 ```bash
-cd rle
-azd ai rle rollout --model Qwen/Qwen3-32B \
-  --task "$(head -1 ../job_data/validation.jsonl | jq -c .task)" \
-  --agent-input "$(head -1 ../job_data/validation.jsonl | jq -c .agent_input)"
+cd "$SAMPLE/rle"
+ROW="$(head -1 "$SAMPLE/job_data/validation.jsonl")"
+azd ai rle rollout --version 1.0.0 --model Qwen/Qwen3-32B \
+  --task "$(printf '%s' "$ROW" | jq -c .task)" \
+  --agent-input "$(printf '%s' "$ROW" | jq -c .agent_input)"
 ```
+
+Pass `--version` for the same reason as `--rle-version` below: without it the
+CLI resolves one itself and can pick a stale published version.
 
 The payload is split because RLE sends the two halves to two different places
 and neither is forwarded to the other. `--agent-input` is serialised into the
@@ -408,10 +423,13 @@ A rollout that returns a reward between 0 and 1 with seven `dim/` entries in
 
 ## 5. Start the training run
 
-`rle/rle.toml` records everything, so the run needs no flags:
+`rle/rle.toml` records everything, so the run needs no flags beyond the
+version. It must run from the folder holding `rle.toml`, because the CLI reads
+`./rle.toml` and resolves `training_file` and `validation_file` relative to the
+working directory:
 
 ```bash
-cd rle
+cd "$SAMPLE/rle"
 azd ai rle train --rle-version 1.0.0 --follow
 ```
 
@@ -423,6 +441,7 @@ Smoke-test the plumbing first on a handful of tasks, which is much cheaper than
 discovering a problem at step 3:
 
 ```bash
+cd "$SAMPLE/rle"
 azd ai rle train --rle-version 1.0.0 --task-count 8
 ```
 
