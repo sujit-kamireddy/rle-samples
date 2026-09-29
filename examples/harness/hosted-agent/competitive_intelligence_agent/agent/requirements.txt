@@ -1,0 +1,10 @@
+# Pinned to the deployed agent's versions (see ../../requirements.txt) so the
+# trained agent runs on the runtime it will be served on. A rollout that
+# succeeds against a different agent-server or OpenAI client than production
+# uses proves less than it appears to.
+azure-ai-agentserver-responses==2.1.0
+azure-ai-agentserver-core==2.1.0
+
+# azure-ai-projects imports httpx directly, while OpenAI 3 uses httpx2.
+openai==2.54.0
+httpx==0.28.1
