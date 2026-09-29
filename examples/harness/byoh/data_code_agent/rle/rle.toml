@@ -121,15 +121,76 @@ validation_file = "../job_data/validation.jsonl"
 
 # Free-form options forwarded to the training service, which owns the
 # vocabulary and validates it per recipe -- an unsupported key is rejected by
-# name, with the supported set. The two below are the ones this sample uses;
-# `azd ai rle train --task-count N` sets max_train_examples.
+# name, with the supported set. `azd ai rle train --task-count N` sets
+# max_train_examples.
+#
+# The values below are the ones that produced a measured hillclimb on this
+# environment rather than a guess at a starting point: on a fixed 100-task
+# validation pool the mean reward rose from 0.268 at step 12 to 0.452 at step
+# 28, a trailing-window slope of +0.010/step whose 90% confidence interval
+# excludes zero. Sizing is chosen to *resolve* that curve, not to show a
+# direction quickly, so a smoke run should cut it down with `--task-count`
+# rather than by trimming these.
 [train.options]
+# A judgement call, not a measurement: no reference config for this environment
+# exists. 5e-6 (the smoke value) is too low to move a 32B LoRA inside a
+# reasonable budget, and 3e-4 risks the base competence this reward multiplies
+# against. 5e-5 sits between them.
+learning_rate = 5e-5
 # Rollouts per group. A GRPO group needs at least two to have any advantage
-# signal at all.
-group_size = 4
+# signal at all; 8 gives enough within-group spread that
+# remove_constant_reward_groups rarely empties a step, and lets a group survive
+# losing a member.
+group_size = 8
+# Groups per optimiser step. Arrives at the training service as
+# `groups_per_batch`, whose default is 1.
+batch_size = 8
+num_epochs = 2
+max_train_examples = 512
+# 100 eval tasks, chosen so a real gain clears the noise floor: at 8 tasks a
+# single flipped rollout moves the score 12.5 points and a 10-point gain is
+# invisible.
+max_test_examples = 100
+# Loom has no LR schedule and a finished job cannot be extended, so max_steps is
+# set past the expected stopping point and the run is judged on its curve.
+max_steps = 64
+# Both boundaries are what make a checkpoint durable: the recipe only writes one
+# when a step falls on eval_every or save_every, so a run configured without
+# them trains weights it cannot later recover.
+eval_every = 4
+save_every = 4
+remove_constant_reward_groups = true
 # How many rollouts run at once. Each one is a full `opencode` process in the
-# agent container, so this is bounded by that container's CPU and memory, not
-# by the model endpoint.
+# agent container, so this is bounded by that container's CPU and memory, not by
+# the model endpoint. Concurrency here buys answer quality rather than
+# throughput: the Loom engine is the bottleneck and per-rollout latency scales
+# with how many rollouts share it, with the same six-turn episode measured at
+# 21s/turn solo and ~98s/turn at 24 concurrent. Step time is
+# rollouts x latency / concurrency and latency moves inversely, so throughput is
+# roughly flat across that range and 8 buys more rollouts that reach an answer
+# before the cap instead of being truncated into a zero.
 max_concurrent_rollouts = 8
-# Caps how many rows of training_file are used. Useful for a smoke run.
-# max_train_examples = 16
+seed = 42
+# Rollout-failure tolerance. Retry a transient; because the recipe trains a
+# group's survivors rather than discarding all eight when one member fails, a
+# failure costs one rollout rather than a whole group. The abort rate ends the
+# run outright when tripped, so it is set well above the ~32% a first attempt
+# reached.
+rollout_max_retries = 3
+rollout_failure_rate_abort = 0.45
+min_trainable_group_members = 2
+# The default bound is 65536 tokens summed across a rollout's trainable roots --
+# an aggregate, not a per-sequence limit. This agent reads whole data files into
+# context and measured a 41,087-token mean, so the tail crossed the default and
+# 8% of validation rollouts were dropped as untrainable. Doubling it keeps them.
+max_rollout_input_tokens = 131072
+# The Capture Proxy renderer. Left unset, the harness sends Qwen3's recommended
+# renderer, `qwen3`, which reproduces the official chat template faithfully --
+# and that template drops <think> blocks from every assistant message but the
+# last. Replayed history then no longer matches the tokens that were actually
+# sampled, so each turn's prompt stops extending the previous turn's and the
+# capture comes back as one root per turn. `qwen3_ext` keeps reasoning in
+# history. Measured on a single rollout of this environment: `qwen3` gave
+# 3 turns / 3 roots, `qwen3_ext` gave 3 turns / 1 root with no validation
+# findings.
+renderer_name = 'qwen3_ext'

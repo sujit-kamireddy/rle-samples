@@ -266,11 +266,20 @@ Registered versions are immutable, so bump `version` before republishing.
 
 ## 4. Run a rollout
 
+One rollout, end to end. The selector is lifted into a variable because the one
+thing this command is easy to get wrong is letting the two payloads drift apart:
+
 ```bash
 cd rle
-azd ai rle rollout --model Qwen/Qwen3-32B \
-  --task '{"task_index": 0, "split": "FineEnvs/data-agent-harbor-train"}' \
-  --agent-input '{"task_index": 0, "split": "FineEnvs/data-agent-harbor-train"}'
+
+export SPLIT="FineEnvs/data-agent-harbor-train"
+export TASK_INDEX=0
+export SELECTOR="{\"task_index\": ${TASK_INDEX}, \"split\": \"${SPLIT}\"}"
+
+azd ai rle rollout \
+  --model Qwen/Qwen3-32B \
+  --task "${SELECTOR}" \
+  --agent-input "${SELECTOR}"
 ```
 
 The selector is repeated because RLE sends the two payloads to two different
@@ -303,7 +312,9 @@ The selector is repeated for the reason given above -- `task` pins the task at
 reads both fields from each row. `train.jsonl` holds the first 1,000 tasks;
 `validation.jsonl` holds the last 200, so the two never overlap.
 
-`rle/rle.toml` records how this environment is trained, so a run needs no flags:
+`rle/rle.toml` records how this environment is trained, so a run needs no
+tuning flags. Abridged -- see `[train.options]` in the file for the full set and
+the measurement behind each value:
 
 ```toml
 [train]
@@ -312,23 +323,63 @@ training_file = "../job_data/train.jsonl"
 validation_file = "../job_data/validation.jsonl"
 
 [train.options]
-group_size = 4
+learning_rate = 5e-5
+group_size = 8
+batch_size = 8
+max_steps = 64
+eval_every = 4
+save_every = 4
 max_concurrent_rollouts = 8
+renderer_name = 'qwen3_ext'
 ```
 
 ```bash
 cd rle
-azd ai rle train
+
+# Must match [rle].version in rle.toml -- the version you last published.
+export RLE_VERSION=1.0.0
+
+azd ai rle train --rle-version "${RLE_VERSION}" --follow
+```
+
+Pass `--rle-version` explicitly. Left off, the CLI resolves a version on its own
+and can settle on one published earlier, in which case it hands back that
+version's **existing** job instead of starting yours. The failure is quiet and
+easy to misread: the command succeeds, prints a job id, and the job it names is
+already finished or failed with stale options that do not match this file.
+
+`--follow` mirrors the run's logs and metrics into the layout the dashboard
+reads and serves the rollouts locally while it runs. To reattach after
+disconnecting, or to watch a job started elsewhere:
+
+```bash
+azd ai rle monitor --job-id ftjob-xxxxxxxxxxxxxxxxxxxxxxxx
 ```
 
 Use `--task-count` to train on only the first N tasks while checking the
 environment end to end, which is cheaper than waiting on the full dataset:
 
 ```bash
-azd ai rle train --task-count 8
+azd ai rle train --rle-version "${RLE_VERSION}" --task-count 8
 ```
 
-Add `--follow` to mirror the run's logs and metrics locally while it runs.
+`train`, `jobs` and `monitor` are hidden from `azd ai rle --help` unless
+`AZD_AI_RLE_ENABLE_ALL=true` is set. They are hidden, not disabled, so the
+commands above run either way; export it only if you want them listed:
+
+```bash
+export AZD_AI_RLE_ENABLE_ALL=true
+```
+
+### Reading the run
+
+Checkpoints are written only on an `eval_every` or `save_every` boundary, which
+is why both are set to 4 above: a run configured without them trains weights it
+cannot recover afterwards. Step 0 is never checkpointed.
+
+Judge the run on its validation curve against the fixed evaluation pool, not on
+training reward, which drifts with task composition because the sampler walks
+the training file in order rather than shuffling it.
 
 ## Reference: how RLE invokes a Hosted Agent
 

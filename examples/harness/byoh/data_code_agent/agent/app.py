@@ -140,6 +140,20 @@ def _configure_logging() -> None:
 
     Idempotent, so importing this module twice does not double every line.
     """
+    # The handler below belongs to this module's logger alone, and `propagate = False` keeps
+    # it off the root. Every *other* logger in the image -- notably `opencode_direct`, which
+    # carries the per-rollout diagnostics -- is left with no handler at all, because uvicorn
+    # configures only its own. Those records then fall through to `logging.lastResort`, which
+    # is pinned at WARNING, so every `logger.info` is discarded. Nothing reveals this locally,
+    # where running uvicorn from a shell does configure the root; it bites only in the
+    # deployed image, which is the one place the diagnostics are worth having. Configuring the
+    # root first is what makes module-level INFO survive. `basicConfig` is a no-op once the
+    # root has a handler, so this stays idempotent too.
+    logging.basicConfig(
+        level=os.environ.get("LOG_LEVEL", "INFO").upper(),
+        format="%(levelname)s:%(name)s: %(message)s",
+        stream=sys.stdout,
+    )
     if any(getattr(h, "_byoh_harness", False) for h in logger.handlers):
         return
     handler = logging.StreamHandler(sys.stdout)
