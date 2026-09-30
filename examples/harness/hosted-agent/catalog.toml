@@ -19,7 +19,7 @@ name = "data_code_agent"
 visible = true
 
 [[sample]]
-name = "competitive_intelligence_agent"
+name = "analysis_agent"
 # Hidden pending review. Reachable for internal testing with
 # AZD_AI_RLE_ENABLE_ALL=true, which bypasses this filter for both the
 # interactive picker and an explicit --sample.
