@@ -1,4 +1,4 @@
-# Competitive-intelligence agent (Hosted Agent)
+# Analysis agent (Hosted Agent)
 
 A production competitive-intelligence agent, trained with RL against a
 simulated version of its own world, and a recorded run you can reproduce.
@@ -29,13 +29,13 @@ land close to the same curve.
 ## Getting this sample
 
 This sample is hidden in the samples catalog, so `azd ai rle init` will not
-offer it or accept `--sample competitive_intelligence_agent` by default. Opt in
+offer it or accept `--sample analysis_agent` by default. Opt in
 with the same environment variable that reveals the CLI's other internal
 surfaces:
 
 ```bash
 export AZD_AI_RLE_ENABLE_ALL=true
-azd ai rle init --harness hosted-agent --sample competitive_intelligence_agent
+azd ai rle init --harness hosted-agent --sample analysis_agent
 ```
 
 Without it the CLI reports `rle_sample_not_found` and lists only the visible
@@ -303,8 +303,8 @@ does not use them.
 
 ```bash
 cd "$SAMPLE/agent"
-docker build -t competitive-intelligence-agent:latest .
-docker run --rm -p 8088:8088 competitive-intelligence-agent:latest
+docker build -t analysis-agent:latest .
+docker run --rm -p 8088:8088 analysis-agent:latest
 ```
 
 Confirm `/readiness` returns 200 before moving on. The container needs no model
@@ -379,7 +379,7 @@ Point `rle/rle.toml` at the agent you registered in step 1:
 
 ```toml
 [rle]
-name = "competitive_intelligence_agent"
+name = "analysis_agent"
 version = "1.0.0"
 type = "Harness"
 subtype = "HostedAgent"
