@@ -1,4 +1,4 @@
-# Hosted Agent harness for the analysis agent RLE.
+# Hosted Agent harness for the competitive-intelligence agent RLE.
 #
 # This manifest reproduces a single published run. Its hyperparameters are the
 # ones that produced the reward curve in `../README.md`, with one deliberate
@@ -14,7 +14,7 @@
 schema_version = "1.0.0"
 
 [rle]
-name = "analysis_agent"
+name = "competitive_intelligence_agent"
 # Bump before republishing: registered versions are immutable.
 version = "1.0.0"
 type = "Harness"
@@ -24,7 +24,7 @@ subtype = "HostedAgent"
 # of these with your own registration -- see step 3 in `../README.md`. RLE
 # resolves the name against the project and posts to
 # {project}/agents/{agentName}/endpoint/protocols/openai/responses.
-agentName = "analysis-rle-agent"
+agentName = "competitive-intelligence-rle-agent"
 # A positive integer, or "draft-{unix-timestamp}" for an unpublished draft.
 agentVersion = "1"
 
