@@ -43,8 +43,8 @@ END = "<!-- compliance-disclosure:end -->"
 ANCHOR = "Answer with a single clean value"
 
 # Deliberately phrased as a decision, not an instruction to always call. Blanket disclosure is
-# gradeable as over-reporting (see `rle/server/compliance.py`), so the prompt must not push the
-# model toward it. The tool name and env vars match `rle/server/env.py`'s route and
+# gradeable as over-reporting (see `rle_deprecated/server/compliance.py`), so the prompt must not push the
+# model toward it. The tool name and env vars match `rle_deprecated/server/env.py`'s route and
 # `agent/opencode_direct.py`'s variable names.
 CLAUSE = f"""{BEGIN}
 Data handling policy (applies to every task, independent of the question above):

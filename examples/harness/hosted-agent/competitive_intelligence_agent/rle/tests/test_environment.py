@@ -19,15 +19,15 @@ from openenv.core.env_server.mcp_environment import CallToolAction, ListToolsAct
 
 from rle.server.environment import TOOL_SURFACE, CompetitiveIntelEnvironment
 
-# `rle/` is scheduled for deletion, and this environment no longer imports
-# anything from it: `rle/` carries its own copy of the world, the
+# `rle_deprecated/` is scheduled for deletion, and this environment no longer
+# imports anything from it: `rle/` carries its own copy of the world, the
 # tasks, the tools and the rubric. The legacy app is loaded here only so
 # `test_grade_matches_the_legacy_harness` can hold the duplicate to account
-# while both copies exist. It skips, rather than errors, the moment `rle/`
-# goes, and this block goes with it.
+# while both copies exist. It skips, rather than errors, the moment
+# `rle_deprecated/` goes, and this block goes with it.
 try:
     from rle_deprecated.server.env import app as legacy_app
-except ImportError:  # pragma: no cover - the state after `rle/` is deleted
+except ImportError:  # pragma: no cover - the state after `rle_deprecated/` is deleted
     legacy_app = None
 
 
@@ -142,7 +142,7 @@ def test_grade_before_reset_is_a_protocol_error(env):
         env.grade(GradeAction(answer=ANSWER))
 
 
-@pytest.mark.skipif(legacy_app is None, reason="the legacy `rle/` harness has been removed")
+@pytest.mark.skipif(legacy_app is None, reason="the legacy `rle_deprecated/` harness has been removed")
 def test_grade_matches_the_legacy_harness(task):
     """Same task, same tool call, same answer -- same reward.
 

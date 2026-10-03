@@ -21,11 +21,12 @@ Two harness subtypes exist:
 | `HostedAgent` | A Foundry Hosted Agent version | [`hosted-agent/`](./hosted-agent) |
 | `BYOH` (Bring Your Own Harness) | Anywhere you register a base URL | [`byoh/`](./byoh) |
 
-Each subtype directory holds one directory per named sample — today both
-hold a single [`data_code_agent/`](./byoh/data_code_agent) — alongside a
+Each subtype directory holds one directory per named sample, alongside a
 `catalog.toml` listing which samples `azd ai rle init` offers. Pick one with
 `--sample <name>`, or let the CLI prompt: it always does, even when only one
-sample is visible.
+sample is visible. Today `hosted-agent/` holds
+[`competitive_intelligence_agent/`](./hosted-agent/competitive_intelligence_agent)
+and `byoh/` holds [`data_code_agent/`](./byoh/data_code_agent).
 
 Each sample ships two independent pieces that get deployed and published
 separately:
@@ -58,14 +59,22 @@ its `rle/` vendors the dataset's own grader, so the two pieces are
 self-contained — see its own README for how they fit
 together.
 
-The two `data_code_agent` samples are the same environment under both
-subtypes, and are intentionally near-identical at the code level: `rle/` is
-the same in both, since RLE does not care which harness subtype invokes it,
-and `agent/opencode_direct.py` — the agent loop itself — is shared verbatim.
-Only the entrypoint differs. `BYOH` adds an HTTP invocation endpoint RLE
-POSTs to and then polls, and reads the rollout context out of the request
-body; `HostedAgent` serves the Responses API and reads the same context off
-`x-client-rle-*` request headers, answering synchronously.
+[`hosted-agent/competitive_intelligence_agent`](./hosted-agent/competitive_intelligence_agent)
+is a production competitive-intelligence agent trained against a simulated
+version of its own world. It reads a question about a competitor, gathers
+evidence through the environment's tools, and files a short brief: whether the
+development is material, how confident that call is, and what evidence
+supports it. In production it runs on a frontier GPT model against the real
+Microsoft Fabric toolbox. The sample trains Qwen3-32B on that same job, and
+ships the recorded run that took held-out reward from 0.525 to 0.766 and the
+material/immaterial/abstain call from 47.5% to 74.2% correct.
+
+`data_code_agent` ships as a `BYOH` sample only. The two harness subtypes
+differ at the entrypoint rather than in the environment: `BYOH` adds an HTTP
+invocation endpoint that RLE POSTs to and then polls, reading the rollout
+context out of the request body, while `HostedAgent` serves the Responses API
+and reads the same context off `x-client-rle-*` request headers, answering
+synchronously. A `HostedAgent` build of `data_code_agent` may be added later.
 
 See each sample's own README for the deploy → wire → register → publish
 flow.

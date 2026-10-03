@@ -1,9 +1,10 @@
 """Turning what RLE hands back into the text the rubric should score.
 
-Duplicated from the legacy harness's ``rle/server/env.py`` so this environment
-owns every line it runs and ``rle/`` can be deleted. The two copies are
-identical today and ``tests/test_environment.py`` asserts the rewards still
-match while both exist; once ``rle/`` goes, this is the only copy.
+Duplicated from the legacy harness's ``rle_deprecated/server/env.py`` so this
+environment owns every line it runs and ``rle_deprecated/`` can be deleted. The
+two copies are identical today and ``tests/test_environment.py`` asserts the
+rewards still match while both exist; once ``rle_deprecated/`` goes, this is the
+only copy.
 
 These three helpers are not incidental. The first two are the difference
 between a run that trains and a run whose reward is constant, and the third is

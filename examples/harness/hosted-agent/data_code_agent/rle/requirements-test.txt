@@ -1,3 +1,0 @@
--r requirements.txt
-httpx>=0.28,<0.29
-websockets>=15,<16

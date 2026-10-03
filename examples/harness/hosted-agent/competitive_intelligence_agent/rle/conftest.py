@@ -1,14 +1,14 @@
 """Makes the sample's import roots visible to pytest.
 
 ``rle`` is self-contained: it carries its own ``rl/`` and ``vendor/``
-so the container never needs ``rle/``. Importing the environment needs only the
-sample root and this folder's vendored ``loom_cookbook``, which is exactly what
-the container sets with ``PYTHONPATH``.
+so the container never needs ``rle_deprecated/``. Importing the environment
+needs only the sample root and this folder's vendored ``loom_cookbook``, which
+is exactly what the container sets with ``PYTHONPATH``.
 
-``rle/`` is appended afterwards purely so ``tests/test_environment.py`` can
-stand the legacy harness up beside this one and assert the two still grade
+``rle_deprecated/`` is appended afterwards purely so ``tests/test_environment.py``
+can stand the legacy harness up beside this one and assert the two still grade
 identically. That test is the gate on the duplication. It and these last two
-entries go when ``rle/`` is deleted.
+entries go when ``rle_deprecated/`` is deleted.
 """
 
 from __future__ import annotations

@@ -13,18 +13,24 @@ from uuid import uuid4
 # per-rollout state, which only that service keeps. The OpenEnv service carries
 # its own copy and is patched through `openenv_compliance` where a case has to
 # observe both services at once.
-from rle_deprecated.server import compliance, env as legacy
-from rle_deprecated.server.vendor.grader import grade
 from rle.server import compliance as openenv_compliance, environment
 
 from .parity import (
-    Pair, Report, datasets, differences, fixture, quiet_transport, synthetic_tasks,
+    LEGACY_AVAILABLE, Pair, Report, datasets, differences, fixture,
+    quiet_transport, skip_without_legacy, synthetic_tasks,
 )
+
+if LEGACY_AVAILABLE:
+    from rle_deprecated.server import compliance, env as legacy
+    from rle_deprecated.server.vendor.grader import grade
+else:  # pragma: no cover
+    compliance = legacy = grade = None
 
 
 class FocusedParityTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
+        skip_without_legacy()
         cls.report = Report("focused", 0)
         cls.report.data["counting_unit"] = "test_methods (multiple transport episodes per method)"
         for split, rows in datasets().items():

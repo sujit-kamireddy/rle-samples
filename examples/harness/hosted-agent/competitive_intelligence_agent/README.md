@@ -21,7 +21,8 @@ land close to the same curve.
 | path | what it is |
 | --- | --- |
 | `agent/` | the agent itself, as a Foundry Hosted Agent speaking the Responses protocol |
-| `rle_deprecated/` | the RLE container: the simulated world, the tool surface and the grader |
+| `rle/` | the RLE container on the OpenEnv protocol, which the RLE environment contract is converging on |
+| `rle_deprecated/` | the same environment on the original `/reset`, `/tools/*`, `/grade` harness protocol: the published, end-to-end validated path today |
 | `job_data/` | 655 training scenarios and 120 held-out evaluation scenarios |
 | `tools/verify_dataset.py` | proves the two never share a scenario |
 | `tools/smoke_grade.py` | proves a local RLE container grades the answer key highest |

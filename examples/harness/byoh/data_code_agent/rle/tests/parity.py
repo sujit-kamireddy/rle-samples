@@ -15,13 +15,31 @@ from pathlib import Path
 import platform
 import re
 import time
+import unittest
 from typing import Any
 from unittest import mock
 from uuid import uuid4
 
 from fastapi.testclient import TestClient
 
-from rle_deprecated.server import compliance, env as legacy
+# The deprecated harness is the other half of every comparison this module
+# drives. Once `rle_deprecated/` is deleted there is nothing left to compare
+# against, so the symbols resolve to None and the suites that import this
+# helper skip through `skip_without_legacy()` rather than failing to import.
+LEGACY_AVAILABLE = importlib.util.find_spec("rle_deprecated") is not None
+
+if LEGACY_AVAILABLE:
+    from rle_deprecated.server import compliance, env as legacy
+else:  # pragma: no cover
+    compliance = legacy = None
+
+
+def skip_without_legacy():
+    """Skip the calling suite when `rle_deprecated/` has been deleted."""
+    if not LEGACY_AVAILABLE:  # pragma: no cover
+        raise unittest.SkipTest(
+            "rle_deprecated/ has been deleted; there is nothing left to compare against"
+        )
 from rle.server import environment
 from rle.server.app import build_app
 

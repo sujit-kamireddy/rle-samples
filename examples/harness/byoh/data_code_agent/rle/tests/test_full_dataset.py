@@ -4,11 +4,15 @@ import unittest
 
 from .parity import (
     BASELINE_SPLIT, LEGACY_ROWS_SHA256, Pair, Report, answers,
-    datasets, quiet_transport, require,
+    datasets, quiet_transport, require, skip_without_legacy,
 )
 
 
 class FullDatasetParityTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        skip_without_legacy()
+
     def test_every_vendored_row_all_eight_cases(self):
         splits = datasets()
         expected = sum(len(rows) * 8 for rows in splits.values())

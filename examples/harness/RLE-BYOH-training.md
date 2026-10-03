@@ -38,7 +38,8 @@ This is the **hosted harness `/invoke` URL**, not the training API. Run
 republish it. A Foundry Hosted Agent Responses endpoint cannot simply replace
 the BYOH `/invoke` URL — that is a different subtype with a different wire
 contract; see
-[`hosted-agent/data_code_agent`](./hosted-agent/data_code_agent) for it.
+[`hosted-agent/competitive_intelligence_agent`](./hosted-agent/competitive_intelligence_agent)
+for a sample of that subtype.
 To register your own hosted harness, deploy the sample's `agent/`,
 update `baseUrl`, choose a new RLE name/version, and follow the
 [sample README's publish and ACR setup](./byoh/data_code_agent/README.md).
