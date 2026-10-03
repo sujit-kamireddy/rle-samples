@@ -275,12 +275,12 @@ $env:FOUNDRY_PROJECT_ENDPOINT = "https://<account>.services.ai.azure.com/api/pro
 $env:AZURE_CONTAINER_REGISTRY_ENDPOINT = "<registry>.azurecr.io"
 ```
 
-Set `baseUrl` in `rle_deprecated/rle.toml` to your deployed agent's invocation URL:
+Set `baseUrl` in `rle/rle.toml` to your deployed agent's invocation URL:
 
 ```toml
 [rle]
 name = "data_code_agent_byoh"
-version = "1.0.0"
+version = "2.0.0"
 type = "Harness"
 subtype = "BYOH"
 baseUrl = "https://<your-deployed-agent-host>/invoke"
@@ -334,7 +334,7 @@ The selector is repeated for the reason given above -- `task` pins the task at
 reads both fields from each row. `train.jsonl` holds the first 1,000 tasks;
 `validation.jsonl` holds the last 200, so the two never overlap.
 
-`rle_deprecated/rle.toml` records how this environment is trained, so a run needs no flags:
+`rle/rle.toml` records how this environment is trained, so a run needs no flags:
 
 ```toml
 [train]

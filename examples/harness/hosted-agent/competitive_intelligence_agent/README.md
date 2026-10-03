@@ -314,7 +314,7 @@ request, which is the contract described at the end of this file.
 
 Push the image to the registry your Foundry project can pull from and register
 it as a Hosted Agent. Note its **name** and **version**, which are what
-`rle_deprecated/rle.toml` points at in step 3.
+`rle/rle.toml` points at in step 3.
 
 There is nothing to expose publicly here and no endpoint of your own to
 protect. RLE resolves the agent through the project and calls it with the
@@ -376,12 +376,12 @@ export FOUNDRY_PROJECT_ENDPOINT="https://<account>.services.ai.azure.com/api/pro
 export AZURE_CONTAINER_REGISTRY_ENDPOINT="<registry>.azurecr.io"
 ```
 
-Point `rle_deprecated/rle.toml` at the agent you registered in step 1:
+Point `rle/rle.toml` at the agent you registered in step 1:
 
 ```toml
 [rle]
 name = "competitive_intelligence_agent"
-version = "1.0.0"
+version = "2.0.0"
 type = "Harness"
 subtype = "HostedAgent"
 agentName = "<your-registered-agent-name>"
@@ -424,14 +424,14 @@ A rollout that returns a reward between 0 and 1 with seven `dim/` entries in
 
 ## 5. Start the training run
 
-`rle_deprecated/rle.toml` records everything, so the run needs no flags beyond the
+`rle/rle.toml` records everything, so the run needs no flags beyond the
 version. It must run from the folder holding `rle.toml`, because the CLI reads
 `./rle.toml` and resolves `training_file` and `validation_file` relative to the
 working directory:
 
 ```bash
 cd "$SAMPLE/rle"
-azd ai rle train --rle-version 1.0.0 --follow
+azd ai rle train --rle-version 2.0.0 --follow
 ```
 
 Pass `--rle-version` explicitly. Without it the CLI resolves a version on its
@@ -443,7 +443,7 @@ discovering a problem at step 3:
 
 ```bash
 cd "$SAMPLE/rle"
-azd ai rle train --rle-version 1.0.0 --task-count 8
+azd ai rle train --rle-version 2.0.0 --task-count 8
 ```
 
 ### What the full run costs

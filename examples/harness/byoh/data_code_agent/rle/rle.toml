@@ -1,0 +1,146 @@
+# Bring-Your-Own-Harness target for the data-code agent RLE.
+#
+# This is the manifest for the OpenEnv service in this folder. It is the one
+# `azd ai rle init`, `publish` and `train` read: all three resolve `rle.toml`
+# from `<sample>/rle/`, so the sample does not work without it.
+#
+# `[rle]` and `[defaults]` describe the published version and are immutable
+# once published. `[train]` is local-only and never published. The manifest is
+# parsed in *strict* mode: an unknown key is a hard error, so uncommenting a
+# line is always safe but inventing one is not. The commented-out settings
+# below are the ones this environment leaves unset, listed with their default
+# and their validation rule so the whole surface is visible in one file.
+
+schema_version = "1.0.0"
+
+[rle]
+# snake_case, starting with a letter.
+name = "data_code_agent_byoh_google_cloud_run"
+# Semantic version, MAJOR.MINOR.PATCH. Immutable: publishing a change means a
+# new version. The 2.x line is this folder's MCP environment; 1.x was the
+# legacy HTTP harness that now lives in `../rle_deprecated`.
+version = "2.0.0"
+# "Gym" or "Harness".
+type = "Harness"
+# "HostedAgent" or "BYOH" for Harness; "OpenEnv" for Gym.
+subtype = "BYOH"
+
+# PROTOCOL, AND THE ONE THING THIS MANIFEST CANNOT SAY.
+#
+# The service decides between the legacy tool route and the MCP one from an
+# `environment_protocol` field on the environment document, set at publish time
+# and immutable for the version. Only when it reads `mcp_environment` does RLE
+# open a sandbox session per rollout and pass its id down to the harness, which
+# is what selects the MCP tool surface this folder serves.
+#
+# `azd ai rle publish` has no way to send that field yet -- it is absent from
+# this manifest's schema and from the publish request the CLI builds -- so an
+# environment published by the CLI today is registered with the protocol
+# omitted, which the service reads as legacy. The MCP path in this folder is
+# therefore not reachable through `publish` until the CLI learns the field.
+
+# Where RLE POSTs each rollout. Required for BYOH, and the only thing RLE knows
+# about your harness: it is reached over the public internet with no auth
+# header of any kind, so the endpoint has to protect itself. It must answer
+# exactly 202 and then serve GET {baseUrl}/rollouts/{operation_id} for
+# polling and DELETE for cancellation.
+baseUrl = "https://data-code-agent-sujit-107203347434.us-east1.run.app/invoke"
+
+# agentName and agentVersion are HostedAgent-only and are rejected for BYOH.
+# agentName = "data-code-agent"
+# agentVersion = "1"
+
+# Pins the harness container independently of `version`, for build scripts that
+# tag images. Not used by the CLI itself -- `azd ai rle publish` takes the image
+# as an argument -- but declared so a pinned tag does not fail the strict parse.
+# imageTag = "2.0.0"
+
+
+# ---------------------------------------------------------------------------
+# [defaults] -- published with the version and returned by the service. Every
+# value here is optional and none of them has a service-side default: omitted
+# means absent. Supplying any of them requires schema_version = "1.0.0".
+#
+# For the Harness type RLE consumes none of these: the harness owns the model
+# call, so they are carried for downstream Training Jobs. They are listed in
+# full anyway, because they are what a training job reads when it is not given
+# flags.
+# ---------------------------------------------------------------------------
+
+# [defaults.model]
+# Informational. Stored with the version; Execute Rollout never reads it.
+# Maximum 256 characters.
+# name = "qwen3-32b-1"
+# The transcript renderer for the policy. Persisted, but not promoted into the
+# sampler's own configuration. Maximum 256 characters. Accepted values include
+# mai_harmony, mai_harmony_internal, qwen3_instruct, qwen3, qwen3_ext,
+# qwen3_disable_thinking, qwen3_5, qwen3_5_ext, qwen3_5_disable_thinking,
+# qwen3_5_ext_disable_thinking.
+# renderer_name = "qwen3_ext"
+
+# [defaults.reinforcement]
+# Both of these are Gym/OpenEnv controls for RLE's own policy loop. A Harness
+# drives the model itself, so they are inert here and are left unset.
+#
+# Maximum turns in one episode. Integer > 0. Required for Gym/OpenEnv, where
+# the effective value is min(value, 32).
+# max_episode_steps = 8
+# Output budget for a single model turn. Integer > 0. Effective value is
+# min(value, 8192); omitted, a Gym rollout gets the service cap of 8192.
+# max_completion_tokens = 4096
+
+# [defaults.reinforcement.hyperparameters]
+# Passed through to Training Jobs. Each is optional and has no default.
+# n_epochs = 1                     # integer > 0
+# batch_size = 8                   # integer > 0; unrelated to grpo.groups_per_batch
+# learning_rate_multiplier = 1.0   # finite float > 0
+# eval_interval = 10               # integer > 0
+# eval_samples = 32                # integer > 0
+# compute_multiplier = 1.0         # finite float > 0
+# reasoning_effort = "medium"      # exactly "low", "medium" or "high"
+
+# [defaults.grpo]
+# Recipe-level GRPO settings. Stored with the version and read by Training
+# Jobs; RLE itself never consumes them.
+# group_size = 8                   # integer > 0
+# groups_per_batch = 128           # integer > 0
+# max_steps = 150                  # integer > 0
+
+# [defaults.gym_openenv]
+# Gym/OpenEnv only, and required there: names the action property that receives
+# the model completion verbatim. Not valid for a Harness, so it is unset here
+# even though this folder serves an OpenEnv service -- the *callable interface*
+# RLE sees is still the harness.
+# model_response_field = "response"
+
+
+# ---------------------------------------------------------------------------
+# [train] -- how this environment is usually trained, so a run is one command.
+# Local-only: never published, free to change without republishing, and any
+# flag on `azd ai rle train` overrides it for a single run.
+# ---------------------------------------------------------------------------
+[train]
+# Base model to train. Only RL-enabled models are accepted.
+model = "qwen3-32b-1"
+# Paths are relative to this file.
+training_file = "../job_data/train.jsonl"
+validation_file = "../job_data/validation.jsonl"
+# Appended to the fine-tuned model name, to tell runs apart.
+# suffix = "data-code-agent"
+# Per-run override of defaults.reinforcement.max_episode_steps. Integer > 0.
+# max_episode_steps = 8
+
+# Free-form options forwarded to the training service, which owns the
+# vocabulary and validates it per recipe -- an unsupported key is rejected by
+# name, with the supported set. The two below are the ones this sample uses;
+# `azd ai rle train --task-count N` sets max_train_examples.
+[train.options]
+# Rollouts per group. A GRPO group needs at least two to have any advantage
+# signal at all.
+group_size = 4
+# How many rollouts run at once. Each one is a full `opencode` process in the
+# agent container, so this is bounded by that container's CPU and memory, not
+# by the model endpoint.
+max_concurrent_rollouts = 8
+# Caps how many rows of training_file are used. Useful for a smoke run.
+# max_train_examples = 16

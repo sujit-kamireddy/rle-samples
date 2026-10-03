@@ -6,9 +6,10 @@ OpenEnv session. It is built on the `RLEnvironment` base class that
 MCP and the final report is graded through a `GradeAction` step.
 
 This service is **separate from, and additive to**, the existing
-[Harness environment](../rle_deprecated). That one stays the publishable path: it has the
-`rle.toml`, and `azd ai rle publish` continues to build it. Nothing here changes
-it.
+[Harness environment](../rle_deprecated). That one is the legacy HTTP tool
+route, kept while the grading-parity test still has something to compare
+against. This folder carries the [`rle.toml`](./rle.toml) the CLI reads, so
+`azd ai rle init`, `publish` and `train` all act on this environment.
 
 Grading is not reimplemented from scratch, and it is not imported from the
 legacy harness either. This folder carries its own copy of the world, the
@@ -29,17 +30,21 @@ automatically once `../rle_deprecated` is gone.
 
 1. **Local phase:** standalone OpenEnv, with grading parity against `../rle_deprecated`
    asserted by a test that drives both services through their own protocols.
-2. **Foundry phase using RLE:** **TBA**. There is deliberately no `rle.toml` in
-   this folder. The managed service's environment document currently names one
-   protocol, and the hosted agent in [`../agent`](../agent) still speaks the
-   legacy HTTP tool API rather than MCP, so publishing this variant would mean
-   inventing a contract that does not exist yet.
+2. **Foundry phase using RLE:** the agent in [`../agent`](../agent) now speaks
+   both wire formats. It calls tools over this folder's `/mcp` JSON-RPC surface
+   when RLE hands it a sandbox session id in the
+   `x-client-rle-sandbox-session-id` header, and falls back to the legacy POST
+   route when that header is absent, which is exactly the condition the service
+   itself applies when it decides whether to send it.
 
-The agent is also what still pins `../rle_deprecated` in place. This folder no longer
-needs it, but `agent/rollout_context.py` calls tools by POSTing
-`{base}/{tool_name}`, a route only the legacy harness serves. Moving the agent
-onto the `/mcp` JSON-RPC surface is the remaining work before `../rle_deprecated` can be
-deleted.
+   One gap remains, and it is in the CLI rather than here. RLE picks the MCP
+   path from an `environment_protocol` field on the environment document, set
+   at publish time and immutable for the version. `azd ai rle publish` cannot
+   send it yet, so a CLI-published environment is registered with the protocol
+   omitted, which the service reads as legacy. The sample still runs, because
+   the agent falls back, but the MCP path is not reachable through `publish`
+   until the CLI learns the field. See the comment block in
+   [`rle.toml`](./rle.toml).
 
 ## Build and run locally
 
