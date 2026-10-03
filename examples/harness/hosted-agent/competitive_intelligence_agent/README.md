@@ -146,7 +146,7 @@ dimensions that were both low and movable. The other five keep enough weight to
 stay guardrails, so a policy that starts leaking the canary or calling mutating
 tools still loses real reward, but not enough to dilute the signal.
 
-`rle/server/grading.py` also computes `BENCHMARK_WEIGHTS`, a flatter set used
+`rle/server/grading/rubric.py` also computes `BENCHMARK_WEIGHTS`, a flatter set used
 for reporting rather than training. Both are returned in `grade`'s
 `info.metrics`, so a run can be read either way without retraining.
 
@@ -359,8 +359,8 @@ apply. `grade` parses the brief out of the agent's final answer, looks up the
 answer key from the task `reset` was given, and scores it.
 
 `rle/server/tasks.py`, `rle/server/world.py`,
-`rle/server/tools/simulated_tools.py` and `rle/server/grading.py` are imported
-unmodified rather than reimplemented here (see `environment.py`'s own
+`rle/server/tools/simulated_tools.py` and `rle/server/grading/rubric.py` are
+imported unmodified rather than reimplemented here (see `environment.py`'s own
 docstring) -- the task generator, simulated world, tools and rubric this
 environment scores every rollout against.
 

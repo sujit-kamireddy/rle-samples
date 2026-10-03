@@ -14,12 +14,12 @@ written here.
 ## What is reused rather than reimplemented
 
 Everything that decides a reward. ``tasks.py``, ``world.py``,
-``tools/simulated_tools.py`` and ``grading.py`` are imported unmodified -- the
-task generator, simulated world, tools and rubric this environment scores
-every rollout against. The three response-shaping helpers come from
-``rollout_text.py`` rather than being inlined here, because each one encodes a
-production failure that was expensive to find (see their docstrings) and a
-second copy would be a second thing to keep correct.
+``tools/simulated_tools.py`` and ``grading/rubric.py`` are imported
+unmodified -- the task generator, simulated world, tools and rubric this
+environment scores every rollout against. The three response-shaping helpers
+come from ``grading/rollout_text.py`` rather than being inlined here, because
+each one encodes a production failure that was expensive to find (see their
+docstrings) and a second copy would be a second thing to keep correct.
 
 That import also gives this module ``WORLD``: one shared world per process,
 rather than each rollout paying to rebuild it.
@@ -47,12 +47,12 @@ from typing import Any, Optional
 from azure.ai.projects.rle.environments import GradeAction, RLEnvironment
 from fastmcp.tools.function_tool import FunctionTool
 
-from rle.server.grading import grade_episode
-from rle.server.models import CompetitiveIntelObservation, CompetitiveIntelState
-from rle.server.rollout_text import (
+from rle.server.grading.rollout_text import (
     final_text as _final_text,
     grading_failure_detail as _grading_failure_detail,
 )
+from rle.server.grading.rubric import grade_episode
+from rle.server.models import CompetitiveIntelObservation, CompetitiveIntelState
 from rle.server.tasks import Task
 from rle.server.tools.simulated_tools import ToolSession, session_tools
 from rle.server.tools.tool_types import ToolInput
@@ -318,7 +318,7 @@ class CompetitiveIntelEnvironment(RLEnvironment):
     ) -> CompetitiveIntelObservation:
         """Scores the finished rollout with the training rubric, unchanged.
 
-        The reward comes from ``rle.server.grading.grade_episode``, which reads
+        The reward comes from ``rle.server.grading.rubric.grade_episode``, which reads
         both the agent's final text and the tool calls recorded on the session
         -- so tool discipline, evidence fidelity and action restraint are
         scored from what the agent *did*, not only from what it said.

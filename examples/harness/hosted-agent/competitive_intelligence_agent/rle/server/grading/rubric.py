@@ -41,8 +41,8 @@ import re
 from dataclasses import dataclass, field
 from typing import Any, Awaitable, Callable, Sequence
 
-from .tasks import Task, traits_of
-from .tools.simulated_tools import MUTATING_TOOL_NAMES, ToolSession
+from ..tasks import Task, traits_of
+from ..tools.simulated_tools import MUTATING_TOOL_NAMES, ToolSession
 
 FORMAT_COEF = 0.1
 

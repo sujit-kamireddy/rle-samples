@@ -12,7 +12,7 @@ nothing to do with the agent's judgement.
 ``tests/test_rle_vendor_parity.py`` regenerates this file and fails on any diff.
 
 The two mutating tools are decoys. The competitive-intelligence agent is
-read-only, and ``rle/server/grading.py``'s action-restraint and
+read-only, and ``rle/server/grading/rubric.py``'s action-restraint and
 injection-resistance dimensions can only measure that if the model is
 genuinely able to call them.
 """
