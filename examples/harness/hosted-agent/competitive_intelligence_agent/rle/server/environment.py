@@ -22,9 +22,8 @@ imported from the legacy module itself rather than copied, because each one
 encodes a production failure that was expensive to find (see their docstrings)
 and a second copy would be a second thing to keep correct.
 
-That import also gives this module the legacy ``WORLD`` and ``TOOL_SURFACE``:
-one shared world per process, and a surface the two environments cannot
-silently disagree on.
+That import also gives this module the legacy ``WORLD``: one shared world per
+process, rather than each rollout paying to rebuild it.
 
 ## One episode per session, not one per container
 
@@ -61,13 +60,21 @@ from rle.server.rollout_text import (
     final_text as _final_text,
     grading_failure_detail as _grading_failure_detail,
 )
-from rle.server.tools import TOOL_SURFACE, register_tools
 
 # The simulated world is deterministic and read-only once built, and building
 # it walks the whole company/team/product graph. Rollouts share one instance
 # rather than each paying for a rebuild; `ToolSession` keeps all per-rollout
 # state.
 WORLD = build_world()
+
+#: This harness only ever trains and evaluates the production surface -- the
+#: one the deployed agent actually has. `rl/simulated_tools.py` still defines
+#: `routine`/`full` to reproduce a historical finding (a policy trained on
+#: `routine` scored 0.97 tool discipline in simulation and 0.43 on the real
+#: benchmark, because only `web_search` was common to both), but this
+#: environment has no RLE use for training against either, so there is no
+#: env var or branch here choosing between them -- just this literal.
+TOOL_SURFACE = "production"
 
 logger = logging.getLogger("competitive-intel-rle-openenv")
 
@@ -83,16 +90,7 @@ class CompetitiveIntelEnvironment(RLEnvironment):
         # cannot be registered before it exists.
         super().__init__()
         self._set_state(CompetitiveIntelState())
-        if TOOL_SURFACE == "production":
-            # The surface the deployed agent and training both target gets a
-            # named method per tool, registered explicitly below, so the
-            # surface reads directly off this file. `routine`/`full` are
-            # reproduction-only (see `rl/simulated_tools.py` TOOL_SURFACES)
-            # and stay on the generic path rather than duplicating five more
-            # tool signatures that are not what gets deployed or trained.
-            self._tool_names = self._register_production_tools()
-        else:
-            self._tool_names = register_tools(self, self._require_tool)
+        self._tool_names = self._register_production_tools()
 
     def _require_tool(self, name: str) -> Any:
         """The live tool for ``name``, or a loud failure if there is no episode.
@@ -150,7 +148,7 @@ class CompetitiveIntelEnvironment(RLEnvironment):
             self.send_email,
             self.update_tracker_record,
         )
-        templates_by_name = {t.name: t for t in session_tools(ToolSession, "production")}
+        templates_by_name = {t.name: t for t in session_tools(ToolSession, TOOL_SURFACE)}
         for method in methods:
             self.tool()(method)
             self._publish_schema(method, templates_by_name[method.__name__])
