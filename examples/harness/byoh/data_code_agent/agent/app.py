@@ -88,7 +88,7 @@ from typing import Any
 import httpx
 from fastapi import Body, FastAPI, Header, Response
 from fastapi.responses import JSONResponse
-from pydantic import AliasChoices, BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict
 
 import opencode_direct
 
@@ -202,26 +202,16 @@ class RolloutContext(BaseModel):
     # `mcp_endpoint` addresses the per-rollout container that also serves `/reset` and
     # `/grade` (tools are a sibling of those, not a path under them), and `mcp_bearer_token` is
     # a rollout-scoped capability that expires with the rollout.
-    #
-    # RLE has renamed these more than once (`capture_proxy_endpoint` -> `model_endpoint`,
-    # `capture_proxy_session_key` -> `model_api_key`, `sandbox_tools_bearer_token` ->
-    # `sandbox_tools_token` -> `mcp_bearer_token`, `sandbox_tools_endpoint` -> `mcp_endpoint`,
-    # `sandbox_session_id` -> `mcp_session_id`). Every spelling RLE has ever sent is still accepted
-    # because a harness is customer-deployed and outlives any single RLE release: a sample that
-    # only understood the newest names would break against a region still serving an older one,
-    # and the failure would surface as a 422 on dispatch, which looks like a harness bug rather
-    # than a version skew.
     model_config = ConfigDict(protected_namespaces=())
 
-    model_endpoint: str = Field(validation_alias=AliasChoices("model_endpoint", "capture_proxy_endpoint"))
-    model_api_key: str = Field(validation_alias=AliasChoices("model_api_key", "capture_proxy_session_key"))
-    mcp_endpoint: str = Field(validation_alias=AliasChoices("mcp_endpoint", "sandbox_tools_endpoint"))
-    mcp_bearer_token: str = Field(
-        validation_alias=AliasChoices("mcp_bearer_token", "sandbox_tools_token", "sandbox_tools_bearer_token"))
+    model_endpoint: str
+    model_api_key: str
+    mcp_endpoint: str
+    mcp_bearer_token: str
     # `../rle/rle.toml` publishes with `environmentProtocol = "mcp_environment"`,
     # so RLE always opens one environment session for the rollout and names it
     # here. The tools live on that session's `/mcp` route, not on `/tools/<name>`.
-    mcp_session_id: str = Field(validation_alias=AliasChoices("mcp_session_id", "sandbox_session_id"))
+    mcp_session_id: str
 
     @property
     def mcp_url(self) -> str:
