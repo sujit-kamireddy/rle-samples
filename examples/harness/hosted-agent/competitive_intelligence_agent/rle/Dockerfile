@@ -22,9 +22,9 @@ RUN apt-get update \
 
 WORKDIR /app
 
-# Unlike the legacy harness image, this one does install openenv: the OpenEnv
-# step protocol is exactly what it serves. `azure-ai-projects[rle]` brings the
-# `RLEnvironment` base class and fastmcp with it.
+# This image installs openenv: the OpenEnv step protocol is exactly what it
+# serves. `azure-ai-projects[rle]` brings the `RLEnvironment` base class and
+# fastmcp with it.
 COPY requirements.txt /app/requirements.txt
 RUN if [ -n "${PIP_FALLBACK_INDEX_URL}" ] && \
        ! pip download --no-deps --quiet --index-url "${PIP_INDEX_URL}" --dest /tmp/idxprobe six >/dev/null 2>&1; then \
@@ -36,18 +36,12 @@ RUN if [ -n "${PIP_FALLBACK_INDEX_URL}" ] && \
         -r /app/requirements.txt
 
 # This image is self-contained: the world, the tasks, the simulated tools and
-# the rubric are copied from this folder (`rle/`) itself, not from the legacy
-# harness. The legacy harness (`rle_deprecated/`, preserved outside this sample
-# tree in `_internal/`) carries an identical copy for now, and a
-# grading-parity test there asserts the two still grade the same, but nothing
-# in this image reads it -- which is what lets that legacy copy be deleted
-# outright.
+# the rubric are copied from this folder (`rle/`) itself.
 #
 # The build context is this folder itself -- `azd ai rle publish` always
-# builds from the directory holding rle.toml -- so the agent, the dataset and
-# the legacy harness (now a sibling of the whole sample, under `_internal/`)
-# are all outside this context, not something `Dockerfile.dockerignore` needs
-# to reach across to exclude.
+# builds from the directory holding rle.toml -- so the agent and the dataset
+# are outside this context, not something `Dockerfile.dockerignore` needs to
+# reach across to exclude.
 COPY __init__.py /app/rle/__init__.py
 COPY server/ /app/rle/server/
 

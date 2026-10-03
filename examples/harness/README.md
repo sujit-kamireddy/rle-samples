@@ -43,14 +43,6 @@ unchanged: the harness still drives your `agent/`, the agent still calls the
 environment's tools, and the environment still owns grading. Only the wire
 format between RLE and the environment differs.
 
-`competitive_intelligence_agent` also keeps a legacy harness, the original
-hand-rolled `azd ai rle init --type Harness` scaffold that serves `/reset`,
-`/tools/*` and `/grade` from its own `server/env.py`. It is the published,
-end-to-end validated path today, and that sample's README still walks through
-it. It is retained so the two can be graded side by side, and goes once `rle/`
-is validated against Foundry; it lives outside the scaffolded sample tree, in
-that sample's own `_internal/` copy (see its README).
-
 [`byoh/data_code_agent`](./byoh/data_code_agent) wraps Hugging Face's
 `FineEnvs/data-agent` collection — 5,000 data-analysis tasks over real CSVs —
 and grades a second axis on top of answer correctness: whether the agent

@@ -30,7 +30,7 @@ environment removed it.
 
 What this module does and does not change
 -----------------------------------------
-Facts come from the same per-task ``World`` as the legacy surfaces. The bounded
+Facts come from the same per-task ``World`` as the simulated surfaces. The bounded
 DAX interpreter applies actual filters, projections and aggregates, rejecting
 unsupported syntax explicitly. Evidence credit follows returned cell provenance,
 not merely a table mentioned in a query. The facts have to be reached the way

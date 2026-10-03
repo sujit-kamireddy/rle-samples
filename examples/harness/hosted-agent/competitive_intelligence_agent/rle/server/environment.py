@@ -1,45 +1,41 @@
 """The competitive-intelligence RLE as an OpenEnv ``RLEnvironment``.
 
-This is the same environment as the legacy HTTP harness (preserved outside
-this sample tree, in `_internal/`, purely for a grading-parity test), expressed
-against the authoring interface that ships in ``azure-ai-projects[rle]``. The
-legacy container hand-rolls four HTTP routes; this one subclasses
-``RLEnvironment`` and lets the SDK supply the protocol:
+This environment subclasses ``RLEnvironment``, the authoring interface that
+ships in ``azure-ai-projects[rle]``, and lets the SDK supply the protocol over
+MCP:
 
-    ``reset``          the caller's task, verbatim          (was ``POST /reset``)
-    MCP ``tools/*``    the agent's tool calls               (was ``POST /tools/*``)
-    ``grade``          the rubric, over the final answer    (was ``POST /grade``)
+    ``reset``          the caller's task, verbatim
+    MCP ``tools/*``    the agent's tool calls
+    ``grade``          the rubric, over the final answer
 
-``/health`` and the request plumbing come from ``create_app``, so they are no
-longer written here.
+``/health`` and the request plumbing come from ``create_app``, so they are not
+written here.
 
 ## What is reused rather than reimplemented
 
 Everything that decides a reward. ``tasks.py``, ``world.py``,
 ``tools/simulated_tools.py`` and ``grading.py`` are imported unmodified -- the
-same task generator, simulated world, tools and rubric that both the Loom RL
-runs and the legacy harness use. The three response-shaping helpers are
-imported from the legacy module itself rather than copied, because each one
-encodes a production failure that was expensive to find (see their docstrings)
-and a second copy would be a second thing to keep correct.
+task generator, simulated world, tools and rubric this environment scores
+every rollout against. The three response-shaping helpers come from
+``rollout_text.py`` rather than being inlined here, because each one encodes a
+production failure that was expensive to find (see their docstrings) and a
+second copy would be a second thing to keep correct.
 
-That import also gives this module the legacy ``WORLD``: one shared world per
-process, rather than each rollout paying to rebuild it.
+That import also gives this module ``WORLD``: one shared world per process,
+rather than each rollout paying to rebuild it.
 
 ## One episode per session, not one per container
 
-The legacy container keeps a single module-level ``Rollout``, because a Harness
-sandbox serves one rollout at a time. ``create_app`` instead builds one
-environment per OpenEnv session, so the per-rollout state that used to be
-global is just instance state here and several sessions can run concurrently in
-one container.
+``create_app`` builds one environment per OpenEnv session, so the per-rollout
+state lives as instance state here, and several sessions can run concurrently
+in one container.
 
 ## Where the taskset lives
 
-Not in this image, for the same reason as the legacy one: every rollout carries
-its own task and it arrives whole in the ``reset`` call. Baking ``data/rl/`` in
-would also ship the expected decision and the verified snapshot, which is answer
-key, into an image the agent's sandbox can reach.
+Not in this image: every rollout carries its own task and it arrives whole in
+the ``reset`` call. Baking ``data/rl/`` in would also ship the expected
+decision and the verified snapshot, which is answer key, into an image the
+agent's sandbox can reach.
 """
 
 from __future__ import annotations
@@ -322,10 +318,10 @@ class CompetitiveIntelEnvironment(RLEnvironment):
     ) -> CompetitiveIntelObservation:
         """Scores the finished rollout with the training rubric, unchanged.
 
-        The reward comes from ``rl.grading.grade_episode``, which reads both the
-        agent's final text and the tool calls recorded on the session -- so tool
-        discipline, evidence fidelity and action restraint are scored from what
-        the agent *did*, not only from what it said.
+        The reward comes from ``rle.server.grading.grade_episode``, which reads
+        both the agent's final text and the tool calls recorded on the session
+        -- so tool discipline, evidence fidelity and action restraint are
+        scored from what the agent *did*, not only from what it said.
 
         ``grade_episode`` is a coroutine and this method is not, which is what
         ``create_app`` expects: it runs a synchronous ``step`` in a thread pool,

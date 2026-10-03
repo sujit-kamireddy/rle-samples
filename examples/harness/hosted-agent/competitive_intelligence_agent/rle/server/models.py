@@ -11,9 +11,9 @@ class CompetitiveIntelObservation(Observation):
     """What ``reset`` and ``grade`` hand back.
 
     ``Observation`` forbids extra fields, so everything the caller may read is
-    declared. ``info`` carries the grading payload the legacy ``/grade`` route
-    returned under the same name, unchanged, so a reward read here can be
-    compared with one read there field by field.
+    declared. ``info`` carries the grading payload ``grade`` builds: ``metrics``
+    (the rubric's per-dimension scores), the parsed and expected verdicts,
+    tool-call counts, and the agent's raw response text.
     """
 
     task_id: Optional[str] = None
