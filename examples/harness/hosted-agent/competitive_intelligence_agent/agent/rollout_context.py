@@ -144,8 +144,8 @@ class SandboxTools:
         opened and will grade on. This is the converged protocol.
 
     ``http``
-        ``rle_deprecated/server/env.py``. ``POST <endpoint>/<tool name>`` with
-        the arguments as the body. Kept because an environment published
+        The legacy harness's own route handler. ``POST <endpoint>/<tool name>``
+        with the arguments as the body. Kept because an environment published
         before the convergence sends no session id, and the agent image is the
         same one production runs.
 

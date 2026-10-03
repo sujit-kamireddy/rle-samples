@@ -19,8 +19,8 @@ schema_version = "1.0.0"
 [rle]
 name = "competitive_intelligence_agent"
 # Bump before republishing: registered versions are immutable. The 2.x line is
-# this folder's MCP environment; 1.x was the legacy HTTP harness that now
-# lives in `../rle_deprecated`.
+# this folder's MCP environment; 1.x was the legacy HTTP harness, preserved
+# outside this sample tree (in `_internal/`) purely for a grading-parity test.
 version = "2.0.1"
 type = "Harness"
 subtype = "HostedAgent"
@@ -34,9 +34,10 @@ subtype = "HostedAgent"
 # what `../agent` branches on to speak MCP.
 #
 # `mcp_environment` is the only value. Omitting the field publishes on the
-# legacy protocol, which is what `../rle_deprecated` does and why there is no
-# name for it. The agent still falls back to the legacy route if the header is
-# absent, so it keeps working against a 1.x version.
+# legacy protocol, which is what the legacy HTTP harness does (preserved
+# outside this sample tree, in `_internal/`, and why there is no name for it).
+# The agent still falls back to the legacy route if the header is absent, so
+# it keeps working against a 1.x version.
 #
 # Needs an `azd ai rle` build that knows the key. Older extensions parse this
 # manifest in strict mode and reject it outright.

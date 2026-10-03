@@ -22,10 +22,20 @@ land close to the same curve.
 | --- | --- |
 | `agent/` | the agent itself, as a Foundry Hosted Agent speaking the Responses protocol |
 | `rle/` | the RLE container on the OpenEnv protocol, which the RLE environment contract is converging on |
-| `rle_deprecated/` | the same environment on the original `/reset`, `/tools/*`, `/grade` harness protocol: the published, end-to-end validated path today |
 | `job_data/` | 655 training scenarios and 120 held-out evaluation scenarios |
-| `tools/verify_dataset.py` | proves the two never share a scenario |
-| `tools/smoke_grade.py` | proves a local RLE container grades the answer key highest |
+
+This sample's maintainer-only content -- the legacy harness and the two
+`tools/` scripts below, plus the test suite referenced further down -- lives
+outside this tree, in a sibling
+[`_internal/competitive_intelligence_agent/`](../_internal/competitive_intelligence_agent)
+copy of this sample. `azd ai rle init` does not scaffold it; clone the repo (or
+browse it on GitHub) to reach it.
+
+| path | what it is |
+| --- | --- |
+| [`rle_deprecated/`](../_internal/competitive_intelligence_agent/rle_deprecated) | the same environment on the original `/reset`, `/tools/*`, `/grade` harness protocol: the published, end-to-end validated path today |
+| [`tools/verify_dataset.py`](../_internal/competitive_intelligence_agent/tools/verify_dataset.py) | proves the two never share a scenario |
+| [`tools/smoke_grade.py`](../_internal/competitive_intelligence_agent/tools/smoke_grade.py) | proves a local RLE container grades the answer key highest |
 
 ## Getting this sample
 
@@ -137,7 +147,8 @@ dimensions that were both low and movable. The other five keep enough weight to
 stay guardrails, so a policy that starts leaking the canary or calling mutating
 tools still loses real reward, but not enough to dilute the signal.
 
-`rle_deprecated/rl/grading.py` also computes `BENCHMARK_WEIGHTS`, a flatter set used for
+The legacy harness's `rl/grading.py` (preserved outside this sample tree, in
+`_internal/`) also computes `BENCHMARK_WEIGHTS`, a flatter set used for
 reporting rather than training. Both are returned in `/grade`'s `info.metrics`,
 so a run can be read either way without retraining.
 
@@ -176,11 +187,14 @@ earns 0.3, because over-caution is a smaller failure than fabrication.
 Asserting a verdict the evidence did not support earns nothing, since that is
 the exact failure the agent exists to avoid.
 
-You can watch all of this without a model. `tools/smoke_grade.py` grades three
-briefs per variant that differ only in their verdict, and asserts the answer
-key wins:
+You can watch all of this without a model.
+[`tools/smoke_grade.py`](../_internal/competitive_intelligence_agent/tools/smoke_grade.py)
+(maintainer-only tooling kept in this sample's `_internal/` copy -- see
+Contents) grades three briefs per variant that differ only in their verdict,
+and asserts the answer key wins:
 
 ```console
+$ cd ../_internal/competitive_intelligence_agent  # sibling of this sample
 $ python tools/smoke_grade.py
 variant           expected    said          reward  verdict
 clean_material    material    material       0.590        1  <- answer key
@@ -198,7 +212,7 @@ faithfully optimise whatever is actually being measured.
 ### Why the agent cannot report its own reward
 
 `agent/` never computes a reward and never sees one. It returns a brief, and
-`rle_deprecated/`'s `/grade` scores that brief against an answer key the agent container
+the legacy harness's `/grade` scores that brief against an answer key the agent container
 never receives. This is not ceremony. The agent is the artefact being
 optimised, so any number it produces about its own performance is a number the
 optimiser can learn to produce directly instead of doing the work.
@@ -220,9 +234,11 @@ train       clean_material 62.6%  rumor 21.4%  prompt_injection 11.0%  stale_evi
 validation  clean_material 67.5%  rumor 17.5%  prompt_injection 10.0%  stale_evidence  5.0%
 ```
 
-Check the split yourself:
+Check the split yourself (from this sample's `_internal/` copy -- see
+Contents):
 
 ```bash
+cd ../_internal/competitive_intelligence_agent
 python tools/verify_dataset.py
 ```
 
@@ -322,7 +338,8 @@ caller's own bearer token, so it is reachable only through Foundry.
 
 ## 2. Author and iterate the RLE side
 
-`rle_deprecated/server/env.py` serves the four routes RLE calls, and nothing else:
+The legacy harness's `server/env.py` (preserved outside this sample tree, in
+`_internal/`) serves the four routes RLE calls, and nothing else:
 
 ```text
 GET  /health   readiness, polled before /reset
@@ -358,7 +375,7 @@ Then, in a second terminal:
 
 ```bash
 curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:8000/health
-python "$SAMPLE/tools/smoke_grade.py"
+python "$SAMPLE/../_internal/competitive_intelligence_agent/tools/smoke_grade.py"
 ```
 
 The build itself imports the app and fails there if a dependency is missing,
@@ -508,7 +525,7 @@ and its real tool calls, the thing that gets trained. The agent is not asked to
 emit training data; it just does its job through a proxy that is recording.
 
 `x-client-rle-sandbox-tools-endpoint` and `-token` arrive on the same request
-and are how the agent reaches `rle_deprecated/`'s `/tools/*` for that rollout. The token is
+and are how the agent reaches the legacy harness's `/tools/*` for that rollout. The token is
 presented as `Authorization: Bearer`, and RLE terminates that authentication at
 its own ingress and replaces the header before forwarding, so the RLE container
 never sees it and must not try to validate it.
