@@ -2,10 +2,9 @@
 
 This is this sample's own small tool-use library, not a copy of anything
 external: a ``@tool`` decorator that turns an annotated function or method
-into a callable with a JSON-schema spec (``FunctionTool``), the
+into a callable with a JSON-schema spec (``FunctionTool``), and the
 ``ToolInput``/``ToolResult`` types that carry a call's arguments and its
-response messages, and ``handle_tool_call``, which dispatches a model's tool
-call to the right one.
+response messages.
 
 ``simulated_tools.py``, ``production_tools.py`` and ``server/environment.py``
 all build on these same types, so a tool written once behaves identically
@@ -23,12 +22,10 @@ from typing import (
     Any,
     Callable,
     NotRequired,
-    Protocol,
     TypedDict,
     get_args,
     get_origin,
     get_type_hints,
-    runtime_checkable,
 )
 
 from pydantic import BaseModel, Field, create_model
@@ -36,37 +33,14 @@ from pydantic.fields import FieldInfo
 from pydantic_core import PydanticUndefined
 
 
-class ToolCallFunctionBody(TypedDict):
-    """The function a tool call names, and its JSON-encoded arguments."""
-
-    name: str
-    arguments: str
-
-
-class ToolCall(TypedDict):
-    """A request to invoke a tool, in OpenAI function-calling shape."""
-
-    function: ToolCallFunctionBody
-    id: NotRequired[str]
-
-
 class Message(TypedDict):
     """One turn in a conversation."""
 
     role: str
     content: NotRequired[Any]
-    tool_calls: NotRequired[list[ToolCall]]
     tool_call_id: NotRequired[str]
     name: NotRequired[str]
     trainable: NotRequired[bool]
-
-
-class ToolSpec(TypedDict):
-    """A tool offered to the model, in OpenAI function-calling shape."""
-
-    name: str
-    description: str
-    parameters: dict[str, Any]
 
 
 @dataclass
@@ -85,38 +59,6 @@ class ToolResult:
     should_stop: bool = False
     metrics: dict[str, float] = field(default_factory=dict)
     metadata: dict[str, Any] = field(default_factory=dict)
-
-
-@runtime_checkable
-class Tool(Protocol):
-    """Protocol for tools that can be used by LLM agents."""
-
-    @property
-    def name(self) -> str:
-        """Tool name shown to the model."""
-        ...
-
-    @property
-    def description(self) -> str:
-        """Tool description shown to the model."""
-        ...
-
-    @property
-    def parameters_schema(self) -> dict[str, Any]:
-        """JSON Schema for tool parameters shown to the model."""
-        ...
-
-    async def run(self, input: ToolInput) -> ToolResult:
-        """Execute the tool with validated arguments. Returns a ToolResult."""
-        ...
-
-    def to_spec(self) -> ToolSpec:
-        """Convert to ToolSpec for renderer integration."""
-        return {
-            "name": self.name,
-            "description": self.description,
-            "parameters": self.parameters_schema,
-        }
 
 
 def simple_tool_result(
@@ -238,7 +180,7 @@ class FunctionTool:
     """
     A tool created from a decorated function or method.
 
-    Implements the Tool protocol. Used internally by the @tool decorator.
+    Used internally by the @tool decorator.
     """
 
     def __init__(self, fn: Callable[..., Any]):
@@ -293,14 +235,6 @@ class FunctionTool:
     def parameters_schema(self) -> dict[str, Any]:
         """JSON Schema for tool parameters."""
         return self._params_model.model_json_schema()
-
-    def to_spec(self) -> ToolSpec:
-        """Convert to ToolSpec for renderer integration."""
-        return {
-            "name": self.name,
-            "description": self.description,
-            "parameters": self.parameters_schema,
-        }
 
     async def run(self, input: ToolInput) -> ToolResult:
         """Execute the tool with validated arguments. Returns a ToolResult."""
@@ -392,33 +326,3 @@ def tool(fn: Callable[..., Any]) -> FunctionTool:
                 return simple_tool_result(json.dumps(results))
     """
     return FunctionTool(fn)
-
-
-async def handle_tool_call(
-    tools: dict[str, Tool],
-    tool_call: ToolCall,
-) -> ToolResult:
-    """Handle a single tool call, returning a ToolResult."""
-    tool_name = tool_call.function.name
-    tool_call_id = tool_call.id or ""
-
-    if tool_name not in tools:
-        return error_tool_result(
-            f"Tool '{tool_name}' not found",
-            call_id=tool_call_id,
-            name=tool_name,
-            error_type="tool_not_found",
-        )
-
-    tool_obj = tools[tool_name]
-    try:
-        arguments = json.loads(tool_call.function.arguments)
-    except json.JSONDecodeError as e:
-        return error_tool_result(
-            f"Failed to parse tool arguments: {e}",
-            call_id=tool_call_id,
-            name=tool_name,
-            error_type="json_decode_failed",
-        )
-
-    return await tool_obj.run(ToolInput(arguments=arguments, call_id=tool_call_id))
