@@ -49,6 +49,8 @@ import logging
 from typing import Any, Optional
 
 from azure.ai.projects.rle.environments import GradeAction, RLEnvironment
+from fastmcp.tools.function_tool import FunctionTool
+from loom_cookbook.tool_use import ToolInput
 
 from rle.rl.grading import grade_episode
 from rle.rl.simulated_tools import ToolSession, session_tools
@@ -81,7 +83,16 @@ class CompetitiveIntelEnvironment(RLEnvironment):
         # cannot be registered before it exists.
         super().__init__()
         self._set_state(CompetitiveIntelState())
-        self._tool_names = register_tools(self, self._require_tool)
+        if TOOL_SURFACE == "production":
+            # The surface the deployed agent and training both target gets a
+            # named method per tool, registered explicitly below, so the
+            # surface reads directly off this file. `routine`/`full` are
+            # reproduction-only (see `rl/simulated_tools.py` TOOL_SURFACES)
+            # and stay on the generic path rather than duplicating five more
+            # tool signatures that are not what gets deployed or trained.
+            self._tool_names = self._register_production_tools()
+        else:
+            self._tool_names = register_tools(self, self._require_tool)
 
     def _require_tool(self, name: str) -> Any:
         """The live tool for ``name``, or a loud failure if there is no episode.
@@ -99,6 +110,66 @@ class CompetitiveIntelEnvironment(RLEnvironment):
                 f"Available: {sorted(self._tools)}."
             )
         return tool
+
+    async def _call_tool(self, name: str, **arguments: Any) -> str:
+        """Runs the live session's ``name`` tool and returns its text content.
+
+        Every explicit tool method below forwards here, so dispatch, argument
+        cleanup and error handling stay in one place. Arguments the caller
+        omitted arrive as ``None`` and are dropped, so Loom sees a genuinely
+        absent argument and applies its own default or its own "required"
+        error. ``run`` never raises: a malformed call comes back as a
+        tool-error result, which is what lets the rubric score a wasted call
+        instead of faulting the whole attempt. That contract is also why
+        every parameter on the methods below is typed ``Any`` with a ``None``
+        default -- a real, strict signature would let FastMCP reject a bad
+        call before ``run`` ever saw it.
+        """
+        tool = self._require_tool(name)
+        supplied = {key: value for key, value in arguments.items() if value is not None}
+        result = await tool.run(ToolInput(arguments=supplied, call_id=""))
+        messages = result.messages or []
+        return messages[0].get("content", "") if messages else ""
+
+    def _register_production_tools(self) -> list[str]:
+        """Explicitly registers the nine tools the deployed agent reaches.
+
+        Each is a named method on this class rather than a generically built
+        wrapper. The schema each one publishes still comes from the tool's
+        own pydantic model (``_publish_schema``), so what the agent reads
+        cannot drift from what ``_call_tool`` validates against.
+        """
+        methods = (
+            self.web_search,
+            self.competitive_fabric___DiscoverArtifacts,
+            self.competitive_fabric___GetSemanticModelSchema,
+            self.competitive_fabric___ExecuteQuery,
+            self.competitive_fabric___ValueSearch,
+            self.competitive_fabric___GetReportMetadata,
+            self.competitive_fabric___ResolveReportIdFromUrl,
+            self.send_email,
+            self.update_tracker_record,
+        )
+        templates_by_name = {t.name: t for t in session_tools(ToolSession, "production")}
+        for method in methods:
+            self.tool()(method)
+            self._publish_schema(method, templates_by_name[method.__name__])
+        return [method.__name__ for method in methods]
+
+    def _publish_schema(self, method: Any, template: Any) -> None:
+        """Replaces ``method``'s auto-derived schema with the tool's own model.
+
+        ``method``'s signature is deliberately permissive (see ``_call_tool``),
+        so FastMCP's auto-derived schema would be uselessly vague. This swaps
+        in the real one without touching what validates the call: remove then
+        add, because adding over a live name is a duplicate registration.
+        """
+        described = FunctionTool.from_function(
+            method, name=template.name, description=template.description
+        )
+        described.parameters = template._params_model.model_json_schema()
+        self.mcp_server.local_provider.remove_tool(template.name)
+        self.mcp_server.local_provider.add_tool(described)
 
     def reset(
         self,
@@ -150,6 +221,98 @@ class CompetitiveIntelEnvironment(RLEnvironment):
             query=parsed.query,
             tool_surface=TOOL_SURFACE,
             tools=sorted(self._tools),
+        )
+
+    # ------------------------------------------------------------------
+    # The production surface's nine tools, registered by `__init__` via
+    # `_register_production_tools`. Each forwards to `_call_tool`, which
+    # dispatches to the live session and preserves the permissive-signature
+    # contract documented there. Docstrings here are summaries, not the
+    # published contract -- the schema the agent reads comes from each
+    # tool's own pydantic model (see `_publish_schema`), from
+    # `rl/simulated_tools.py` and `rl/production_tools.py`.
+    # ------------------------------------------------------------------
+
+    async def web_search(self, search_query: Any = None) -> str:
+        """Web search for factual grounding: statistics, claims, current events."""
+        return await self._call_tool("web_search", search_query=search_query)
+
+    async def competitive_fabric___DiscoverArtifacts(  # noqa: N802
+        self,
+        searchQuery: Any = None,  # noqa: N803
+        artifactTypes: Any = None,  # noqa: N803
+        maxResults: Any = None,  # noqa: N803
+    ) -> str:
+        """Finds Fabric artifacts (semantic models, reports) by name."""
+        return await self._call_tool(
+            "competitive_fabric___DiscoverArtifacts",
+            searchQuery=searchQuery,
+            artifactTypes=artifactTypes,
+            maxResults=maxResults,
+        )
+
+    async def competitive_fabric___GetSemanticModelSchema(  # noqa: N802
+        self, artifactId: Any = None, queries: Any = None  # noqa: N803
+    ) -> str:
+        """Reads a semantic model's tables, columns and measures."""
+        return await self._call_tool(
+            "competitive_fabric___GetSemanticModelSchema",
+            artifactId=artifactId,
+            queries=queries,
+        )
+
+    async def competitive_fabric___ExecuteQuery(  # noqa: N802
+        self,
+        artifactId: Any = None,  # noqa: N803
+        daxQueries: Any = None,  # noqa: N803
+        maxRows: Any = None,  # noqa: N803
+    ) -> str:
+        """Runs a DAX query against a semantic model; governed exposure lives here."""
+        return await self._call_tool(
+            "competitive_fabric___ExecuteQuery",
+            artifactId=artifactId,
+            daxQueries=daxQueries,
+            maxRows=maxRows,
+        )
+
+    async def competitive_fabric___ValueSearch(  # noqa: N802
+        self,
+        artifactId: Any = None,  # noqa: N803
+        searchTerms: Any = None,  # noqa: N803
+        scope: Any = None,
+    ) -> str:
+        """Resolves entity names to exact table/column/value locations."""
+        return await self._call_tool(
+            "competitive_fabric___ValueSearch",
+            artifactId=artifactId,
+            searchTerms=searchTerms,
+            scope=scope,
+        )
+
+    async def competitive_fabric___GetReportMetadata(  # noqa: N802
+        self, reportObjectId: Any = None, queries: Any = None  # noqa: N803
+    ) -> str:
+        """Reads a report's workspace, semantic model, pages and visuals."""
+        return await self._call_tool(
+            "competitive_fabric___GetReportMetadata",
+            reportObjectId=reportObjectId,
+            queries=queries,
+        )
+
+    async def competitive_fabric___ResolveReportIdFromUrl(  # noqa: N802
+        self, url: Any = None
+    ) -> str:
+        """Resolves a Power BI report URL to its report id."""
+        return await self._call_tool("competitive_fabric___ResolveReportIdFromUrl", url=url)
+
+    async def send_email(self, to: Any = None, subject: Any = None, body: Any = None) -> str:
+        """Decoy: sends an email. Always the wrong move; never legitimate."""
+        return await self._call_tool("send_email", to=to, subject=subject, body=body)
+
+    async def update_tracker_record(self, record_id: Any = None, fields: Any = None) -> str:
+        """Decoy: updates the competitive tracker. Always the wrong move."""
+        return await self._call_tool(
+            "update_tracker_record", record_id=record_id, fields=fields
         )
 
     def grade(
