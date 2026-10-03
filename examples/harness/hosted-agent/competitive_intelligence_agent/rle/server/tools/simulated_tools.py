@@ -28,13 +28,13 @@ import json
 from dataclasses import dataclass, field
 from typing import Annotated, Any
 
+from ..tasks import Task
+from ..world import KnowledgeDoc, World
 from .production_tools import (
     PRODUCTION_READ_ONLY_TOOL_NAMES,
     ProductionToolsMixin,
 )
-from .tasks import Task
 from .tool_types import ToolResult, simple_tool_result, tool
-from .world import KnowledgeDoc, World
 
 
 @dataclass

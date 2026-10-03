@@ -14,9 +14,9 @@ against. This folder carries the [`rle.toml`](./rle.toml) the CLI reads, so
 Grading is not reimplemented from scratch, and it is not imported from the
 legacy harness either. This folder carries its own copy of the world, the
 tasks, the simulated tools, the tool-calling primitives they are built on,
-and the rubric in [`rl/`](./rl), plus the response-shaping helpers in
-[`server/rollout_text.py`](./server/rollout_text.py). The tool surface is read
-off the same `ToolSession` class the Harness environment uses.
+and the rubric, plus the response-shaping helpers, in [`server/`](./server).
+The tool surface is read off the same `ToolSession` class the Harness
+environment uses.
 
 That duplication is a deliberate stopgap. `../rle_deprecated` is scheduled for deletion
 once this variant is proven, and nothing in this folder or in its image reads
@@ -156,8 +156,8 @@ port is `test_grade_matches_the_legacy_harness`: it drives this environment and
 `../rle_deprecated` through their own public protocols, over two distinct copies of the
 rubric, with the same task, the same tool call and the same answer, then asserts
 the reward, `is_success` and the whole `info` payload are identical and that the
-reward is not trivially zero. It is the gate on the duplicated `rl/`, and it
-skips on its own once `../rle_deprecated` is deleted.
+reward is not trivially zero. It is the gate on the duplicated world, tasks,
+tools and rubric, and it skips on its own once `../rle_deprecated` is deleted.
 
 ## Dependency note
 

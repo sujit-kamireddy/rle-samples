@@ -14,8 +14,8 @@ longer written here.
 
 ## What is reused rather than reimplemented
 
-Everything that decides a reward. ``rl/tasks.py``, ``rl/world.py``,
-``rl/simulated_tools.py`` and ``rl/grading.py`` are imported unmodified -- the
+Everything that decides a reward. ``tasks.py``, ``world.py``,
+``tools/simulated_tools.py`` and ``grading.py`` are imported unmodified -- the
 same task generator, simulated world, tools and rubric that both the Loom RL
 runs and the legacy harness use. The three response-shaping helpers are
 imported from the legacy module itself rather than copied, because each one
@@ -50,16 +50,16 @@ from typing import Any, Optional
 from azure.ai.projects.rle.environments import GradeAction, RLEnvironment
 from fastmcp.tools.function_tool import FunctionTool
 
-from rle.rl.grading import grade_episode
-from rle.rl.simulated_tools import ToolSession, session_tools
-from rle.rl.tasks import Task
-from rle.rl.tool_types import ToolInput
-from rle.rl.world import build_world
+from rle.server.grading import grade_episode
 from rle.server.models import CompetitiveIntelObservation, CompetitiveIntelState
 from rle.server.rollout_text import (
     final_text as _final_text,
     grading_failure_detail as _grading_failure_detail,
 )
+from rle.server.tasks import Task
+from rle.server.tools.simulated_tools import ToolSession, session_tools
+from rle.server.tools.tool_types import ToolInput
+from rle.server.world import build_world
 
 # The simulated world is deterministic and read-only once built, and building
 # it walks the whole company/team/product graph. Rollouts share one instance
@@ -68,7 +68,7 @@ from rle.server.rollout_text import (
 WORLD = build_world()
 
 #: This harness only ever trains and evaluates the production surface -- the
-#: one the deployed agent actually has. `rl/simulated_tools.py` still defines
+#: one the deployed agent actually has. `tools/simulated_tools.py` still defines
 #: `routine`/`full` to reproduce a historical finding (a policy trained on
 #: `routine` scored 0.97 tool discipline in simulation and 0.43 on the real
 #: benchmark, because only `web_search` was common to both), but this
@@ -228,7 +228,7 @@ class CompetitiveIntelEnvironment(RLEnvironment):
     # contract documented there. Docstrings here are summaries, not the
     # published contract -- the schema the agent reads comes from each
     # tool's own pydantic model (see `_publish_schema`), from
-    # `rl/simulated_tools.py` and `rl/production_tools.py`.
+    # `tools/simulated_tools.py` and `tools/production_tools.py`.
     # ------------------------------------------------------------------
 
     async def web_search(self, search_query: Any = None) -> str:
