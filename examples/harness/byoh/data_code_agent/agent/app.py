@@ -86,7 +86,7 @@ import sys
 from typing import Any
 
 import httpx
-from fastapi import FastAPI, Response
+from fastapi import Body, FastAPI, Header, Response
 from fastapi.responses import JSONResponse
 from pydantic import AliasChoices, BaseModel, ConfigDict, Field
 
@@ -216,6 +216,28 @@ class RolloutContext(BaseModel):
     sandbox_tools_endpoint: str
     sandbox_tools_token: str = Field(
         validation_alias=AliasChoices("sandbox_tools_token", "sandbox_tools_bearer_token"))
+    # Present only when the environment was published with
+    # `environmentProtocol = "mcp_environment"`. RLE then opens one environment
+    # session for the rollout and names it here, and the tools live on that
+    # session's `/mcp` route rather than on `/tools/<name>`. Absent means the
+    # legacy protocol, so this doubles as the protocol switch -- the same
+    # condition the service itself applies when it decides whether to send it.
+    sandbox_session_id: str | None = None
+
+    @property
+    def mcp_url(self) -> str:
+        """This rollout's `/mcp` route, derived from its `/tools` one.
+
+        RLE hands over one endpoint per rollout and it names the legacy route,
+        so the MCP route is reached by swapping the last segment. Both are
+        served by the same rollout-scoped path and authorized by the same
+        bearer token, so nothing else about the URL changes.
+        """
+        base = self.sandbox_tools_endpoint.rstrip("/")
+        suffix = "/tools"
+        if base.endswith(suffix):
+            base = base[: -len(suffix)]
+        return f"{base}/mcp"
 
 
 class InvocationRequest(BaseModel):
@@ -243,6 +265,10 @@ class RolloutStore:
 
     def __init__(self) -> None:
         self._states: dict[str, dict[str, Any]] = {}
+        # The rollout context, kept for the lifetime of the rollout because the
+        # local tool route below has to resolve a caller's operation id back to
+        # the environment session and token RLE issued for it.
+        self._contexts: dict[str, RolloutContext] = {}
         # Tasks are held because asyncio only keeps a weak reference to a running
         # task; dropping this would let the garbage collector cancel the rollout
         # partway through.
@@ -255,9 +281,15 @@ class RolloutStore:
         # would silence the outcome if the two ever raced.
         self._reported: set[tuple[str, str]] = set()
 
-    def accept(self, operation_id: str, task: asyncio.Task[None]) -> None:
+    def accept(
+        self, operation_id: str, task: asyncio.Task[None], context: RolloutContext
+    ) -> None:
         self._states[operation_id] = {"status": "running"}
         self._tasks[operation_id] = task
+        self._contexts[operation_id] = context
+
+    def context(self, operation_id: str) -> RolloutContext | None:
+        return self._contexts.get(operation_id)
 
     def succeed(self, operation_id: str, output_text: str) -> None:
         self._finish(operation_id, {"status": "succeeded", "output_text": output_text})
@@ -272,6 +304,7 @@ class RolloutStore:
     def withdraw(self, operation_id: str) -> None:
         """Forgets the rollout and stops its agent loop."""
         self._states.pop(operation_id, None)
+        self._contexts.pop(operation_id, None)
         self._reported = {key for key in self._reported if key[0] != operation_id}
         task = self._tasks.pop(operation_id, None)
         if task is not None:
@@ -291,6 +324,10 @@ class RolloutStore:
         if operation_id in self._states:
             self._states[operation_id] = state
         self._tasks.pop(operation_id, None)
+        # The state stays readable for RLE's remaining polls, but the agent has
+        # exited, so the capability it was given is dropped here rather than
+        # left live until withdrawal.
+        self._contexts.pop(operation_id, None)
 
 
 ROLLOUTS = RolloutStore()
@@ -348,7 +385,119 @@ async def _rollout_model(rollout_context: RolloutContext) -> str:
     return _MODEL
 
 
-async def run_harness_rollout(rollout_id: str, rollout_context: RolloutContext, agent_input: dict[str, Any]) -> str:
+_LOCAL_TOOLS_PREFIX = "/local-tools"
+# The port this service binds, which is also the port its own loopback tool
+# route is reached on. `agent/Dockerfile` passes the same variable to uvicorn,
+# so the two cannot drift.
+_PORT = os.environ.get("PORT", "8080")
+_BEARER = "Bearer "
+
+
+def _compliance_endpoint(operation_id: str, context: RolloutContext) -> str:
+    """Where this rollout's `opencode` should file its disclosure.
+
+    Under the legacy protocol that is the environment's own `/tools` route and
+    the agent posts to it directly. Under `mcp_environment` there is no such
+    route: the tool lives on the rollout's environment session and is only
+    reachable as a JSON-RPC `tools/call`. Rather than teach the baked
+    instruction a second wire format, the agent is pointed at a loopback route
+    on this service that speaks it on the agent's behalf.
+
+    Keeping the instruction identical across protocols is the point. The
+    instruction is part of the graded prompt, so a protocol that changed it
+    would also change what the model is asked to do, and a reward comparison
+    between the two would no longer be measuring the protocol.
+    """
+    if not context.sandbox_session_id:
+        return context.sandbox_tools_endpoint
+    return f"http://127.0.0.1:{_PORT}{_LOCAL_TOOLS_PREFIX}/{operation_id}"
+
+
+@app.post(_LOCAL_TOOLS_PREFIX + "/{operation_id}/{tool_name}")
+async def local_tool(
+    operation_id: str,
+    tool_name: str,
+    payload: dict[str, Any] = Body(default_factory=dict),
+    authorization: str | None = Header(default=None),
+) -> JSONResponse:
+    """Translates one flat tool POST into a `tools/call` on the rollout's session.
+
+    Only reachable on loopback inside this container, and only while the rollout
+    that owns `operation_id` is running: `opencode` is a child process of this
+    service, so nothing outside the container needs this route.
+
+    The caller's bearer token is still checked against the one RLE issued for
+    that rollout. Concurrent rollouts share this process, so without that check
+    the operation id in the URL would be the only thing deciding whose session a
+    disclosure landed on, and a task that guessed another rollout's id could file
+    against it.
+    """
+    context = ROLLOUTS.context(operation_id)
+    if context is None or not context.sandbox_session_id:
+        # Either the rollout is over, or it is a legacy one that should have
+        # gone straight to the environment. Neither is something the agent can
+        # act on, and saying which would describe this harness's internals to a
+        # model whose prompt is the thing under test.
+        return JSONResponse({"error": "not_found"}, status_code=404)
+    if context.sandbox_tools_token and authorization != _BEARER + context.sandbox_tools_token:
+        return JSONResponse({"error": "unauthorized"}, status_code=401)
+
+    request = {
+        "jsonrpc": "2.0",
+        "method": "tools/call",
+        "params": {
+            "name": tool_name,
+            "arguments": payload,
+            "session_id": context.sandbox_session_id,
+        },
+        "id": 1,
+    }
+    headers = (
+        {"Authorization": _BEARER + context.sandbox_tools_token}
+        if context.sandbox_tools_token
+        else {}
+    )
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.post(context.mcp_url, json=request, headers=headers)
+            response.raise_for_status()
+            body = response.json()
+    except httpx.HTTPError as error:
+        logger.warning("Tool %s for %s could not reach the environment: %s", tool_name, operation_id, error)
+        return JSONResponse({"error": "tool_unavailable"}, status_code=502)
+
+    rpc_error = body.get("error")
+    if rpc_error:
+        # A JSON-RPC error is a protocol fault -- an unknown tool, or a session
+        # the service has already closed. A tool that merely declined comes back
+        # as a successful result, so this is never the agent's doing.
+        logger.warning("Tool %s for %s was rejected: %s", tool_name, operation_id, rpc_error)
+        return JSONResponse({"error": "tool_failed"}, status_code=502)
+
+    result = body.get("result")
+    result = result if isinstance(result, dict) else {}
+    structured = result.get("structuredContent")
+    if isinstance(structured, dict):
+        # FastMCP returns the tool's own dict here, which is exactly what the
+        # legacy route used to return as its whole body.
+        return JSONResponse(structured)
+    text = "".join(
+        str(part.get("text", ""))
+        for part in (result.get("content") or [])
+        if isinstance(part, dict) and part.get("type") == "text"
+    )
+    try:
+        return JSONResponse(json.loads(text))
+    except (TypeError, ValueError):
+        return JSONResponse({"status": "recorded", "detail": text})
+
+
+async def run_harness_rollout(
+    rollout_id: str,
+    operation_id: str,
+    rollout_context: RolloutContext,
+    agent_input: dict[str, Any],
+) -> str:
     """Runs one task and returns the agent's own answer text, as a JSON string.
 
     `opencode` runs here, in this container, as a child process of this service --
@@ -375,9 +524,9 @@ async def run_harness_rollout(rollout_id: str, rollout_context: RolloutContext, 
             api_key=rollout_context.model_api_key or "",
             # Not rollout parameters: this is the capability the agent needs in
             # order to file a compliance disclosure against `../rle`'s
-            # `/tools/report_sensitive_data_access`. It reaches the agent as
+            # `report_sensitive_data_access`. It reaches the agent as
             # environment variables on that rollout's own `opencode` process.
-            compliance_endpoint=rollout_context.sandbox_tools_endpoint,
+            compliance_endpoint=_compliance_endpoint(operation_id, rollout_context),
             compliance_token=rollout_context.sandbox_tools_token,
             rollout_id=rollout_id,
         )
@@ -410,7 +559,10 @@ async def run_rollout(request: InvocationRequest) -> None:
     """
     try:
         output_text = await run_harness_rollout(
-            request.rollout_id, request.rollout_context, request.agent_input
+            request.rollout_id,
+            request.operation_id,
+            request.rollout_context,
+            request.agent_input,
         )
     except asyncio.CancelledError:
         # RLE withdrew the rollout, which already removed it from the store.
@@ -429,7 +581,7 @@ async def run_rollout(request: InvocationRequest) -> None:
 async def invoke(request: InvocationRequest) -> dict[str, int]:
     """Takes ownership of the rollout and returns immediately."""
     task = asyncio.create_task(run_rollout(request))
-    ROLLOUTS.accept(request.operation_id, task)
+    ROLLOUTS.accept(request.operation_id, task, request.rollout_context)
     return {"retry_after_ms": RETRY_AFTER_MS}
 
 

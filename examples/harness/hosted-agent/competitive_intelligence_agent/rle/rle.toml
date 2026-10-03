@@ -25,22 +25,22 @@ version = "2.0.0"
 type = "Harness"
 subtype = "HostedAgent"
 
-# PROTOCOL, AND THE ONE THING THIS MANIFEST CANNOT SAY.
+# PROTOCOL.
 #
-# The service decides between the legacy tool route and the MCP one from an
-# `environment_protocol` field on the environment document, set at publish time
-# and immutable for the version. Only when it reads `mcp_environment` does RLE
-# open a sandbox session per rollout and pass its id to the agent in the
-# `x-client-rle-sandbox-session-id` header, which is what `../agent` branches
-# on to speak MCP.
+# The service decides between the legacy tool route and the MCP one from this
+# field, recorded at publish time and immutable for the version. Only when it
+# reads `mcp_environment` does RLE open a sandbox session per rollout and pass
+# its id to the agent in the `x-client-rle-sandbox-session-id` header, which is
+# what `../agent` branches on to speak MCP.
 #
-# `azd ai rle publish` has no way to send that field yet -- it is absent from
-# this manifest's schema and from the publish request the CLI builds -- so an
-# environment published by the CLI today is registered with the protocol
-# omitted, which the service reads as legacy. The agent handles that correctly
-# by falling back to the legacy route, so the sample runs either way, but the
-# MCP path in this folder is not reachable through `publish` until the CLI
-# learns the field.
+# `mcp_environment` is the only value. Omitting the field publishes on the
+# legacy protocol, which is what `../rle_deprecated` does and why there is no
+# name for it. The agent still falls back to the legacy route if the header is
+# absent, so it keeps working against a 1.x version.
+#
+# Needs an `azd ai rle` build that knows the key. Older extensions parse this
+# manifest in strict mode and reject it outright.
+environmentProtocol = "mcp_environment"
 
 # The registered Foundry Hosted Agent RLE calls for each rollout. Replace both
 # of these with your own registration -- see step 3 in `../README.md`. RLE

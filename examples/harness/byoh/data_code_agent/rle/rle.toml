@@ -25,19 +25,22 @@ type = "Harness"
 # "HostedAgent" or "BYOH" for Harness; "OpenEnv" for Gym.
 subtype = "BYOH"
 
-# PROTOCOL, AND THE ONE THING THIS MANIFEST CANNOT SAY.
+# PROTOCOL.
 #
-# The service decides between the legacy tool route and the MCP one from an
-# `environment_protocol` field on the environment document, set at publish time
-# and immutable for the version. Only when it reads `mcp_environment` does RLE
-# open a sandbox session per rollout and pass its id down to the harness, which
-# is what selects the MCP tool surface this folder serves.
+# `environmentProtocol = "mcp_environment"` is what makes RLE open a sandbox
+# session per rollout and hand its id to the harness, as `sandbox_session_id`
+# in the rollout POST body. It is the only value the field takes; omitting it
+# publishes on the legacy protocol, which is why there is no name for legacy.
 #
-# `azd ai rle publish` has no way to send that field yet -- it is absent from
-# this manifest's schema and from the publish request the CLI builds -- so an
-# environment published by the CLI today is registered with the protocol
-# omitted, which the service reads as legacy. The MCP path in this folder is
-# therefore not reachable through `publish` until the CLI learns the field.
+# This folder's environment serves its tools over MCP, and `../agent` reads
+# `sandbox_session_id` and translates the baked instruction's flat tool POST
+# into a `tools/call` on that session (see `_compliance_endpoint` and the
+# `/local-tools` route in `../agent/app.py`). `../rle_deprecated` is legacy on
+# both halves.
+#
+# Needs an `azd ai rle` build that knows the key. Older extensions parse this
+# manifest in strict mode and reject it outright.
+environmentProtocol = "mcp_environment"
 
 # Where RLE POSTs each rollout. Required for BYOH, and the only thing RLE knows
 # about your harness: it is reached over the public internet with no auth

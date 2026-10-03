@@ -37,14 +37,13 @@ automatically once `../rle_deprecated` is gone.
    route when that header is absent, which is exactly the condition the service
    itself applies when it decides whether to send it.
 
-   One gap remains, and it is in the CLI rather than here. RLE picks the MCP
-   path from an `environment_protocol` field on the environment document, set
-   at publish time and immutable for the version. `azd ai rle publish` cannot
-   send it yet, so a CLI-published environment is registered with the protocol
-   omitted, which the service reads as legacy. The sample still runs, because
-   the agent falls back, but the MCP path is not reachable through `publish`
-   until the CLI learns the field. See the comment block in
-   [`rle.toml`](./rle.toml).
+   RLE picks that path from the `environmentProtocol` field in
+   [`rle.toml`](./rle.toml), which this folder sets to `mcp_environment`. The
+   value is recorded at publish time and is immutable for the version, so
+   switching protocols means publishing a new version. `azd ai rle publish`
+   prints the protocol the service recorded and fails if it does not match the
+   manifest, which is what keeps a silently legacy environment from reaching a
+   training run.
 
 ## Build and run locally
 
