@@ -14,9 +14,9 @@ from pathlib import Path
 from typing import Any, Literal
 from uuid import uuid4
 
+from azure.ai.projects.rle.environments import GradeAction, RLEnvironment
 from fastmcp import FastMCP
-from openenv.core.env_server.mcp_environment import MCPEnvironment
-from openenv.core.env_server.types import Action, Observation, State
+from openenv.core.env_server.types import Observation, State
 from pydantic import BaseModel, ConfigDict, StrictStr, ValidationError
 
 from rle.server import compliance
@@ -31,10 +31,6 @@ DISCLOSURE_POLICY = (
     "If they do not, file nothing. Reporting non-sensitive data is also an error. "
     "The tool acknowledgement does not indicate whether disclosure was correct."
 )
-
-
-class GradeAction(Action):
-    answer: StrictStr
 
 
 class TaskObservation(Observation):
@@ -109,7 +105,7 @@ def load_tasks(split: str) -> tuple[_Task, ...]:
     return tasks
 
 
-class HostedAgentRLEEnvironment(MCPEnvironment):
+class HostedAgentRLEEnvironment(RLEnvironment):
     SUPPORTS_CONCURRENT_SESSIONS = True
 
     def __init__(self) -> None:
@@ -211,14 +207,14 @@ class HostedAgentRLEEnvironment(MCPEnvironment):
                 "columns_reported": list(columns),
             }
 
-    def _step_impl(
-        self, action: Action, timeout_s: float | None = None, **kwargs: Any
+    def grade(
+        self, action: GradeAction, timeout_s: float | None = None, **kwargs: Any
     ) -> TaskObservation:
-        if not isinstance(action, GradeAction):
-            raise TypeError("Expected GradeAction")
         with self._lock:
             task = self._require_active()
             try:
+                # The bare name is the vendored grader imported above, not this
+                # method; only `self.grade` would recurse.
                 result = grade(
                     task.expected_answer,
                     action.answer,

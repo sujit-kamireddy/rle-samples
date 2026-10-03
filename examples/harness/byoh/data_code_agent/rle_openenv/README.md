@@ -1,8 +1,11 @@
 # Standalone OpenEnv environment
 
-[`ByohRLEEnvironment`](./server/environment.py) owns one episode per
-OpenEnv session. HTTP MCP tools and WebSocket simulation control share that
-instance; multiple sessions can run independently in one container.
+[`ByohRLEEnvironment`](./server/environment.py) extends `RLEnvironment`
+from `azure-ai-projects[rle]`, the Foundry RLE authoring base class, and owns
+one episode per OpenEnv session. The base class supplies `GradeAction` and
+routes a non-MCP step into `grade`. HTTP MCP tools and WebSocket simulation
+control share that instance; multiple sessions can run independently in one
+container.
 
 This service is separate from the existing [Harness environment](../rle).
 It reuses the existing [grader](../rle/server/vendor/grader.py) and
