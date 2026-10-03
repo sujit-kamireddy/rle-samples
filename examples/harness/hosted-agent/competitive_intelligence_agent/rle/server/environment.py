@@ -1,9 +1,9 @@
 """The competitive-intelligence RLE as an OpenEnv ``RLEnvironment``.
 
-This is the same environment as [`../../rle_deprecated`](../../rle_deprecated),
-expressed against the authoring interface that ships in
-``azure-ai-projects[rle]``. The legacy container hand-rolls four HTTP routes;
-this one subclasses
+This is the same environment as the legacy HTTP harness (preserved outside
+this sample tree, in `_internal/`, purely for a grading-parity test), expressed
+against the authoring interface that ships in ``azure-ai-projects[rle]``. The
+legacy container hand-rolls four HTTP routes; this one subclasses
 ``RLEnvironment`` and lets the SDK supply the protocol:
 
     ``reset``          the caller's task, verbatim          (was ``POST /reset``)

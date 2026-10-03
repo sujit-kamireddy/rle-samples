@@ -31,7 +31,11 @@ except ImportError:  # pragma: no cover - the state after `rle_deprecated/` is d
     legacy_app = None
 
 
-SAMPLE_ROOT = Path(__file__).resolve().parent.parent.parent
+# This file was relocated to `_internal/` (see `conftest.py`), so its own
+# directory is no longer inside the sample that ships `job_data/`. Reach the
+# real sample root the same way `conftest.py` does, rather than deriving it
+# from this file's own (now relocated) position.
+SAMPLE_ROOT = Path(__file__).resolve().parents[4] / "competitive_intelligence_agent"
 
 #: A decision block in the shape ``parse_decision`` reads, so grading exercises
 #: every dimension rather than stopping at an unparsed report.

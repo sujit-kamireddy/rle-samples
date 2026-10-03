@@ -5,11 +5,12 @@ OpenEnv session. It is built on the `RLEnvironment` base class that
 `azure-ai-projects` ships in its `rle` extra, so the tool surface is served over
 MCP and the final report is graded through a `GradeAction` step.
 
-This service is **separate from, and additive to**, the existing
-[Harness environment](../rle_deprecated). That one is the legacy HTTP tool
-route, kept while the grading-parity test still has something to compare
-against. This folder carries the [`rle.toml`](./rle.toml) the CLI reads, so
-`azd ai rle init`, `publish` and `train` all act on this environment.
+This service is **separate from, and additive to**, the legacy Harness
+environment. That one is the legacy HTTP tool route, preserved outside this
+sample tree (in a sibling `_internal/` copy of this sample) purely so the
+grading-parity test below still has something to compare against. This folder
+carries the [`rle.toml`](./rle.toml) the CLI reads, so `azd ai rle init`,
+`publish` and `train` all act on this environment.
 
 Grading is not reimplemented from scratch, and it is not imported from the
 legacy harness either. This folder carries its own copy of the world, the
@@ -18,18 +19,19 @@ and the rubric, plus the response-shaping helpers, in [`server/`](./server).
 The tool surface is read off the same `ToolSession` class the Harness
 environment uses.
 
-That duplication is a deliberate stopgap. `../rle_deprecated` is scheduled for deletion
-once this variant is proven, and nothing in this folder or in its image reads
-it, so the delete is a `rm -rf` rather than a migration. While both copies
-exist, `test_grade_matches_the_legacy_harness` drives each environment through
-its own protocol over its own copy of the rubric and asserts the rewards are
-identical, which is what keeps the two from drifting. That test skips
-automatically once `../rle_deprecated` is gone.
+That duplication is a deliberate stopgap. The legacy harness is scheduled for
+deletion once this variant is proven, and nothing in this folder or in its
+image reads it, so the delete is a `rm -rf` rather than a migration. While
+both copies exist, `test_grade_matches_the_legacy_harness` (in the
+maintainer-only `_internal/` copy of this sample -- see "Tests" below) drives
+each environment through its own protocol over its own copy of the rubric and
+asserts the rewards are identical, which is what keeps the two from drifting.
+That test skips automatically once the legacy harness is deleted for good.
 
 ## Delivery phases
 
-1. **Local phase:** standalone OpenEnv, with grading parity against `../rle_deprecated`
-   asserted by a test that drives both services through their own protocols.
+1. **Local phase:** standalone OpenEnv, with grading parity against the legacy
+   harness asserted by a test that drives both services through their own protocols.
 2. **Foundry phase using RLE:** the agent in [`../agent`](../agent) now speaks
    both wire formats. It calls tools over this folder's `/mcp` JSON-RPC surface
    when RLE hands it a sandbox session id in the
@@ -50,9 +52,10 @@ automatically once `../rle_deprecated` is gone.
 Run every command below from the parent `competitive_intelligence_agent/`
 directory. The **Docker build context is this folder (`rle/`) itself**, not
 the sample root: `azd ai rle publish` always builds from the directory
-holding `rle.toml`. The agent, its tooling, the job data and `rle_deprecated/`
-are sibling folders already outside that context, so the image cannot pick up
-a dependency on the folder that is about to be deleted.
+holding `rle.toml`. The agent, its tooling and the job data are sibling
+folders already outside that context; the legacy harness lives further out
+still, in a sibling `_internal/` copy of this sample, so the image cannot pick
+up a dependency on the folder that is about to be deleted.
 
 ```bash
 docker build -f rle/Dockerfile -t ci-rle-openenv:local rle/
@@ -144,8 +147,15 @@ state; they are not authorization.
 
 ## Tests
 
+This sample's maintainer-only tooling (`tools/`, the legacy harness and the
+test suite below) lives outside the scaffolded tree, in a sibling `_internal/`
+copy of this sample -- so `azd ai rle init` does not hand a new user a pile of
+things that are only here to keep the sample itself correct. Run the commands
+below from `_internal/competitive_intelligence_agent/`, the root of that copy,
+not from this sample root.
+
 ```bash
-python -m pip install -r rle/requirements-test.txt
+python -m pip install -r ../../competitive_intelligence_agent/rle/requirements-test.txt
 python -m pytest rle/tests -q
 ```
 
@@ -153,11 +163,12 @@ The suite asserts the production tool surface, that MCP schemas are generated
 from each tool's own argument model, that a tool call before reset is a protocol
 error, and that an unreadable task fails loudly. The test that justifies the
 port is `test_grade_matches_the_legacy_harness`: it drives this environment and
-`../rle_deprecated` through their own public protocols, over two distinct copies of the
-rubric, with the same task, the same tool call and the same answer, then asserts
-the reward, `is_success` and the whole `info` payload are identical and that the
-reward is not trivially zero. It is the gate on the duplicated world, tasks,
-tools and rubric, and it skips on its own once `../rle_deprecated` is deleted.
+the legacy harness through their own public protocols, over two distinct copies
+of the rubric, with the same task, the same tool call and the same answer, then
+asserts the reward, `is_success` and the whole `info` payload are identical and
+that the reward is not trivially zero. It is the gate on the duplicated world,
+tasks, tools and rubric, and it skips on its own once the legacy harness is
+deleted for good.
 
 ## Dependency note
 
