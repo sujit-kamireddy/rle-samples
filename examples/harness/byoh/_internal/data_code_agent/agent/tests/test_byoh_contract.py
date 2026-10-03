@@ -14,16 +14,11 @@ RLE is watching.
 from __future__ import annotations
 
 import os
-import sys
-from pathlib import Path
 
 import pytest
+from fastapi.testclient import TestClient
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-
-from fastapi.testclient import TestClient  # noqa: E402
-
-from app import ROLLOUTS, InvocationRequest, RolloutContext, app  # noqa: E402
+from app import ROLLOUTS, InvocationRequest, RolloutContext, app
 
 MASTER_CONTEXT = {
     "model_endpoint": "https://proxy.invalid/v1",

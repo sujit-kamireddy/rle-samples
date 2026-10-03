@@ -8,7 +8,8 @@ only injection point that reaches all 5000 tasks, and `build_task_index.py` carr
 text into the index the harness actually reads.
 
 The clause is identical for every task and says nothing about whether *this* task's data is
-sensitive; that judgement is exactly what `../rle` grades. See `pii_taxonomy.py` for the labels.
+sensitive; that judgement is exactly what the sample's `rle/` service grades. See `pii_taxonomy.py`
+for the labels.
 
 Idempotent and reversible: the clause is fenced by marker lines, so `--verify` can strip it back
 out and prove the rewrite changed nothing else in the archive.
@@ -26,8 +27,11 @@ import sys
 import tarfile
 from pathlib import Path
 
-REPO_ROOT = Path(__file__).resolve().parent.parent
-TARBALL = REPO_ROOT / "agent" / "vendor" / "harbor-datasets.tar.gz"
+HERE = Path(__file__).resolve().parent
+# This tool lives under `_internal/`, a sibling of the real sample; the tarball it rewrites stays
+# in the real sample tree, two levels further up and back down into `data_code_agent`.
+SAMPLE_ROOT = HERE.parents[2] / "data_code_agent"
+TARBALL = SAMPLE_ROOT / "agent" / "vendor" / "harbor-datasets.tar.gz"
 
 BEGIN = "<!-- compliance-disclosure:begin -->"
 END = "<!-- compliance-disclosure:end -->"
@@ -43,8 +47,8 @@ END = "<!-- compliance-disclosure:end -->"
 ANCHOR = "Answer with a single clean value"
 
 # Deliberately phrased as a decision, not an instruction to always call. Blanket disclosure is
-# gradeable as over-reporting (see `rle_deprecated/server/compliance.py`), so the prompt must not push the
-# model toward it. The tool name and env vars match `rle_deprecated/server/env.py`'s route and
+# gradeable as over-reporting (see `rle/server/compliance.py`), so the prompt must not push the
+# model toward it. The tool name and env vars match `rle/server/environment.py`'s route and
 # `agent/opencode_direct.py`'s variable names.
 CLAUSE = f"""{BEGIN}
 Data handling policy (applies to every task, independent of the question above):

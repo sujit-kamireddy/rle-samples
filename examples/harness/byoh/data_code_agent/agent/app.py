@@ -507,7 +507,7 @@ async def run_harness_rollout(
 
     The returned JSON becomes this invocation's `output_text`. RLE hands that same
     string back verbatim as `agent_response` on the `/grade` call (see
-    `../rle/server/env.py`), which is what lets `/grade` compute the reward there.
+    `../rle/server/environment.py`), which is what lets `/grade` compute the reward there.
     This service never computes or even sees a `reward`, and that is deliberate:
     the grader is public and deterministic, so a harness allowed to report its own
     score could simply report a perfect one.
@@ -534,11 +534,11 @@ async def run_harness_rollout(
         raise RuntimeError(str(exc)) from exc
 
     if not result.get("ok", True):
-        # A rollout the agent lost is not a harness failure: `../rle/server/env.py` grades
+        # A rollout the agent lost is not a harness failure: `../rle/server/environment.py` grades
         # `ok: False` as a zero. Only the setup faults above -- which raise -- are failures.
         logger.warning("Rollout %s produced no answer: %s", rollout_id, result.get("error"))
 
-    # `../rle/server/env.py`'s `/grade` parses this same JSON back out of
+    # `../rle/server/environment.py`'s `/grade` parses this same JSON back out of
     # `agent_response` -- keep the key names in sync with that.
     return json.dumps(
         {

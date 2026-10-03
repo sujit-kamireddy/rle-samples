@@ -42,9 +42,13 @@ import sys
 import tarfile
 from pathlib import Path
 
-REPO_ROOT = Path(__file__).resolve().parent.parent
-TARBALL = REPO_ROOT / "agent" / "vendor" / "harbor-datasets.tar.gz"
-FETCHER = REPO_ROOT / "tools" / "pull_bucket.py"
+HERE = Path(__file__).resolve().parent
+# This tool lives under `_internal/`, a sibling of the real sample; the tarball it rewrites stays
+# in the real sample tree, two levels further up and back down into `data_code_agent`. The fetcher
+# it diffs against is this tool's own sibling and stays local to `HERE`.
+SAMPLE_ROOT = HERE.parents[2] / "data_code_agent"
+TARBALL = SAMPLE_ROOT / "agent" / "vendor" / "harbor-datasets.tar.gz"
+FETCHER = HERE / "pull_bucket.py"
 
 BASE_URL = "https://sujit-hf-datasets-d0dgfkeee4fxepga.b01.azurefd.net"
 

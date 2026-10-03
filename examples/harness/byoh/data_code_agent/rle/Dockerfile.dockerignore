@@ -1,9 +1,8 @@
 # Deny by default, then name exactly what the image needs. The build context
 # is this folder (`rle/`) itself -- `azd ai rle publish` always builds from
 # the directory holding rle.toml, so these paths are relative to here, not
-# the sample root. The deprecated harness is a sibling folder outside this
-# context already; this allowlist exists to keep tests, docs and local cruft
-# out of the image, not to reach across folders.
+# the sample root. This allowlist exists to keep tests, docs and local cruft
+# out of the image.
 **
 !requirements.txt
 !__init__.py

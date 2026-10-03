@@ -1,9 +1,9 @@
 """Live checks, run from the sample root with ``-m unittest rle.tests.test_live``.
 
-Set OPENENV_TEST_IMAGE and LEGACY_TEST_IMAGE to prebuilt images (defaults:
-byoh-rle-openenv:local and byoh-rle-legacy:local). Docker must be available;
-missing images/dependencies fail rather than silently skipping integration tests.
-OPENENV_LIVE_REPORT optionally names a JSON report file; answers are never reported.
+Set OPENENV_TEST_IMAGE to a prebuilt image (default: byoh-rle-openenv:local).
+Docker must be available; missing images/dependencies fail rather than silently
+skipping integration tests. OPENENV_LIVE_REPORT optionally names a JSON report
+file; answers are never reported.
 """
 
 from __future__ import annotations
@@ -31,27 +31,20 @@ SENSITIVE = (35, "EstimatedSalary")
 class LiveContainerTests(unittest.IsolatedAsyncioTestCase):
     @classmethod
     def setUpClass(cls):
-        cls.report = {"images": {}, "parity_cases": [], "passed_checks": []}
-        cls.container_ids = {}
-        cls.legacy_url = cls._start(
-            "legacy", os.environ.get("LEGACY_TEST_IMAGE", "byoh-rle-legacy:local")
-        )
-        cls.openenv_url = cls._start(
-            "openenv", os.environ.get("OPENENV_TEST_IMAGE", "byoh-rle-openenv:local")
-        )
+        cls.report = {"image": None, "graded_cases": [], "passed_checks": []}
+        image = os.environ.get("OPENENV_TEST_IMAGE", "byoh-rle-openenv:local")
+        cls.container_id, cls.openenv_url = cls._start(image)
+        cls.report["image"] = image
 
     @classmethod
-    def _start(cls, kind, image):
-        name = f"openenv-live-{kind}-{uuid4().hex}"
+    def _start(cls, image):
+        name = f"openenv-live-{uuid4().hex}"
         command = [
             "docker", "run", "-d", "--rm", "--name", name,
             "-p", "127.0.0.1::8000",
+            "-e", "OPENENV_MAX_CONCURRENT_ENVS=2",
+            "-e", "OPENENV_SESSION_TIMEOUT_SECONDS=1",
         ]
-        if kind == "openenv":
-            command += [
-                "-e", "OPENENV_MAX_CONCURRENT_ENVS=2",
-                "-e", "OPENENV_SESSION_TIMEOUT_SECONDS=1",
-            ]
         result = subprocess.run(
             command + [image], check=True, capture_output=True, text=True, timeout=90
         )
@@ -59,8 +52,6 @@ class LiveContainerTests(unittest.IsolatedAsyncioTestCase):
         if len(container_id) != 64 or any(c not in "0123456789abcdef" for c in container_id):
             raise RuntimeError("docker run did not return a container ID")
         cls.addClassCleanup(cls._stop, container_id)
-        cls.container_ids[kind] = container_id
-        cls.report["images"][kind] = image
         binding = subprocess.run(
             ["docker", "port", container_id, "8000/tcp"],
             check=True, capture_output=True, text=True, timeout=15,
@@ -73,11 +64,11 @@ class LiveContainerTests(unittest.IsolatedAsyncioTestCase):
             while time.monotonic() < deadline:
                 try:
                     if client.get(url + "/health").status_code == 200:
-                        return url
+                        return container_id, url
                 except httpx.HTTPError:
                     pass
                 time.sleep(0.2)
-        raise RuntimeError(f"{kind} container did not become healthy within 60 seconds")
+        raise RuntimeError("container did not become healthy within 60 seconds")
 
     @staticmethod
     def _stop(container_id):
@@ -101,9 +92,6 @@ class LiveContainerTests(unittest.IsolatedAsyncioTestCase):
         self.client = httpx.AsyncClient(
             base_url=self.openenv_url, timeout=10, trust_env=False
         )
-        self.legacy = httpx.AsyncClient(
-            base_url=self.legacy_url, timeout=10, trust_env=False
-        )
 
     async def asyncTearDown(self):
         try:
@@ -119,7 +107,6 @@ class LiveContainerTests(unittest.IsolatedAsyncioTestCase):
                     await asyncio.sleep(0.05)
         finally:
             await self.client.aclose()
-            await self.legacy.aclose()
 
     async def rpc_body(self, method, **params):
         response = await self.client.post(
@@ -129,15 +116,7 @@ class LiveContainerTests(unittest.IsolatedAsyncioTestCase):
         return response.json()
 
     async def test_container_package_boundaries(self):
-        scripts = {
-            "legacy": """
-from pathlib import Path
-import server.env
-assert not Path('/app/rle').exists()
-assert not Path('/app/server/openenv_app.py').exists()
-assert not Path('/app/server/openenv_environment.py').exists()
-""",
-            "openenv": """
+        script = """
 import importlib.util
 from pathlib import Path
 from rle.server.environment import grade, compliance
@@ -146,21 +125,15 @@ from rle.server import compliance as own_compliance
 assert grade is own_grade
 assert compliance is own_compliance
 assert Path('/app/rle/server/vendor/task-meta').is_dir()
-assert not Path('/app/rle_deprecated').exists()
-assert importlib.util.find_spec('rle_deprecated') is None
 assert not Path('/app/agent').exists()
 assert not Path('/app/rle/tests').exists()
-""",
-        }
-        for kind, script in scripts.items():
-            result = await asyncio.to_thread(
-                subprocess.run,
-                ["docker", "exec", self.container_ids[kind], "python", "-c", script],
-                capture_output=True, text=True, timeout=30,
-            )
-            self.assertEqual(
-                result.returncode, 0, f"{kind} image violates package boundaries"
-            )
+"""
+        result = await asyncio.to_thread(
+            subprocess.run,
+            ["docker", "exec", self.container_id, "python", "-c", script],
+            capture_output=True, text=True, timeout=30,
+        )
+        self.assertEqual(result.returncode, 0, "image violates package boundaries")
         self.report["passed_checks"].append("test_container_package_boundaries")
 
     async def rpc(self, method, **params):
@@ -215,34 +188,10 @@ assert not Path('/app/rle/tests').exists()
         self.assertEqual(result["observation"]["score"], result["reward"])
         return result
 
-    async def legacy_grade(self, index, answer, disclosed):
-        headers = {"x-rle-rollout-id": uuid4().hex}
-        response = await self.legacy.post(
-            "/reset", json={"split": SPLIT, "task_index": index}, headers=headers
-        )
-        self.assertEqual(response.status_code, 200)
-        if disclosed:
-            response = await self.legacy.post(
-                "/tools/" + TOOL, json={"columns_reported": ["salary"]}, headers=headers
-            )
-            self.assertEqual(response.status_code, 200)
-        response = await self.legacy.post(
-            "/grade",
-            json={
-                "rollout": {},
-                "agent_response": json.dumps(
-                    {"split": SPLIT, "task_index": index, "answer_text": answer, "ok": True}
-                ),
-            },
-            headers=headers,
-        )
-        self.assertEqual(response.status_code, 200)
-        return response.json()
-
     def passed(self):
         self.report["passed_checks"].append(self._testMethodName)
 
-    async def test_live_legacy_parity_all_quadrants_and_wrong_answers(self):
+    async def test_all_quadrants_and_wrong_answers_grade_correctly(self):
         session_id = await self.session()
         websocket = await self.attach(session_id)
         tools = await self.rpc("tools/list", session_id=session_id)
@@ -255,18 +204,14 @@ assert not Path('/app/rle/tests').exists()
                         await self.reset(websocket, index)
                         if disclosed:
                             await self.disclose(session_id)
-                        old, new = await asyncio.gather(
-                            self.legacy_grade(index, answer, disclosed),
-                            self.grade(websocket, answer),
-                        )
-                        self.assertEqual(new["reward"], old["reward"])
-                        self.assertEqual(new["observation"]["is_success"], old["is_success"])
-                        self.assertEqual(old["is_success"], correct_answer)
-                        self.assertEqual(old["reward"] > 0, correct_answer)
-                        self.report["parity_cases"].append({
+                        result = await self.grade(websocket, answer)
+                        self.assertEqual(result["observation"]["is_success"], correct_answer)
+                        self.assertEqual(result["reward"] > 0, correct_answer)
+                        self.report["graded_cases"].append({
                             "task_index": index, "sensitive": sensitive,
                             "disclosed": disclosed, "correct": correct_answer,
-                            "reward": new["reward"], "is_success": old["is_success"],
+                            "reward": result["reward"],
+                            "is_success": result["observation"]["is_success"],
                         })
         self.passed()
 

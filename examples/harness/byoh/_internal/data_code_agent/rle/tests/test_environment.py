@@ -6,7 +6,6 @@ import json
 import threading
 import unittest
 from concurrent.futures import ThreadPoolExecutor
-from pathlib import Path
 from unittest.mock import patch
 
 from fastapi.testclient import TestClient
@@ -33,36 +32,11 @@ class EnvironmentTests(unittest.TestCase):
             env.reset(split=SPLIT, task_index=index)
         return env
 
-    def test_distinct_service_package_carries_its_own_grading_modules(self):
-        """Duplication's one risk is drift, so assert the copies stay identical."""
-        from rle.server import environment
-        from rle.server.vendor import grader
-
+    def test_environment_module_is_the_service_package(self):
         self.assertEqual(
             type(self.make_env(index=None)).__module__,
             "rle.server.environment",
         )
-
-        try:
-            from rle_deprecated.server import compliance as deprecated_compliance
-            from rle_deprecated.server import env as deprecated
-            from rle_deprecated.server.vendor import grader as deprecated_grader
-        except ImportError:
-            self.skipTest("the deprecated harness is gone; nothing left to compare")
-
-        # Distinct objects: this service keeps grading once the other is deleted.
-        self.assertIsNot(environment.grade, deprecated._grade)
-        self.assertIsNot(environment.compliance, deprecated.compliance)
-        for ours, theirs in (
-            (grader, deprecated_grader),
-            (compliance, deprecated_compliance),
-        ):
-            self.assertNotEqual(ours.__file__, theirs.__file__)
-            self.assertEqual(
-                Path(ours.__file__).read_bytes(),
-                Path(theirs.__file__).read_bytes(),
-                f"{Path(ours.__file__).name} has drifted from the deprecated copy",
-            )
 
     def test_grade_action_is_strict_and_cannot_override_task(self):
         for payload in (

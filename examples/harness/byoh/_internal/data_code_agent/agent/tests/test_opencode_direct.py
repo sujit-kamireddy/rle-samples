@@ -1,9 +1,9 @@
 """Tests for the opencode rollout path.
 
-The ordering test is the important one. A task's index is its identity: `../../rle`'s answer key is
-keyed by position, so an index built in a different order than the suite's would not fail anything
--- it would grade every rollout against the wrong task's answer and still look like a working
-system.
+The ordering test is the important one. A task's index is its identity: the sample's `rle/`
+service's answer key is keyed by position, so an index built in a different order than the
+suite's would not fail anything -- it would grade every rollout against the wrong task's answer
+and still look like a working system.
 """
 
 from __future__ import annotations
@@ -20,7 +20,9 @@ import pytest
 
 import opencode_direct as od
 
-REPO = Path(__file__).resolve().parent.parent.parent
+# This test lives under `_internal/`, a sibling of the real sample; the vendored answer key it
+# reads stays in the real sample tree, two levels further up and back down into `data_code_agent`.
+REPO = Path(__file__).resolve().parents[4] / "data_code_agent"
 ANSWER_KEY = (
     REPO / "rle" / "server" / "vendor" / "task-meta" / "FineEnvs__data-agent-harbor-train.json.gz"
 )
@@ -44,7 +46,7 @@ def test_index_carries_no_grading_key(rows):
 
 
 def test_index_order_matches_the_answer_key(rows):
-    """Position must mean the same task here and in `../../rle`'s key, or every grade is wrong."""
+    """Position must mean the same task here and in the sample's `rle/` key, or every grade is wrong."""
     key = json.loads(gzip.decompress(ANSWER_KEY.read_bytes()))
     assert len(key) == len(rows)
     for i, (entry, row) in enumerate(zip(key, rows)):
@@ -417,8 +419,8 @@ def test_the_workspace_rules_steer_the_agent_off_whole_file_reads():
 def test_the_workspace_rules_give_away_nothing_about_the_answer():
     """These rules ship into the agent's working directory, which is the reward-hacking surface.
 
-    `../rle` holds the grading key precisely so the agent cannot reach it; a file this harness
-    writes next to the agent must not reintroduce what that separation exists to prevent.
+    The sample's `rle/` holds the grading key precisely so the agent cannot reach it; a file this
+    harness writes next to the agent must not reintroduce what that separation exists to prevent.
     """
     rules = od._WORKSPACE_RULES.lower()
 

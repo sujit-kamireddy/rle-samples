@@ -434,7 +434,7 @@ async def _run_in(
         )
     except RolloutError as exc:
         # The agent lost this episode on its own terms: it talked itself past the model's
-        # context window, ran out of time, or crashed. `../rle/server/env.py` already grades
+        # context window, ran out of time, or crashed. `../rle/server/environment.py` already grades
         # `ok: False` as a zero, which is the honest score for an episode that produced no
         # answer. Reporting it as a harness failure instead would abort the entire training
         # run over one bad episode, which is how a single runaway transcript takes down a

@@ -1,30 +1,25 @@
-"""Rebuilds private task metadata and public questions from the upstream tarball.
+"""Rebuilds the committed task metadata and questions from the upstream tarball.
 
-`rle_deprecated/server/env.py` grades a rollout itself rather than trusting a score
-relayed back through the harness, so it needs each task's expected answer and
-reward mode locally. That is what this script bakes.
+`rle/server/environment.py` grades a rollout itself rather than trusting a score
+relayed back through the harness, so it needs each task's expected answer,
+reward mode, and question text locally. That is what this script bakes.
 
 It also bakes the sensitive-data label the compliance check grades against
 (`has_pii`). Labelling happens here, offline and once, because the CSVs are not
-available at grading time -- `pull_bucket.py` pulls them into the harness
-container when the rollout starts, and they are gone by the time `/grade` runs.
+available at grading time -- `pull_bucket.py` pulls them into the container
+when the rollout starts, and they are gone by the time grading runs.
 
 Ordering is load-bearing. A task is addressed by integer `task_index`, and
 that index is the position in the directory listing sorted by task directory
 name, so entries are emitted in exactly that order and `--verify` guards it.
-The default output remains the legacy answer key without questions; verification
-checks its original grading fields, permitting intentional label updates.
-With --openenv, only the verifier's explicit QUESTION is added, never private
-metadata. Missing or blank questions are errors. This separate output must match
-every legacy field and row in order, and verification also checks questions.
-OpenEnv writes refuse grading/label drift rather than silently changing it.
+Verification checks every field, including the question, against the committed
+file; writing refuses the same silent grading/label/question drift unless the
+file does not exist yet. Missing or blank verifier QUESTION values are errors.
 
 Usage:
 
-    python tools/build_task_meta.py --verify            # legacy grading fields
-    python tools/build_task_meta.py --write             # legacy key, no questions
-    python tools/build_task_meta.py --openenv --verify  # all standalone fields
-    python tools/build_task_meta.py --openenv --write   # rle question key
+    python tools/build_task_meta.py --verify  # diff against the committed key
+    python tools/build_task_meta.py --write   # regenerate the committed key
 """
 
 from __future__ import annotations
@@ -43,18 +38,17 @@ sys.path.insert(0, str(pathlib.Path(__file__).parent))
 from pii_taxonomy import classify  # noqa: E402
 
 HERE = pathlib.Path(__file__).resolve().parent
-SAMPLE_ROOT = HERE.parent
+# This tool lives under `_internal/`, a sibling of the real sample; the content it reads and
+# writes (the vendored tarball, the generated task-meta) stays in the real sample tree, two levels
+# further up and back down into `data_code_agent`.
+SAMPLE_ROOT = HERE.parents[2] / "data_code_agent"
 TARBALL = SAMPLE_ROOT / "agent" / "vendor" / "harbor-datasets.tar.gz"
-OUT_DIR = SAMPLE_ROOT / "rle_deprecated" / "server" / "vendor" / "task-meta"
-OPENENV_OUT_DIR = SAMPLE_ROOT / "rle" / "server" / "vendor" / "task-meta"
+OUT_DIR = SAMPLE_ROOT / "rle" / "server" / "vendor" / "task-meta"
 OVERRIDES = HERE / "pii_overrides.json"
 DATASET = "FineEnvs__data-agent-harbor-train"
 
 # `instruction.md` lists the task's input files as a markdown bullet list.
 _FILE_LINE = re.compile(r"^- (\S+\.\w+)$", re.M)
-
-# Legacy verification deliberately excludes labels to permit relabelling.
-LEGACY_FIELDS = ("task_name", "expected_answer", "reward_mode", "atol", "rtol")
 
 
 def _read_tasks(tarball: pathlib.Path) -> dict[str, dict[str, str]]:
@@ -81,7 +75,7 @@ def _read_tasks(tarball: pathlib.Path) -> dict[str, dict[str, str]]:
     return raw
 
 
-def build(*, openenv: bool = False) -> list[dict[str, object]]:
+def build() -> list[dict[str, object]]:
     if not TARBALL.exists():
         sys.exit(f"missing dataset tarball: {TARBALL}")
 
@@ -98,7 +92,7 @@ def build(*, openenv: bool = False) -> list[dict[str, object]]:
         task_meta = meta.get("metadata", {})
         task_name = meta["task"]["name"]
         question = verifier_env.get("QUESTION")
-        if openenv and (not isinstance(question, str) or not question.strip()):
+        if not isinstance(question, str) or not question.strip():
             sys.exit(f"missing or empty verifier QUESTION for task: {task_name}")
 
         instruction = files.get("instruction", "")
@@ -118,12 +112,12 @@ def build(*, openenv: bool = False) -> list[dict[str, object]]:
         entries.append(
             {
                 "task_name": task_name,
-                **({"question": question} if openenv else {}),
+                "question": question,
                 "expected_answer": verifier_env.get("EXPECTED_ANSWER", ""),
                 "reward_mode": verifier_env.get("REWARD_MODE", ""),
                 # Absent means "use the grader's default tolerance". Baking the
-                # default in keeps this file self-describing; `env.py` applies
-                # the same 1e-3 when the field is empty.
+                # default in keeps this file self-describing; `environment.py`
+                # applies the same 1e-3 when the field is empty.
                 "atol": verifier_env.get("ATOL", "1e-3"),
                 "rtol": verifier_env.get("RTOL", "1e-3"),
                 "has_pii": has_pii,
@@ -139,16 +133,15 @@ def _verify_rows(
     entries: list[dict[str, object]],
     *,
     allow_question_update: bool = False,
-    fields: tuple[str, ...] | None = None,
 ) -> None:
-    """Compare selected fields (all by default), preserving row order."""
+    """Compare every field, preserving row order."""
     if len(committed) != len(entries):
         sys.exit(f"length drift: committed {len(committed)} vs built {len(entries)}")
     missing = object()
     drift = [
         (index, field)
         for index, (old, new) in enumerate(zip(committed, entries))
-        for field in (fields if fields is not None else sorted(old.keys() | new.keys()))
+        for field in sorted(old.keys() | new.keys())
         if not (allow_question_update and field == "question")
         and old.get(field, missing) != new.get(field, missing)
     ]
@@ -181,47 +174,29 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--write", action="store_true", help="regenerate the key")
     parser.add_argument("--verify", action="store_true", help="diff against the key")
-    parser.add_argument(
-        "--openenv", action="store_true",
-        help="target rle with required questions and full legacy-field parity",
-    )
     args = parser.parse_args()
     if not (args.write or args.verify):
         parser.error("pass --write or --verify")
 
-    entries = build(openenv=args.openenv)
+    entries = build()
     _summarise(entries)
-    out_dir = OPENENV_OUT_DIR if args.openenv else OUT_DIR
-    out_path = out_dir / f"{DATASET}.json.gz"
-
-    if args.openenv:
-        legacy_path = OUT_DIR / out_path.name
-        if not legacy_path.exists():
-            sys.exit(f"missing legacy metadata for parity verification: {legacy_path}")
-        with gzip.open(legacy_path) as handle:
-            legacy = json.load(handle)
-        without_questions = [
-            {key: value for key, value in entry.items() if key != "question"}
-            for entry in entries
-        ]
-        _verify_rows(legacy, without_questions)
+    out_path = OUT_DIR / f"{DATASET}.json.gz"
 
     if args.verify:
         if not out_path.exists():
             sys.exit(f"nothing to verify against: {out_path}")
         with gzip.open(out_path) as handle:
             committed = json.load(handle)
-        _verify_rows(committed, entries, fields=None if args.openenv else LEGACY_FIELDS)
-        fields_label = "every field" if args.openenv else "grading fields"
-        print(f"\ntask metadata matches the committed file (order and {fields_label})")
+        _verify_rows(committed, entries)
+        print("\ntask metadata matches the committed file (order and every field)")
         return 0
 
-    if args.openenv and out_path.exists():
+    if out_path.exists():
         with gzip.open(out_path) as handle:
             committed = json.load(handle)
         _verify_rows(committed, entries, allow_question_update=True)
 
-    out_dir.mkdir(parents=True, exist_ok=True)
+    OUT_DIR.mkdir(parents=True, exist_ok=True)
     # mtime=0 so rebuilding identical content produces an identical file and
     # does not show up as a spurious diff.
     with gzip.GzipFile(out_path, "wb", mtime=0) as handle:

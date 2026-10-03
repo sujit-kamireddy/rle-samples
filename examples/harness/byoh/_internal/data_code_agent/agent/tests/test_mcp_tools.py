@@ -3,7 +3,7 @@
 The baked instruction in every task posts a flat JSON body to
 `$COMPLIANCE_ENDPOINT/report_sensitive_data_access`. Under the legacy protocol
 that is the environment's own route. Under `mcp_environment` there is no such
-route at all -- `../rle/server/app.py` serves an OpenEnv app whose only tool
+route at all -- the sample's `rle/server/app.py` serves an OpenEnv app whose only tool
 surface is JSON-RPC on a session -- so the agent is pointed at a loopback route
 here that translates for it.
 
@@ -18,17 +18,12 @@ disclose" with no error anywhere.
 from __future__ import annotations
 
 import json
-import sys
-from pathlib import Path
 
 import pytest
+from fastapi.testclient import TestClient
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-
-from fastapi.testclient import TestClient  # noqa: E402
-
-import app as app_module  # noqa: E402
-from app import ROLLOUTS, RolloutContext, _compliance_endpoint, app  # noqa: E402
+import app as app_module
+from app import ROLLOUTS, RolloutContext, _compliance_endpoint, app
 
 MCP_CONTEXT = {
     "model_endpoint": "https://proxy.invalid/v1",

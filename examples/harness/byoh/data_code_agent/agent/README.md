@@ -21,8 +21,8 @@ thing authenticating the poll and withdraw calls, and it is therefore what
 rollouts are stored under here. `rollout_id`, which arrives on the same request,
 is unique only within a project -- a correlation key for logs, not an identity.
 
-What RLE polls for is the answer text the agent wrote, never a reward. `../rle_deprecated`'s
-`/grade` computes the reward itself from that text, which is what stops a harness
+What RLE polls for is the answer text the agent wrote, never a reward. `../rle`
+computes the reward itself from that text, which is what stops a harness
 claiming a score it did not earn.
 
 `opencode` is installed at image build time and runs as a child process of this
@@ -49,7 +49,7 @@ repeats it. An agent with a shell -- which is exactly what
 `--dangerously-skip-permissions` grants -- can therefore
 `grep -rlF "<its own question>"` the suite, land on its own task directory and
 read its own answer without analysing anything. Measured at 25 of 25 sampled
-tasks. So the answers do not ship here: the grading key lives in `../rle_deprecated`'s
+tasks. So the answers do not ship here: the grading key lives in `../rle`'s
 container, which gives the agent no shell.
 
 Keep it that way. Anything added to this image is readable by the agent.
@@ -94,8 +94,8 @@ instruction a second wire format, a rollout with a session id is pointed at a
 loopback route on this same service (`/local-tools/{operation_id}/...` in
 `app.py`), which translates the one flat POST the instruction knows how to make
 into that `tools/call`. The instruction, and therefore the graded prompt, stays
-identical either way. A rollout without a session id (`../rle_deprecated`, or
-any environment published without the field) is pointed straight at
+identical either way. A rollout without a session id (any environment
+published without the field) is pointed straight at
 `sandbox_tools_endpoint`, unchanged.
 
 ## Task inputs
@@ -129,7 +129,7 @@ concurrency (default 16).
 `vendor/harbor-datasets.tar.gz` is the upstream task suite. It is **not** copied
 into the image -- see "What the harness is given" -- it is the source the
 `../tools/` scripts read to generate what *is* shipped:
-`vendor/task-index.json.gz`, `vendor/pull_bucket.py` and `../rle_deprecated`'s vendored
+`vendor/task-index.json.gz`, `vendor/pull_bucket.py` and `../rle`'s vendored
 answer key.
 
 Three patches are applied to it, all reproducible and all verifiable without a
