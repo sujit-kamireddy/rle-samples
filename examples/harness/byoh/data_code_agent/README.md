@@ -336,11 +336,19 @@ reads both fields from each row. `train.jsonl` holds the first 1,000 tasks;
 
 `rle/rle.toml` records how this environment is trained, so a run needs no flags.
 Its `[train.options]` are the values that produced a measured hillclimb against
-Qwen3-32B on a fixed 100-task validation pool (mean reward 0.268 at step 12 to
-0.452 at step 28); see the comments in that file for the reasoning behind each
-one, in particular why `eval_every`/`save_every` must be set for a checkpoint to
-be recoverable at all, and why `renderer_name = 'qwen3_ext'` is required rather
-than left at the model's default renderer.
+Qwen3-32B on a fixed 100-task validation pool (mean reward 0.255 at step 0 to a
+peak of 0.632 at step 60, 0.611 at the final step, 64); see the comments in
+that file for the reasoning behind each one, in particular why
+`eval_every`/`save_every` must be set for a checkpoint to be recoverable at
+all, and why `renderer_name = 'qwen3_ext'` is required rather than left at the
+model's default renderer.
+
+That run also did not finish in one job: an infra-side rollout failure storm
+tripped `rollout_failure_rate_abort` at batch 44 and ended it
+(`RolloutFailureRateExceeded`), and training resumed from that batch's durable
+checkpoint to reach step 64. This is a known, recoverable failure mode, not a
+sign the settings above are wrong; see the comment above `[train.options]` for
+how to resume a run that hits it.
 
 ```bash
 cd rle
