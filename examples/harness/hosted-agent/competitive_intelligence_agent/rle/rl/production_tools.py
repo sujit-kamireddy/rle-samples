@@ -57,14 +57,8 @@ import json
 import re
 from typing import Annotated, Any
 
-from loom_cookbook.tool_use import ToolResult, simple_tool_result
-
 from .dax import SUPPORTED, DaxError, evaluate_query
-
-try:  # pragma: no cover - exercised only by the packaged environment
-    from loom_cookbook.tool_use import tool
-except ImportError:  # pragma: no cover
-    from loom_cookbook.tool_use.tools import tool  # type: ignore[no-redef]
+from .tool_types import ToolResult, simple_tool_result, tool
 
 #: The shape the toolbox accepts. Anything else is ``InvalidArgument`` before a
 #: lookup is attempted, which is what makes "I made up a GUID" a distinct,

@@ -49,11 +49,11 @@ from typing import Any, Optional
 
 from azure.ai.projects.rle.environments import GradeAction, RLEnvironment
 from fastmcp.tools.function_tool import FunctionTool
-from loom_cookbook.tool_use import ToolInput
 
 from rle.rl.grading import grade_episode
 from rle.rl.simulated_tools import ToolSession, session_tools
 from rle.rl.tasks import Task
+from rle.rl.tool_types import ToolInput
 from rle.rl.world import build_world
 from rle.server.models import CompetitiveIntelObservation, CompetitiveIntelState
 from rle.server.rollout_text import (

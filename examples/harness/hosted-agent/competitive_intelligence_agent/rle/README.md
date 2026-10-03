@@ -13,8 +13,8 @@ against. This folder carries the [`rle.toml`](./rle.toml) the CLI reads, so
 
 Grading is not reimplemented from scratch, and it is not imported from the
 legacy harness either. This folder carries its own copy of the world, the
-tasks, the simulated tools and the rubric in [`rl/`](./rl), its own vendored
-`loom_cookbook` in [`vendor/`](./vendor), and the response-shaping helpers in
+tasks, the simulated tools, the tool-calling primitives they are built on,
+and the rubric in [`rl/`](./rl), plus the response-shaping helpers in
 [`server/rollout_text.py`](./server/rollout_text.py). The tool surface is read
 off the same `ToolSession` class the Harness environment uses.
 
@@ -59,12 +59,11 @@ docker build -f rle/Dockerfile -t ci-rle-openenv:local rle/
 docker run --rm -p 127.0.0.1:8000:8000 ci-rle-openenv:local
 ```
 
-Or run it directly, which needs the sample root and this folder's vendored
-`loom_cookbook` on the path:
+Or run it directly, which needs only the sample root on the path:
 
 ```bash
 python -m pip install -r rle/requirements.txt
-PYTHONPATH="$PWD:$PWD/rle/vendor" \
+PYTHONPATH="$PWD" \
   uvicorn rle.server.app:app --host 127.0.0.1 --port 8000 --workers 1
 ```
 

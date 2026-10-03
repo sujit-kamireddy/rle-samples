@@ -1,25 +1,122 @@
-"""Tool-use library for LLM agents."""
+"""Minimal tool-calling primitives, in OpenAI function-calling shape.
+
+This is this sample's own small tool-use library, not a copy of anything
+external: a ``@tool`` decorator that turns an annotated function or method
+into a callable with a JSON-schema spec (``FunctionTool``), the
+``ToolInput``/``ToolResult`` types that carry a call's arguments and its
+response messages, and ``handle_tool_call``, which dispatches a model's tool
+call to the right one.
+
+``simulated_tools.py``, ``production_tools.py`` and ``server/environment.py``
+all build on these same types, so a tool written once behaves identically
+wherever it is served from.
+"""
 
 from __future__ import annotations
 
 import asyncio
 import inspect
 import json
+from dataclasses import dataclass, field
 from typing import (
     Annotated,
     Any,
     Callable,
+    NotRequired,
+    Protocol,
+    TypedDict,
     get_args,
     get_origin,
     get_type_hints,
+    runtime_checkable,
 )
 
 from pydantic import BaseModel, Field, create_model
 from pydantic.fields import FieldInfo
 from pydantic_core import PydanticUndefined
 
-from loom_cookbook.renderers.base import ToolCall, ToolSpec
-from loom_cookbook.tool_use.types import Tool, ToolInput, ToolResult
+
+class ToolCallFunctionBody(TypedDict):
+    """The function a tool call names, and its JSON-encoded arguments."""
+
+    name: str
+    arguments: str
+
+
+class ToolCall(TypedDict):
+    """A request to invoke a tool, in OpenAI function-calling shape."""
+
+    function: ToolCallFunctionBody
+    id: NotRequired[str]
+
+
+class Message(TypedDict):
+    """One turn in a conversation."""
+
+    role: str
+    content: NotRequired[Any]
+    tool_calls: NotRequired[list[ToolCall]]
+    tool_call_id: NotRequired[str]
+    name: NotRequired[str]
+    trainable: NotRequired[bool]
+
+
+class ToolSpec(TypedDict):
+    """A tool offered to the model, in OpenAI function-calling shape."""
+
+    name: str
+    description: str
+    parameters: dict[str, Any]
+
+
+@dataclass
+class ToolInput:
+    """Input to a tool invocation."""
+
+    arguments: dict[str, Any]
+    call_id: str | None = None
+
+
+@dataclass
+class ToolResult:
+    """Result from a tool invocation."""
+
+    messages: list[Message]
+    should_stop: bool = False
+    metrics: dict[str, float] = field(default_factory=dict)
+    metadata: dict[str, Any] = field(default_factory=dict)
+
+
+@runtime_checkable
+class Tool(Protocol):
+    """Protocol for tools that can be used by LLM agents."""
+
+    @property
+    def name(self) -> str:
+        """Tool name shown to the model."""
+        ...
+
+    @property
+    def description(self) -> str:
+        """Tool description shown to the model."""
+        ...
+
+    @property
+    def parameters_schema(self) -> dict[str, Any]:
+        """JSON Schema for tool parameters shown to the model."""
+        ...
+
+    async def run(self, input: ToolInput) -> ToolResult:
+        """Execute the tool with validated arguments. Returns a ToolResult."""
+        ...
+
+    def to_spec(self) -> ToolSpec:
+        """Convert to ToolSpec for renderer integration."""
+        return {
+            "name": self.name,
+            "description": self.description,
+            "parameters": self.parameters_schema,
+        }
 
 
 def simple_tool_result(
