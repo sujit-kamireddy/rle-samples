@@ -37,28 +37,25 @@ RUN if [ -n "${PIP_FALLBACK_INDEX_URL}" ] && \
     pip install --no-cache-dir --progress-bar off --index-url "${PIP_INDEX_URL}" \
         -r /app/requirements.txt
 
-# The build context is the sample root, so the world, the tasks, the simulated
-# tools and the rubric can be copied from `rle/` rather than duplicated here.
-# They are shared verbatim with the Loom RL runs and with the legacy harness,
-# which is what makes a reward measured in this container comparable with one
-# measured there.
+# This image is self-contained: the world, the tasks, the simulated tools and
+# the rubric are copied from `rle_openenv/` itself, not from the legacy
+# harness. `rle/` carries an identical copy for now, and
+# `tests/test_environment.py` asserts the two still grade the same, but nothing
+# in this image reads it -- which is what lets `rle/` be deleted outright.
 #
-# `rle/server/` comes too: this environment imports the legacy module's
-# response-shaping helpers instead of keeping a second copy. The agent, the
-# dataset and the legacy Dockerfile are excluded by
-# `Dockerfile.dockerignore` -- those rows carry the expected decision and the
+# The agent, the dataset and the legacy Dockerfile are excluded by
+# `Dockerfile.dockerignore`: those rows carry the expected decision and the
 # verified snapshot, which is answer key, and do not belong in an image the
 # agent's sandbox can reach.
-COPY rle/rl/ /app/rl/
-COPY rle/vendor/ /app/vendor/
-COPY rle/server/ /app/rle/server/
 COPY rle_openenv/__init__.py /app/rle_openenv/__init__.py
+COPY rle_openenv/rl/ /app/rle_openenv/rl/
+COPY rle_openenv/vendor/ /app/rle_openenv/vendor/
 COPY rle_openenv/server/ /app/rle_openenv/server/
 
-# `rl.simulated_tools` imports `loom_cookbook.tool_use`, which resolves to the
-# vendored copy; `rle_openenv.server.environment` imports `rl.*` and
-# `rle.server.env` from the workdir.
-ENV PYTHONPATH=/app/vendor:/app
+# `rle_openenv.rl.simulated_tools` imports `loom_cookbook.tool_use`, which
+# resolves to the vendored copy; everything else is a `rle_openenv.*` import
+# rooted at the workdir.
+ENV PYTHONPATH=/app/rle_openenv/vendor:/app
 ENV PYTHONUNBUFFERED=1
 
 # Import the app and the server that will run it. A missing dependency reported

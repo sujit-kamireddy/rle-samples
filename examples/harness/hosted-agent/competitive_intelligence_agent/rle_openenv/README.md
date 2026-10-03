@@ -10,11 +10,20 @@ This service is **separate from, and additive to**, the existing
 `rle.toml`, and `azd ai rle publish` continues to build it. Nothing here changes
 it.
 
-Grading is not reimplemented. This environment imports `WORLD`, `TOOL_SURFACE`,
-`_final_text` and `_grading_failure_detail` from
-[`rle/server/env.py`](../rle/server/env.py), so both environments score a rollout
-through exactly one copy of the rubric. The tool surface is read off the same
-`ToolSession` class the Harness environment uses.
+Grading is not reimplemented from scratch, and it is not imported from the
+legacy harness either. This folder carries its own copy of the world, the
+tasks, the simulated tools and the rubric in [`rl/`](./rl), its own vendored
+`loom_cookbook` in [`vendor/`](./vendor), and the response-shaping helpers in
+[`server/rollout_text.py`](./server/rollout_text.py). The tool surface is read
+off the same `ToolSession` class the Harness environment uses.
+
+That duplication is a deliberate stopgap. `../rle` is scheduled for deletion
+once this variant is proven, and nothing in this folder or in its image reads
+it, so the delete is a `rm -rf` rather than a migration. While both copies
+exist, `test_grade_matches_the_legacy_harness` drives each environment through
+its own protocol over its own copy of the rubric and asserts the rewards are
+identical, which is what keeps the two from drifting. That test skips
+automatically once `../rle` is gone.
 
 ## Delivery phases
 
@@ -26,24 +35,31 @@ through exactly one copy of the rubric. The tool surface is read off the same
    legacy HTTP tool API rather than MCP, so publishing this variant would mean
    inventing a contract that does not exist yet.
 
+The agent is also what still pins `../rle` in place. This folder no longer
+needs it, but `agent/rollout_context.py` calls tools by POSTing
+`{base}/{tool_name}`, a route only the legacy harness serves. Moving the agent
+onto the `/mcp` JSON-RPC surface is the remaining work before `../rle` can be
+deleted.
+
 ## Build and run locally
 
 Run every command below from the parent `competitive_intelligence_agent/`
-directory. The **sample root is the Docker build context**, not this folder, so
-the image can copy the shared legacy modules without duplicating their source
-here. The [Dockerfile-specific ignore file](./Dockerfile.dockerignore) keeps the
-agent, its tooling, and job data out of that context.
+directory. The **sample root is the Docker build context**, not this folder.
+The [Dockerfile-specific ignore file](./Dockerfile.dockerignore) keeps the
+agent, its tooling, the job data and `rle/` itself out of that context, so the
+image cannot pick up a dependency on the folder that is about to be deleted.
 
 ```bash
 docker build -f rle_openenv/Dockerfile -t ci-rle-openenv:local .
 docker run --rm -p 127.0.0.1:8000:8000 ci-rle-openenv:local
 ```
 
-Or run it directly, which needs the sample's three import roots on the path:
+Or run it directly, which needs the sample root and this folder's vendored
+`loom_cookbook` on the path:
 
 ```bash
 python -m pip install -r rle_openenv/requirements.txt
-PYTHONPATH="$PWD:$PWD/rle:$PWD/rle/vendor" \
+PYTHONPATH="$PWD:$PWD/rle_openenv/vendor" \
   uvicorn rle_openenv.server.app:app --host 127.0.0.1 --port 8000 --workers 1
 ```
 
@@ -133,9 +149,11 @@ The suite asserts the production tool surface, that MCP schemas are generated
 from each tool's own argument model, that a tool call before reset is a protocol
 error, and that an unreadable task fails loudly. The test that justifies the
 port is `test_grade_matches_the_legacy_harness`: it drives this environment and
-`../rle` through their own public protocols with the same task, the same tool
-call and the same answer, then asserts the reward, `is_success` and the whole
-`info` payload are identical and that the reward is not trivially zero.
+`../rle` through their own public protocols, over two distinct copies of the
+rubric, with the same task, the same tool call and the same answer, then asserts
+the reward, `is_success` and the whole `info` payload are identical and that the
+reward is not trivially zero. It is the gate on the duplicated `rl/`, and it
+skips on its own once `../rle` is deleted.
 
 ## Dependency note
 

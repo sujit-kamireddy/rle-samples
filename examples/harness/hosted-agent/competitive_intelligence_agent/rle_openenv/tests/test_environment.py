@@ -17,8 +17,19 @@ from azure.ai.projects.rle.environments import GradeAction
 from fastapi.testclient import TestClient
 from openenv.core.env_server.mcp_environment import CallToolAction, ListToolsAction
 
-from rle.server.env import TOOL_SURFACE, app as legacy_app
-from rle_openenv.server.environment import CompetitiveIntelEnvironment
+from rle_openenv.server.environment import TOOL_SURFACE, CompetitiveIntelEnvironment
+
+# `rle/` is scheduled for deletion, and this environment no longer imports
+# anything from it: `rle_openenv/` carries its own copy of the world, the
+# tasks, the tools and the rubric. The legacy app is loaded here only so
+# `test_grade_matches_the_legacy_harness` can hold the duplicate to account
+# while both copies exist. It skips, rather than errors, the moment `rle/`
+# goes, and this block goes with it.
+try:
+    from rle.server.env import app as legacy_app
+except ImportError:  # pragma: no cover - the state after `rle/` is deleted
+    legacy_app = None
+
 
 SAMPLE_ROOT = Path(__file__).resolve().parent.parent.parent
 
@@ -131,12 +142,14 @@ def test_grade_before_reset_is_a_protocol_error(env):
         env.grade(GradeAction(answer=ANSWER))
 
 
+@pytest.mark.skipif(legacy_app is None, reason="the legacy `rle/` harness has been removed")
 def test_grade_matches_the_legacy_harness(task):
     """Same task, same tool call, same answer -- same reward.
 
-    This is the test that justifies the port. Both environments are driven
-    through their own public protocol, so what is compared is two complete
-    paths, not two calls into one shared function.
+    This is the test that justifies the port, and now also the test that keeps
+    the duplicated ``rl/`` honest. Both environments are driven through their
+    own public protocol over their own copy of the rubric, so what is compared
+    is two complete paths, not two calls into one shared function.
     """
     openenv_env = CompetitiveIntelEnvironment()
     openenv_env.reset(episode_id="ep-1", **task)

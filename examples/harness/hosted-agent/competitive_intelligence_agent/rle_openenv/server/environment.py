@@ -47,31 +47,41 @@ from __future__ import annotations
 import asyncio
 import inspect
 import logging
+import os
 from typing import Any, Callable, Optional
 
 from azure.ai.projects.rle.environments import GradeAction, RLEnvironment
 from loom_cookbook.tool_use import ToolInput
 from openenv.core.env_server.types import Observation, State
 
-from rl.grading import grade_episode
-from rl.simulated_tools import ToolSession, session_tools
-from rl.tasks import Task
-
-# Imported, not copied. `_final_text` and `_salvage_output_text` are the two
-# fixes without which this environment cannot train at all -- one grades the
-# serialised Responses envelope instead of the report, the other loses every
-# rollout whose envelope RLE's credential sanitiser corrupted -- and
-# `_grading_failure_detail` is what makes a grading crash legible through RLE's
-# 200-character error cap. `WORLD` and `TOOL_SURFACE` come along with them so
-# both environments share one world and one surface.
-from rle.server.env import (  # noqa: F401
-    TOOL_SURFACE,
-    WORLD,
-    _final_text,
-    _grading_failure_detail,
+from rle_openenv.rl.grading import grade_episode
+from rle_openenv.rl.simulated_tools import ToolSession, session_tools
+from rle_openenv.rl.tasks import Task
+from rle_openenv.rl.world import build_world
+from rle_openenv.server.rollout_text import (
+    final_text as _final_text,
+    grading_failure_detail as _grading_failure_detail,
 )
 
+# The simulated world is deterministic and read-only once built, and building
+# it walks the whole company/team/product graph. Rollouts share one instance
+# rather than each paying for a rebuild; `ToolSession` keeps all per-rollout
+# state.
+WORLD = build_world()
+
+#: The surface both halves of a rollout must agree on. The harness container
+#: and the agent package read the *same* variable name with the *same*
+#: default, which is the only reason they cannot silently disagree -- they are
+#: deployed separately and nothing plumbs the value from one to the other.
+#:
+#: Default `production`: `routine` serves four invented semantic tools that the
+#: deployed agent does not have. A policy trained on it scored 0.97 tool
+#: discipline in the simulator and 0.43 on the real benchmark, because only
+#: `web_search` was common to both. `routine` is kept to reproduce those runs.
+TOOL_SURFACE = os.environ.get("COMPETITIVE_INTEL_TOOL_SURFACE", "production")
+
 logger = logging.getLogger("competitive-intel-rle-openenv")
+
 
 
 class CompetitiveIntelObservation(Observation):

@@ -1,12 +1,16 @@
-# The build context is the sample root, so most of it is excluded here.
-# Only the environment's own code and the four shared `rl/` modules are needed.
+# The build context is the sample root, so most of it is excluded here. Only
+# `rle_openenv/` is needed: this image is self-contained and copies nothing
+# from the legacy harness.
 **/__pycache__
 **/*.pyc
 agent/
 tools/
 job_data/
-rle/Dockerfile
-rle/rle.toml
+# Excluding `rle/` outright is deliberate. It keeps the decoupling honest: a
+# `COPY rle/...` line added back here fails the build rather than quietly
+# re-coupling the image to a folder that is about to be deleted.
+rle/
 rle_openenv/README.md
 rle_openenv/tests/
+rle_openenv/conftest.py
 README.md
