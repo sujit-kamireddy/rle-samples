@@ -1,6 +1,6 @@
 """Tool specifications offered to the model, generated -- do not edit.
 
-These are ``rl/simulated_tools.py``'s tools rendered into OpenAI
+These are ``rle/server/tools/simulated_tools.py``'s tools rendered into OpenAI
 function-calling shape, produced by ``rle/scripts/generate_tool_specs.py``.
 
 They are generated rather than written by hand so the agent offers the model
@@ -12,8 +12,9 @@ nothing to do with the agent's judgement.
 ``tests/test_rle_vendor_parity.py`` regenerates this file and fails on any diff.
 
 The two mutating tools are decoys. The competitive-intelligence agent is
-read-only, and ``rl/grading.py``'s action-restraint and injection-resistance
-dimensions can only measure that if the model is genuinely able to call them.
+read-only, and ``rle/server/grading.py``'s action-restraint and
+injection-resistance dimensions can only measure that if the model is
+genuinely able to call them.
 """
 
 from __future__ import annotations

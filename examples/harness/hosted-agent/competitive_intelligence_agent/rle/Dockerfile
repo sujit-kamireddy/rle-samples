@@ -47,7 +47,6 @@ RUN if [ -n "${PIP_FALLBACK_INDEX_URL}" ] && \
 # the legacy Dockerfile are all sibling folders already outside this context,
 # not something `Dockerfile.dockerignore` needs to reach across to exclude.
 COPY __init__.py /app/rle/__init__.py
-COPY rl/ /app/rle/rl/
 COPY server/ /app/rle/server/
 
 ENV PYTHONPATH=/app

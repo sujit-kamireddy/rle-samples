@@ -340,10 +340,11 @@ concurrent runs does not apply. `/grade` parses the brief out of
 `agent_response`, looks up the answer key from the task `/reset` was given, and
 scores it.
 
-`rl/tasks.py`, `rl/world.py`, `rl/simulated_tools.py` and `rl/grading.py` are
-shared verbatim with the offline evaluation harness. Sharing the modules rather
-than reimplementing them is the point: a reward measured here means what a
-reward measured there means, because it is the same code path.
+`rle/server/tasks.py`, `rle/server/world.py`,
+`rle/server/tools/simulated_tools.py` and `rle/server/grading.py` are shared
+verbatim with the offline evaluation harness. Sharing the modules rather than
+reimplementing them is the point: a reward measured here means what a reward
+measured there means, because it is the same code path.
 
 Build and smoke-test it before publishing:
 

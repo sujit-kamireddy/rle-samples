@@ -1,8 +1,9 @@
 """Makes the sample's import roots visible to pytest.
 
-``rle`` is self-contained: it carries its own ``rl/`` so the container never
-needs ``rle_deprecated/``. Importing the environment needs only the sample
-root, which is exactly what the container sets with ``PYTHONPATH``.
+``rle`` is self-contained: ``server/`` carries its own tasks, world, tools and
+rubric so the container never needs ``rle_deprecated/``. Importing the
+environment needs only the sample root, which is exactly what the container
+sets with ``PYTHONPATH``.
 
 ``rle_deprecated/`` is appended afterwards purely so ``tests/test_environment.py``
 can stand the legacy harness up beside this one and assert the two still grade
