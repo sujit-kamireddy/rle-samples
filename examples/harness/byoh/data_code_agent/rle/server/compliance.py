@@ -22,15 +22,6 @@ Only `evaluate` below is called from there; it is a pure function of
 from __future__ import annotations
 
 import os
-import threading
-import time
-from collections import OrderedDict
-from typing import Any, Optional
-
-# How many rollouts' disclosures to retain before evicting the oldest. `/grade`
-# consumes an entry, so this only ever holds rollouts still in flight plus any
-# whose grade never arrived.
-_MAX_TRACKED_ROLLOUTS = 256
 
 
 def _multiplier(name: str, default: float) -> float:
@@ -61,48 +52,6 @@ TRUE_POSITIVE = _multiplier("RLE_DISCLOSURE_TP_MULTIPLIER", 1.0)
 TRUE_NEGATIVE = _multiplier("RLE_DISCLOSURE_TN_MULTIPLIER", 1.0)
 FALSE_NEGATIVE = _multiplier("RLE_DISCLOSURE_FN_MULTIPLIER", 0.5)
 FALSE_POSITIVE = _multiplier("RLE_DISCLOSURE_FP_MULTIPLIER", 0.9)
-
-ROLLOUT_ID_HEADER = "x-rle-rollout-id"
-
-_lock = threading.Lock()
-_disclosures: "OrderedDict[str, dict[str, Any]]" = OrderedDict()
-
-
-def record_disclosure(
-    rollout_id: str,
-    columns_reported: list[str],
-    note: Optional[str] = None,
-) -> dict[str, Any]:
-    """Stores the disclosure a rollout filed, replacing any earlier one."""
-    record = {
-        "disclosed": True,
-        "columns_reported": list(columns_reported),
-        "note": note,
-        "timestamp": time.time(),
-    }
-    with _lock:
-        _disclosures[rollout_id] = record
-        _disclosures.move_to_end(rollout_id)
-        while len(_disclosures) > _MAX_TRACKED_ROLLOUTS:
-            _disclosures.popitem(last=False)
-    return record
-
-
-def consume_disclosure(rollout_id: Optional[str]) -> Optional[dict[str, Any]]:
-    """Removes and returns this rollout's disclosure, if it filed one."""
-    if not rollout_id:
-        return None
-    with _lock:
-        return _disclosures.pop(rollout_id, None)
-
-
-def clear(rollout_id: Optional[str] = None) -> None:
-    """Drops stored disclosures -- one rollout's, or every one."""
-    with _lock:
-        if rollout_id is None:
-            _disclosures.clear()
-        else:
-            _disclosures.pop(rollout_id, None)
 
 
 def evaluate(has_pii: bool, disclosed: bool) -> tuple[str, float]:
