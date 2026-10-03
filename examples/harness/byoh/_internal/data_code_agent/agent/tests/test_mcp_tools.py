@@ -1,18 +1,17 @@
-"""Tests for the `mcp_environment` tool path.
+"""Tests for the compliance-disclosure loopback route.
 
 The baked instruction in every task posts a flat JSON body to
-`$COMPLIANCE_ENDPOINT/report_sensitive_data_access`. Under the legacy protocol
-that is the environment's own route. Under `mcp_environment` there is no such
-route at all -- the sample's `rle/server/app.py` serves an OpenEnv app whose only tool
-surface is JSON-RPC on a session -- so the agent is pointed at a loopback route
-here that translates for it.
+`$COMPLIANCE_ENDPOINT/report_sensitive_data_access`. There is no such route on
+the environment itself -- the sample's `rle/server/app.py` serves an OpenEnv
+app whose only tool surface is JSON-RPC on a session -- so the agent is
+pointed at a loopback route here that translates for it.
 
 What is worth testing is exactly the part a live rollout would not tell us
 about until the reward came back wrong: that the translation carries *this*
 rollout's session id, that it refuses another rollout's token, and that the
-body the agent sees is the same shape the legacy route returned. A disclosure
-filed against the wrong session, or silently dropped, grades as "did not
-disclose" with no error anywhere.
+body the agent sees is the tool's own result verbatim. A disclosure filed
+against the wrong session, or silently dropped, grades as "did not disclose"
+with no error anywhere.
 """
 
 from __future__ import annotations
@@ -32,7 +31,7 @@ MCP_CONTEXT = {
     "sandbox_tools_token": "tools-token",
     "sandbox_session_id": "session-abc",
 }
-LEGACY_CONTEXT = {k: v for k, v in MCP_CONTEXT.items() if k != "sandbox_session_id"}
+CONTEXT_WITHOUT_SESSION_ID = {k: v for k, v in MCP_CONTEXT.items() if k != "sandbox_session_id"}
 
 RECORDED = {
     "status": "recorded",
@@ -103,10 +102,11 @@ def rollout(request):
     ROLLOUTS._contexts.pop("operation-1", None)
 
 
-def test_the_session_id_is_optional_so_a_legacy_rollout_still_parses():
-    """RLE only sends it for an environment published with the MCP protocol."""
-    assert RolloutContext.model_validate(LEGACY_CONTEXT).sandbox_session_id is None
+def test_the_session_id_is_required():
+    """`../rle` publishes with `environmentProtocol = "mcp_environment"`, so RLE always sends one."""
     assert RolloutContext.model_validate(MCP_CONTEXT).sandbox_session_id == "session-abc"
+    with pytest.raises(Exception):
+        RolloutContext.model_validate(CONTEXT_WITHOUT_SESSION_ID)
 
 
 def test_the_mcp_route_is_the_tools_route_with_its_last_segment_swapped():
@@ -114,17 +114,8 @@ def test_the_mcp_route_is_the_tools_route_with_its_last_segment_swapped():
     assert context.mcp_url == "https://tools.invalid/rollouts/r1/mcp"
 
 
-def test_a_legacy_rollout_is_pointed_straight_at_the_environment():
-    context = RolloutContext.model_validate(LEGACY_CONTEXT)
-    assert (
-        _compliance_endpoint("operation-1", context)
-        == "https://tools.invalid/rollouts/r1/tools"
-    )
-
-
-def test_an_mcp_rollout_is_pointed_at_this_services_loopback_route():
-    context = RolloutContext.model_validate(MCP_CONTEXT)
-    endpoint = _compliance_endpoint("operation-1", context)
+def test_a_rollout_is_pointed_at_this_services_loopback_route():
+    endpoint = _compliance_endpoint("operation-1")
     assert endpoint.startswith("http://127.0.0.1:")
     assert endpoint.endswith("/local-tools/operation-1")
     # The baked instruction appends the tool name to this, and nothing else.
@@ -141,8 +132,8 @@ def test_a_disclosure_is_translated_onto_this_rollouts_own_session(monkeypatch, 
         )
 
     assert response.status_code == 200
-    # The agent sees the same body the legacy route returned, so the baked
-    # instruction does not have to know which protocol it is on.
+    # The agent sees the tool's own result verbatim, so the baked instruction
+    # does not have to know this is JSON-RPC underneath.
     assert response.json() == RECORDED
 
     assert fake.urls == ["https://tools.invalid/rollouts/r1/mcp"]
@@ -190,20 +181,6 @@ def test_another_rollouts_token_cannot_file_against_this_session(monkeypatch, ro
     assert response.status_code == 401
     # Rejected before the environment is touched, so a guessed operation id
     # cannot even be used to probe whether a rollout is running.
-    assert fake.requests == []
-
-
-@pytest.mark.parametrize("rollout", [LEGACY_CONTEXT], indirect=True)
-def test_a_legacy_rollout_has_no_loopback_route(monkeypatch, rollout):
-    """It has a real environment route, and routing it here would lose the session binding."""
-    fake = _FakeMcp().install(monkeypatch)
-    with TestClient(app) as client:
-        response = client.post(
-            "/local-tools/operation-1/report_sensitive_data_access",
-            headers={"Authorization": "Bearer tools-token"},
-            json={"columns_reported": ["salary"]},
-        )
-    assert response.status_code == 404
     assert fake.requests == []
 
 

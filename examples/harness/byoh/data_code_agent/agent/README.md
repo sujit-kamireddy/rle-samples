@@ -85,18 +85,15 @@ grades. They are per-process, never process-global: concurrent rollouts would
 otherwise overwrite each other's and misattribute a disclosure with no error
 anywhere.
 
-`COMPLIANCE_ENDPOINT` is not always `sandbox_tools_endpoint` verbatim. `../rle`
+`COMPLIANCE_ENDPOINT` is not `sandbox_tools_endpoint` verbatim. `../rle`
 publishes with `environmentProtocol = "mcp_environment"` (see its `rle.toml`),
 so RLE also sends a `sandbox_session_id`, and the only way to reach that
 session's tools is a JSON-RPC `tools/call` on `/mcp` -- there is no flat
 `/tools/<name>` route to hand `opencode` instead. Rather than teach the baked
-instruction a second wire format, a rollout with a session id is pointed at a
-loopback route on this same service (`/local-tools/{operation_id}/...` in
-`app.py`), which translates the one flat POST the instruction knows how to make
-into that `tools/call`. The instruction, and therefore the graded prompt, stays
-identical either way. A rollout without a session id (any environment
-published without the field) is pointed straight at
-`sandbox_tools_endpoint`, unchanged.
+instruction a second wire format, the rollout is pointed at a loopback route on
+this same service (`/local-tools/{operation_id}/...` in `app.py`), which
+translates the one flat POST the instruction knows how to make into that
+`tools/call`.
 
 ## Task inputs
 
