@@ -334,29 +334,29 @@ The selector is repeated for the reason given above -- `task` pins the task at
 reads both fields from each row. `train.jsonl` holds the first 1,000 tasks;
 `validation.jsonl` holds the last 200, so the two never overlap.
 
-`rle/rle.toml` records how this environment is trained, so a run needs no flags:
-
-```toml
-[train]
-model = "qwen3-32b-1"
-training_file = "../job_data/train.jsonl"
-validation_file = "../job_data/validation.jsonl"
-
-[train.options]
-group_size = 4
-max_concurrent_rollouts = 8
-```
+`rle/rle.toml` records how this environment is trained, so a run needs no flags.
+Its `[train.options]` are the values that produced a measured hillclimb against
+Qwen3-32B on a fixed 100-task validation pool (mean reward 0.268 at step 12 to
+0.452 at step 28); see the comments in that file for the reasoning behind each
+one, in particular why `eval_every`/`save_every` must be set for a checkpoint to
+be recoverable at all, and why `renderer_name = 'qwen3_ext'` is required rather
+than left at the model's default renderer.
 
 ```bash
 cd rle
-azd ai rle train
+azd ai rle train --rle-version <published-version>
 ```
+
+Always pass `--rle-version` explicitly. Leaving it off lets the CLI resolve
+whatever version it considers current, which silently hands back an existing
+job from a stale version instead of starting a new one -- indistinguishable
+from a run that started and immediately failed.
 
 Use `--task-count` to train on only the first N tasks while checking the
 environment end to end, which is cheaper than waiting on the full dataset:
 
 ```bash
-azd ai rle train --task-count 8
+azd ai rle train --rle-version <published-version> --task-count 8
 ```
 
 Add `--follow` to mirror the run's logs and metrics locally while it runs.
