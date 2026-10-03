@@ -9,7 +9,7 @@ container.
 
 This folder is the only RLE service in the sample: it grades a rollout itself
 rather than trusting a score relayed back through a harness, using its own
-copy of the [grader](./server/vendor/grader.py) and the
+copy of the [grader](./server/grader.py) and the
 [compliance evaluator](./server/compliance.py). The agent runner and CSV
 provisioning are unaffected by anything in here.
 
