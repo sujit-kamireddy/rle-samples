@@ -307,8 +307,8 @@ model directly: it points `opencode` at `model_endpoint`/`model_api_key` and
 lets the agent loop make the calls, so the trajectory RLE records is the
 agent's own.
 
-`sandbox_tools_endpoint`/`sandbox_tools_token` (and, under
-`environmentProtocol = "mcp_environment"`, `sandbox_session_id`) arrive on the
+`mcp_endpoint`/`mcp_bearer_token` (and, under
+`environmentProtocol = "mcp_environment"`, `mcp_session_id`) arrive on the
 same request but are not rollout parameters -- they are lifted out of the
 rollout context into environment variables on that rollout's `opencode`
 process, so the agent can file a compliance disclosure back to `rle/` (see

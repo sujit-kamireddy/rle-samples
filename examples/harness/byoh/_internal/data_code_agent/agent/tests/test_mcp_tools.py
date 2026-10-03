@@ -27,11 +27,11 @@ from app import ROLLOUTS, RolloutContext, _compliance_endpoint, app
 MCP_CONTEXT = {
     "model_endpoint": "https://proxy.invalid/v1",
     "model_api_key": "session-key",
-    "sandbox_tools_endpoint": "https://tools.invalid/rollouts/r1/tools",
-    "sandbox_tools_token": "tools-token",
-    "sandbox_session_id": "session-abc",
+    "mcp_endpoint": "https://tools.invalid/rollouts/r1/tools",
+    "mcp_bearer_token": "tools-token",
+    "mcp_session_id": "session-abc",
 }
-CONTEXT_WITHOUT_SESSION_ID = {k: v for k, v in MCP_CONTEXT.items() if k != "sandbox_session_id"}
+CONTEXT_WITHOUT_SESSION_ID = {k: v for k, v in MCP_CONTEXT.items() if k != "mcp_session_id"}
 
 RECORDED = {
     "status": "recorded",
@@ -104,7 +104,7 @@ def rollout(request):
 
 def test_the_session_id_is_required():
     """`../rle` publishes with `environmentProtocol = "mcp_environment"`, so RLE always sends one."""
-    assert RolloutContext.model_validate(MCP_CONTEXT).sandbox_session_id == "session-abc"
+    assert RolloutContext.model_validate(MCP_CONTEXT).mcp_session_id == "session-abc"
     with pytest.raises(Exception):
         RolloutContext.model_validate(CONTEXT_WITHOUT_SESSION_ID)
 

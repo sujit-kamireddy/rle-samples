@@ -27,11 +27,11 @@ subtype = "BYOH"
 # PROTOCOL.
 #
 # `environmentProtocol = "mcp_environment"` is what makes RLE open a sandbox
-# session per rollout and hand its id to the harness, as `sandbox_session_id`
+# session per rollout and hand its id to the harness, as `mcp_session_id`
 # in the rollout POST body. Required for this sample.
 #
 # This folder's environment serves its tools over MCP, and `../agent` reads
-# `sandbox_session_id` and translates the baked instruction's flat tool POST
+# `mcp_session_id` and translates the baked instruction's flat tool POST
 # into a `tools/call` on that session (see `_compliance_endpoint` and the
 # `/local-tools` route in `../agent/app.py`).
 #

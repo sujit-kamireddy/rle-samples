@@ -1,8 +1,9 @@
 """Tests for the RLE BYOH invocation contract this harness has to speak.
 
-These exist because the contract drifted once without anything failing until a live rollout: RLE
-renamed three `rollout_context` fields, and since they are required on a pydantic model, the only
-symptom was a `422` on dispatch -- which reads like a broken harness rather than version skew.
+These exist because the contract has drifted without anything failing until a live rollout: RLE
+has renamed `rollout_context` fields more than once, and since they are required on a pydantic
+model, the only symptom was a `422` on dispatch -- which reads like a broken harness rather than
+version skew.
 
 The lifecycle assertions below are RLE's, not ours, and are transcribed from
 `ByohRolloutTargetInvoker`: the acknowledgement must be exactly `202` (not merely 2xx), the poll
@@ -23,12 +24,20 @@ from app import ROLLOUTS, InvocationRequest, RolloutContext, app
 MASTER_CONTEXT = {
     "model_endpoint": "https://proxy.invalid/v1",
     "model_api_key": "session-key",
+    "mcp_endpoint": "https://tools.invalid/tools",
+    "mcp_bearer_token": "tools-token",
+    "mcp_session_id": "session-abc",
+}
+# The spelling every live RLE region sent before the `mcp_*` rename. A deployed harness outlives a
+# single RLE release, so every generation has to keep working -- see the note on `RolloutContext`.
+PREVIOUS_CONTEXT = {
+    "model_endpoint": "https://proxy.invalid/v1",
+    "model_api_key": "session-key",
     "sandbox_tools_endpoint": "https://tools.invalid/tools",
     "sandbox_tools_token": "tools-token",
     "sandbox_session_id": "session-abc",
 }
-# The spelling RLE used before the rename. A deployed harness outlives a single RLE release, so
-# both have to keep working -- see the note on `RolloutContext`.
+# The spelling RLE used before the first rename, two generations back.
 LEGACY_CONTEXT = {
     "capture_proxy_endpoint": "https://proxy.invalid/v1",
     "capture_proxy_session_key": "session-key",
@@ -38,13 +47,14 @@ LEGACY_CONTEXT = {
 }
 
 
-@pytest.mark.parametrize("context", [MASTER_CONTEXT, LEGACY_CONTEXT], ids=["master", "legacy"])
-def test_both_wire_spellings_of_rollout_context_are_accepted(context):
+@pytest.mark.parametrize(
+    "context", [MASTER_CONTEXT, PREVIOUS_CONTEXT, LEGACY_CONTEXT], ids=["master", "previous", "legacy"])
+def test_every_wire_spelling_of_rollout_context_is_accepted(context):
     parsed = RolloutContext.model_validate(context)
     assert parsed.model_endpoint == "https://proxy.invalid/v1"
     assert parsed.model_api_key == "session-key"
-    assert parsed.sandbox_tools_endpoint == "https://tools.invalid/tools"
-    assert parsed.sandbox_tools_token == "tools-token"
+    assert parsed.mcp_endpoint == "https://tools.invalid/tools"
+    assert parsed.mcp_bearer_token == "tools-token"
 
 
 def test_rollout_context_still_requires_every_field():
