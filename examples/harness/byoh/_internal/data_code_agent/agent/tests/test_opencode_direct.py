@@ -20,11 +20,11 @@ import pytest
 
 import opencode_direct as od
 
-# This test lives under `_internal/`, a sibling of the real sample; the vendored answer key it
+# This test lives under `_internal/`, a sibling of the real sample; the committed answer key it
 # reads stays in the real sample tree, two levels further up and back down into `data_code_agent`.
 REPO = Path(__file__).resolve().parents[4] / "data_code_agent"
 ANSWER_KEY = (
-    REPO / "rle" / "server" / "vendor" / "task-meta" / "FineEnvs__data-agent-harbor-train.json.gz"
+    REPO / "rle" / "server" / "tasks" / "task-meta" / "FineEnvs__data-agent-harbor-train.json.gz"
 )
 
 

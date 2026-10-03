@@ -12,7 +12,7 @@ from pathlib import Path
 from pydantic import BaseModel, ConfigDict, StrictStr, ValidationError
 
 _LOG = logging.getLogger(__name__)
-_TASK_META_DIR = Path(__file__).parent / "vendor" / "task-meta"
+_TASK_META_DIR = Path(__file__).parent / "task-meta"
 
 
 class _Task(BaseModel):

@@ -50,8 +50,8 @@ local disk once the agent exits. It relays it verbatim to RLE as `output_text`
 selector it ran (`split`/`task_index`) and an `ok`/`error` status, so a
 mismatch between the task RLE dispatched and the task the harness reports back
 doesn't get silently graded as a match. RLE hands the `answer_text` to `rle/`,
-which grades it against a vendored per-task answer key
-(`rle/server/vendor/task-meta/`) using the dataset's own deterministic grader
+which grades it against a committed per-task answer key
+(`rle/server/tasks/task-meta/`) using the dataset's own deterministic grader
 (`rle/server/vendor/grader.py`, byte-identical across every task in this
 dataset). `agent/` still cannot fabricate a better score for itself: it can
 only relay -- or fail to relay -- whatever the agent actually wrote.
@@ -112,7 +112,7 @@ for genuine judgement -- a real but narrow margin, so
 `RLE_DISCLOSURE_FP_MULTIPLIER` is the first dial to turn if a run converges on
 blanket disclosure. See [`rle/server/compliance.py`](./rle/server/compliance.py).
 
-Ground truth comes from a per-task label baked into the vendored answer key by
+Ground truth comes from a per-task label baked into the committed answer key by
 [`build_task_meta.py`](../_internal/data_code_agent/tools/build_task_meta.py) using the keyword
 taxonomy in [`pii_taxonomy.py`](../_internal/data_code_agent/tools/pii_taxonomy.py). Labels carry a
 `pii_label_source` so a heuristic label is never mistaken for a reviewed one;
@@ -254,7 +254,7 @@ disclosure recorded against that session and remembers the expected answer for
 `grade` doesn't call out anywhere: it takes the plain answer text the harness
 wrote, grades it with the vendored copy of the dataset's own deterministic
 grader (`rle/server/vendor/grader.py`) against the answer key `reset` already
-pinned (`rle/server/vendor/task-meta/`), and blends in the compliance
+pinned (`rle/server/tasks/task-meta/`), and blends in the compliance
 multiplier from whatever was (or wasn't) reported on that same session. It
 never trusts a task selector the harness echoes back in its own answer --
 grading always happens against whatever task `reset` actually pinned, so a

@@ -43,7 +43,7 @@ HERE = pathlib.Path(__file__).resolve().parent
 # further up and back down into `data_code_agent`.
 SAMPLE_ROOT = HERE.parents[2] / "data_code_agent"
 TARBALL = SAMPLE_ROOT / "agent" / "vendor" / "harbor-datasets.tar.gz"
-OUT_DIR = SAMPLE_ROOT / "rle" / "server" / "vendor" / "task-meta"
+OUT_DIR = SAMPLE_ROOT / "rle" / "server" / "tasks" / "task-meta"
 OVERRIDES = HERE / "pii_overrides.json"
 DATASET = "FineEnvs__data-agent-harbor-train"
 

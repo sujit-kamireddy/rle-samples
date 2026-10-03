@@ -138,7 +138,7 @@ not run the BYOH harness agent.
 
 ## Dataset artifacts
 
-The [task metadata](./server/vendor/task-meta) is generated from the same
+The [task metadata](./server/tasks/task-meta) is generated from the same
 upstream source as the rest of the sample's dataset using
 [build_task_meta.py](../../_internal/data_code_agent/tools/build_task_meta.py)
 (from `_internal/data_code_agent/`, as above):
