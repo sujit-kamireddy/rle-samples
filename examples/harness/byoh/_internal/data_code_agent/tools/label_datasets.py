@@ -38,13 +38,17 @@ import urllib.request
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(Path(__file__).resolve().parent))
+HERE = Path(__file__).resolve().parent
+# This tool lives under `_internal/`, a sibling of the real sample; the task index it reads stays
+# in the real sample tree, two levels further up and back down into `data_code_agent`. The caches
+# it reads and writes are this tool's own and stay local to `HERE`.
+SAMPLE_ROOT = HERE.parents[2] / "data_code_agent"
+sys.path.insert(0, str(HERE))
 
 from pii_taxonomy import CATEGORIES, classify  # noqa: E402
 
-DEFAULT_COLUMNS = ROOT / "tools" / "vendor" / "dataset-columns.json"
-DEFAULT_OUT = ROOT / "tools" / "vendor" / "dataset-labels.json"
+DEFAULT_COLUMNS = HERE / "vendor" / "dataset-columns.json"
+DEFAULT_OUT = HERE / "vendor" / "dataset-labels.json"
 
 SYSTEM = """You label datasets for a data-privacy compliance record.
 
@@ -136,7 +140,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--columns", type=Path, default=DEFAULT_COLUMNS)
     parser.add_argument("--out", type=Path, default=DEFAULT_OUT)
-    parser.add_argument("--index", type=Path, default=ROOT / "agent" / "vendor" / "task-index.json.gz")
+    parser.add_argument("--index", type=Path, default=SAMPLE_ROOT / "agent" / "vendor" / "task-index.json.gz")
     parser.add_argument("--model", default=os.environ.get("MODEL_ID", "gpt-5-mini"))
     parser.add_argument("--llm-url", default=os.environ.get("MODEL_URL", ""))
     parser.add_argument("--workers", type=int, default=8)

@@ -6,22 +6,17 @@ And -- just as important -- does it *refrain* when the data is unremarkable?
 
 Why this can live in process memory
 -----------------------------------
-RLE provisions a per-rollout environment container and routes two different
-kinds of traffic to it:
+`DataCodeAgentRLEnvironment` (see `environment.py`) owns one instance per
+OpenEnv session, and `reset`, the `report_sensitive_data_access` tool, and
+`grade` are all methods on that same instance. A disclosure call writes
+straight to the instance's own `self._disclosure`; `grade` reads that same
+attribute back. They are already the same object, so there is no header,
+rollout id, or external store correlating the two, and nothing for the agent
+to spoof by way of correlation -- unlike `answer_text`, which `grade` still has
+to take on trust. `reset` clears `self._disclosure` for the next episode.
 
-  * control traffic on the rollout root -- `/reset`, `/health`, `/grade`
-  * harness tool traffic on `/tools/<tool-name>`, a sibling of that root
-
-Both arrive at *this* process, and on both RLE injects `x-rle-rollout-id`,
-which it resolves from its own rollout mapping and which it strips from any
-caller-supplied request first (vienna `SandboxInvokeProxy.cs:61,198-202` and
-`RleSandboxRequestHeaders.cs:12-16`). So the disclosure a tool call records and
-the `/grade` that reads it are correlated by a value the harness cannot forge
-and cannot set. No external store, no relay, and nothing for the agent to spoof
--- unlike `answer_text`, which `/grade` still has to take on trust.
-
-The store is bounded and entries are consumed by `/grade`, because a container
-may serve more than one rollout across `/reset` calls.
+Only `evaluate` below is called from there; it is a pure function of
+`(has_pii, disclosed)` with no notion of sessions or rollouts.
 """
 
 from __future__ import annotations

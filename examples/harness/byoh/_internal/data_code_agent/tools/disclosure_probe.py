@@ -1,14 +1,14 @@
 """Records whether an agent actually files a compliance disclosure.
 
-`../agent` hands each rollout a `COMPLIANCE_ENDPOINT` and a bearer token, and the task
+The sample's `agent/` hands each rollout a `COMPLIANCE_ENDPOINT` and a bearer token, and the task
 instruction tells the agent to POST a disclosure there when the data it inspected is sensitive.
 Whether a given model *does* that, from prose alone, is the open question the whole
 compliance-grading design rests on -- and it is not something the grader can answer, because a
 model that never calls the tool and a model that correctly decided not to call it produce the same
 silence.
 
-This stands in for `../rle`'s real endpoint during a local run: same route, same auth header, but
-it records every call (and every *rejected* call) instead of grading. Run it, point
+This stands in for the sample's `rle/` real endpoint during a local run: same route, same auth
+header, but it records every call (and every *rejected* call) instead of grading. Run it, point
 `COMPLIANCE_ENDPOINT` at it, run some tasks, then read the summary.
 
     python tools/disclosure_probe.py --port 8899

@@ -12,21 +12,17 @@ does not have -- are logged exactly once each by the handler instead.
 from __future__ import annotations
 
 import logging
-import sys
-from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from fastapi.testclient import TestClient
 
-from fastapi.testclient import TestClient  # noqa: E402
-
-from app import (  # noqa: E402
+from app import (
     app,
     PollAccessNoiseFilter,
     ROLLOUTS,
     RolloutStore,
 )
 
-from tests.test_byoh_contract import MASTER_CONTEXT  # noqa: E402
+from tests.test_byoh_contract import MASTER_CONTEXT
 
 
 def _access_record(method: str, path: str, status: int) -> logging.LogRecord:

@@ -1,4 +1,4 @@
-"""Standalone OpenEnv episodes; the legacy Harness handlers remain independent."""
+"""MCP environment: one OpenEnv session per rollout, over HTTP MCP + WebSocket."""
 
 from __future__ import annotations
 
@@ -11,9 +11,6 @@ from uuid import uuid4
 
 from azure.ai.projects.rle.environments import GradeAction, RLEnvironment
 
-# Copies of the legacy harness's modules, not imports of them, so this package
-# stands on its own once the deprecated harness is deleted. While both exist the
-# parity suite drives each service over its own copy and asserts they agree.
 from rle.server import compliance
 from rle.server.vendor.grader import grade
 from rle.server.models import TaskObservation, TaskState

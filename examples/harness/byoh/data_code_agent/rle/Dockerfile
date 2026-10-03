@@ -12,10 +12,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY __init__.py ./rle/__init__.py
 # The build context is this folder (`rle/`) itself -- `azd ai rle publish`
 # always builds from the directory holding rle.toml, so COPY sources are
-# relative to here, not the sample root. The deprecated harness is a sibling
-# folder outside this context already, so a COPY that reached for it would
-# fail the build rather than quietly re-coupling the image to a folder that
-# is going away.
+# relative to here, not the sample root.
 COPY server/ ./rle/server/
 
 EXPOSE 8000

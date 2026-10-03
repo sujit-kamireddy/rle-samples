@@ -1,4 +1,4 @@
-"""Independent full-dataset preservation and metadata builder regression tests."""
+"""Metadata builder regression tests: content guarantees and drift detection."""
 
 from __future__ import annotations
 
@@ -23,18 +23,18 @@ SPEC = importlib.util.spec_from_file_location(
 builder = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(builder)
 
-# Captured before adding questions; includes every original field and row order.
-LEGACY_ROWS_SHA256 = "4408d5c4c790bc505a781c94c6a3ae31d008d43405d200fdab285794564a0dbe"
-LEGACY_COMPRESSED_SHA256 = "8d998ea815f514a3680a101290e82cbc8452831c4096887e1eacdda8a9ff9c09"
+# Captured before this builder added `question`; still the hash of every other
+# field plus row order, so a refactor that silently drops or reorders the
+# original dataset's content is caught even though verification now also
+# compares `question`.
+ROWS_WITHOUT_QUESTION_SHA256 = "4408d5c4c790bc505a781c94c6a3ae31d008d43405d200fdab285794564a0dbe"
 
 
 class MetadataTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        with gzip.open(builder.OPENENV_OUT_DIR / f"{builder.DATASET}.json.gz") as handle:
+        with gzip.open(builder.OUT_DIR / f"{builder.DATASET}.json.gz") as handle:
             cls.rows = json.load(handle)
-        cls.legacy_bytes = (builder.OUT_DIR / f"{builder.DATASET}.json.gz").read_bytes()
-        cls.legacy_rows = json.loads(gzip.decompress(cls.legacy_bytes))
         cls.raw = builder._read_tasks(builder.TARBALL)
         cls.tasks = [
             tomllib.loads(files["toml"])
@@ -42,27 +42,7 @@ class MetadataTests(unittest.TestCase):
             if "toml" in files
         ]
 
-    def test_legacy_binary_and_rows_match_original_hashes(self):
-        self.assertEqual(hashlib.sha256(self.legacy_bytes).hexdigest(), LEGACY_COMPRESSED_SHA256)
-        canonical = json.dumps(
-            self.legacy_rows, sort_keys=True, separators=(",", ":"), ensure_ascii=False
-        ).encode("utf-8")
-        self.assertEqual(hashlib.sha256(canonical).hexdigest(), LEGACY_ROWS_SHA256)
-        self.assertTrue(all("question" not in row for row in self.legacy_rows))
-
-    def test_openenv_payload_is_legacy_plus_only_questions(self):
-        self.assertEqual(
-            [{key: value for key, value in row.items() if key != "question"} for row in self.rows],
-            self.legacy_rows,
-        )
-        self.assertTrue(all("question" in row for row in self.rows))
-
-    def test_shared_builder_keeps_default_legacy_and_explicit_openenv_outputs(self):
-        with mock.patch.object(builder, "_read_tasks", return_value=self.raw):
-            self.assertEqual(builder.build(), self.legacy_rows)
-            self.assertEqual(builder.build(openenv=True), self.rows)
-
-    def test_all_original_fields_and_order_match_independent_baseline(self):
+    def test_original_fields_and_order_match_pre_question_baseline(self):
         original = [
             {key: value for key, value in row.items() if key != "question"}
             for row in self.rows
@@ -71,7 +51,7 @@ class MetadataTests(unittest.TestCase):
             original, sort_keys=True, separators=(",", ":"), ensure_ascii=False
         ).encode("utf-8")
         self.assertEqual(len(original), 5000)
-        self.assertEqual(hashlib.sha256(canonical).hexdigest(), LEGACY_ROWS_SHA256)
+        self.assertEqual(hashlib.sha256(canonical).hexdigest(), ROWS_WITHOUT_QUESTION_SHA256)
 
     def test_identities_and_questions_match_explicit_upstream_source(self):
         self.assertEqual(len(self.rows), len(self.tasks))
@@ -83,6 +63,10 @@ class MetadataTests(unittest.TestCase):
                 self.assertIsInstance(row["question"], str)
                 self.assertTrue(row["question"].strip())
                 self.assertEqual(row["question"], task["verifier"]["env"]["QUESTION"])
+
+    def test_builder_reproduces_the_committed_file(self):
+        with mock.patch.object(builder, "_read_tasks", return_value=self.raw):
+            self.assertEqual(builder.build(), self.rows)
 
     def test_verification_rejects_drift_in_every_field(self):
         for field in self.rows[0]:
@@ -101,7 +85,7 @@ class MetadataTests(unittest.TestCase):
             with self.subTest(changed_length=len(changed)):
                 with contextlib.redirect_stdout(io.StringIO()):
                     with self.assertRaisesRegex(SystemExit, "metadata drift"):
-                        builder._verify_rows(self.rows[:len(changed)], changed)
+                        builder._verify_rows(self.rows[: len(changed)], changed)
         with self.assertRaisesRegex(SystemExit, "length drift"):
             builder._verify_rows(self.rows, self.rows[:-1])
 
@@ -116,13 +100,13 @@ class MetadataTests(unittest.TestCase):
                     with self.assertRaisesRegex(SystemExit, "metadata drift"):
                         builder._verify_rows([original], [changed], allow_question_update=True)
 
-    def test_write_refuses_label_drift_before_opening_output(self):
+    def test_write_refuses_field_drift_before_opening_output(self):
         changed = copy.deepcopy(self.rows)
         changed[0]["has_pii"] = not changed[0]["has_pii"]
         with (
             mock.patch.object(builder, "build", return_value=changed),
             mock.patch.object(builder, "_summarise"),
-            mock.patch.object(sys, "argv", ["build_task_meta.py", "--openenv", "--write"]),
+            mock.patch.object(sys, "argv", ["build_task_meta.py", "--write"]),
             mock.patch.object(gzip, "GzipFile", wraps=gzip.GzipFile) as gzip_file,
             contextlib.redirect_stdout(io.StringIO()),
         ):
@@ -145,34 +129,9 @@ class MetadataTests(unittest.TestCase):
                 }
                 with mock.patch.object(builder, "_read_tasks", return_value=raw):
                     with self.assertRaisesRegex(SystemExit, "missing or empty verifier QUESTION"):
-                        builder.build(openenv=True)
+                        builder.build()
 
-    def test_default_legacy_build_does_not_require_question(self):
-        raw = {
-            "task": {
-                "toml": '[task]\nname = "test/task"\ndescription = "Legacy description"\n'
-            }
-        }
-        with mock.patch.object(builder, "_read_tasks", return_value=raw):
-            entries = builder.build()
-        self.assertEqual(len(entries), 1)
-        self.assertNotIn("question", entries[0])
-
-    def test_default_legacy_verification_permits_label_changes_not_answer_drift(self):
-        changed = copy.deepcopy(self.legacy_rows)
-        changed[0]["has_pii"] = not changed[0]["has_pii"]
-        with (
-            mock.patch.object(builder, "build", return_value=changed),
-            mock.patch.object(builder, "_summarise"),
-            mock.patch.object(sys, "argv", ["build_task_meta.py", "--verify"]),
-            contextlib.redirect_stdout(io.StringIO()),
-        ):
-            self.assertEqual(builder.main(), 0)
-            changed[0]["expected_answer"] = None
-            with self.assertRaisesRegex(SystemExit, "metadata drift"):
-                builder.main()
-
-    def test_openenv_cli_verification_checks_questions_and_every_legacy_field(self):
+    def test_cli_verification_checks_questions_and_every_field(self):
         for field in self.rows[0]:
             with self.subTest(field=field):
                 changed = copy.deepcopy(self.rows)
@@ -180,7 +139,7 @@ class MetadataTests(unittest.TestCase):
                 with (
                     mock.patch.object(builder, "build", return_value=changed),
                     mock.patch.object(builder, "_summarise"),
-                    mock.patch.object(sys, "argv", ["build_task_meta.py", "--openenv", "--verify"]),
+                    mock.patch.object(sys, "argv", ["build_task_meta.py", "--verify"]),
                     contextlib.redirect_stdout(io.StringIO()),
                 ):
                     with self.assertRaisesRegex(SystemExit, "metadata drift"):

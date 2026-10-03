@@ -2,9 +2,10 @@
 
 Why a separate index instead of the whole suite
 -----------------------------------------------
-`agent/opencode_direct.py` runs `opencode` in the harness container and `../rle` does the
-grading, so the only things it needs per task are the instruction text, the bucket coordinates
-for the input files, and the agent timeout. The upstream suite is 216MB extracted.
+`agent/opencode_direct.py` runs `opencode` in the harness container and the sample's `rle/`
+service does the grading, so the only things it needs per task are the instruction text, the
+bucket coordinates for the input files, and the agent timeout. The upstream suite is 216MB
+extracted.
 
 Shipping the rest is not merely wasteful, it is unsafe. Every `task.toml` carries
 `metadata.gold_answer` and `verifier.env.EXPECTED_ANSWER`, and every `instruction.md` embeds its
@@ -14,13 +15,13 @@ and read its own gold answer without doing any analysis. Measured on this suite,
 agent's own answer for 25 of 25 sampled tasks.
 
 Filesystem permissions could hide the suite, but not shipping the answers at all is the stronger
-and simpler guarantee: the grading key lives only in `../rle`'s container, which hands the agent
-no shell.
+and simpler guarantee: the grading key lives only in the sample's `rle/` container, which hands
+the agent no shell.
 
 Output
 ------
 `agent/vendor/task-index.json.gz`: a gzipped JSON array, one entry per task, ordered by task
-directory name with dotted directories skipped -- a task's index is its identity, and `../rle`'s
+directory name with dotted directories skipped -- a task's index is its identity, and `rle/`'s
 answer key is keyed by it, so the order is load-bearing rather than cosmetic.
 """
 
@@ -36,15 +37,19 @@ import tomllib
 from pathlib import Path
 from typing import Any
 
-REPO_ROOT = Path(__file__).resolve().parent.parent
-TARBALL = REPO_ROOT / "agent" / "vendor" / "harbor-datasets.tar.gz"
-INDEX = REPO_ROOT / "agent" / "vendor" / "task-index.json.gz"
+HERE = Path(__file__).resolve().parent
+# This tool lives under `_internal/`, a sibling of the real sample; the tarball and index it reads
+# and writes stay in the real sample tree, two levels further up and back down into
+# `data_code_agent`.
+SAMPLE_ROOT = HERE.parents[2] / "data_code_agent"
+TARBALL = SAMPLE_ROOT / "agent" / "vendor" / "harbor-datasets.tar.gz"
+INDEX = SAMPLE_ROOT / "agent" / "vendor" / "task-index.json.gz"
 
 # Docker cannot COPY above its build context (`agent/`), so the fetcher is mirrored into
 # `vendor/` for the image to pick up. `tools/pull_bucket.py` stays the source of truth; this copy is
 # generated, and `--verify` fails when the two drift.
-FETCHER_SRC = REPO_ROOT / "tools" / "pull_bucket.py"
-FETCHER_DST = REPO_ROOT / "agent" / "vendor" / "pull_bucket.py"
+FETCHER_SRC = HERE / "pull_bucket.py"
+FETCHER_DST = SAMPLE_ROOT / "agent" / "vendor" / "pull_bucket.py"
 
 # Keys that must never reach the harness container. Checked against the emitted index rather than
 # assumed from the code that builds it, so that adding a field to the row below cannot quietly

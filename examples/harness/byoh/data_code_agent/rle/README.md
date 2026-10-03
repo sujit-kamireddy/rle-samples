@@ -1,34 +1,17 @@
-# Standalone OpenEnv environment
+# MCP environment
 
-[`ByohRLEEnvironment`](./server/environment.py) extends `RLEnvironment`
+[`DataCodeAgentRLEnvironment`](./server/environment.py) extends `RLEnvironment`
 from `azure-ai-projects[rle]`, the Foundry RLE authoring base class, and owns
 one episode per OpenEnv session. The base class supplies `GradeAction` and
 routes a non-MCP step into `grade`. HTTP MCP tools and WebSocket simulation
 control share that instance; multiple sessions can run independently in one
 container.
 
-This service is separate from the existing [Harness environment](../rle_deprecated).
-Grading is not reimplemented from scratch, and it is not imported from the
-legacy harness either: this folder carries its own copy of the
-[grader](./server/vendor/grader.py) and the
-[compliance evaluator](./server/compliance.py). The agent runner, legacy HTTP
-API, and CSV provisioning remain unchanged.
-
-That duplication is a deliberate stopgap. `../rle_deprecated` is scheduled for deletion
-once this variant is proven, and nothing in this folder or in its image reads
-it, so the delete is a `rm -rf` rather than a migration. While both copies
-exist, `test_distinct_service_package_carries_its_own_grading_modules` asserts
-they are distinct objects loaded from byte-identical files, and the parity
-suites drive both services over the whole dataset and require the rewards to
-match. Those tests skip automatically once `../rle_deprecated` is gone.
-
-## Delivery phases
-
-1. **Local phase:** standalone OpenEnv, parity with existing RLE grading/tools,
-   and independent concurrent environment instances.
-2. **Foundry phase using RLE:** deployment, integration, and validation details
-   **TBA**, after local validation. Local concurrency does not establish Foundry
-   multi-rollout-per-sandbox support.
+This folder is the only RLE service in the sample: it grades a rollout itself
+rather than trusting a score relayed back through a harness, using its own
+copy of the [grader](./server/vendor/grader.py) and the
+[compliance evaluator](./server/compliance.py). The agent runner and CSV
+provisioning are unaffected by anything in here.
 
 ## Build and run locally
 
@@ -36,10 +19,8 @@ Run all commands below from the parent `data_code_agent/` directory unless
 otherwise specified. The **Docker build context is this `rle/` folder**, not
 the sample root, matching where `azd ai rle publish` resolves `rle.toml` and
 builds from, so paths in the Dockerfile are written relative to here. The
-image copies nothing from `../rle_deprecated`: not the agent, not the legacy
-HTTP server, and not its grading modules. The Dockerfile-specific ignore file
-restricts the build context to this folder, excluding tests and Python
-bytecode.
+Dockerfile-specific ignore file restricts the build context to this folder,
+excluding tests and Python bytecode.
 
 ```bash
 docker build -f rle/Dockerfile -t byoh-rle-openenv:local rle/
@@ -135,6 +116,13 @@ untrusted agent shell access to this grading container.
 
 ## Scripted client
 
+This sample's maintainer-only tooling (this script, `tools/`, and the test
+suites below) lives outside the scaffolded tree, in a sibling `_internal/`
+copy of this sample -- so `azd ai rle init` does not hand a new user a pile of
+things that are only here to keep the sample itself correct. Run the commands
+in the rest of this document from `_internal/data_code_agent/`, the root of
+that copy, not from this sample root.
+
 ```bash
 python -m pip install -r rle/requirements-test.txt
 python -m rle.scripts.session_demo \
@@ -150,60 +138,46 @@ not run the BYOH harness agent.
 
 ## Dataset artifacts
 
-The legacy answer key remains in [rle_deprecated/server/vendor/task-meta](../rle_deprecated/server/vendor/task-meta).
-OpenEnv's [task metadata](./server/vendor/task-meta) adds question text while
-preserving every original field and row position. Both artifacts are generated
-from the same upstream source using [build_task_meta.py](../tools/build_task_meta.py):
+The [task metadata](./server/vendor/task-meta) is generated from the same
+upstream source as the rest of the sample's dataset using
+[build_task_meta.py](../../_internal/data_code_agent/tools/build_task_meta.py)
+(from `_internal/data_code_agent/`, as above):
 
 ```bash
-python tools/build_task_meta.py --verify
-python tools/build_task_meta.py --openenv --verify
-# Regenerate only the OpenEnv artifact when updating its source:
-python tools/build_task_meta.py --openenv --write
+python tools/build_task_meta.py --verify  # diff against the committed key
+python tools/build_task_meta.py --write   # regenerate the committed key
 ```
 
-The OpenEnv flag is explicit so the legacy builder's default target and format
-remain unchanged. Metadata tests compare the artifacts and guard the original
-answer key with its pre-conversion hash.
+`--verify` fails on any drift in a task's question, expected answer, reward
+mode, tolerances, or sensitivity label; `rle/tests/test_metadata.py` pins the
+same invariants (plus a hash of every non-question field) so corruption of the
+baked dataset is caught in CI, not at grading time.
 
-## Parity and concurrency validation
+## Test suite
 
-With test requirements installed, run from the sample root:
+With test requirements installed, run from `_internal/data_code_agent/`:
 
 ```bash
-# Existing Harness command is unchanged and does not import OpenEnv.
-(cd rle_deprecated && python -m unittest discover -s tests -t .)
+# Unit tests: dataset metadata and the in-process environment/app.
+python -m pytest rle/tests/test_metadata.py rle/tests/test_environment.py agent/tests/
 
-# Focused local implementation and differential checks.
-OPENENV_PARITY_REPORT=/tmp/openenv-focused-parity.json \
-  python -m unittest rle.tests.test_metadata \
-    rle.tests.test_environment rle.tests.test_parity
-
-# Required full-dataset gate; allow approximately 20 minutes.
-OPENENV_PARITY_REPORT=/tmp/openenv-parity.json \
-  python -m unittest rle.tests.test_full_dataset
-
-# Real containers, HTTP MCP, WebSockets, and independent concurrent sessions.
-docker build -t byoh-rle-legacy:local rle_deprecated
-docker build -f rle/Dockerfile -t byoh-rle-openenv:local rle/
-LEGACY_TEST_IMAGE=byoh-rle-legacy:local \
+# Real container, HTTP MCP, WebSockets, and independent concurrent sessions.
+# (build as in "Build and run locally" above, from the sample root, then come back here)
 OPENENV_TEST_IMAGE=byoh-rle-openenv:local \
 OPENENV_LIVE_REPORT=/tmp/openenv-live.json \
-  python -m unittest rle.tests.test_live
+  python -m pytest rle/tests/test_live.py
 ```
 
-The full gate compares legacy HTTP handlers with real OpenEnv HTTP MCP/WebSocket
-handlers: four candidate variants, each with and without disclosure, for every
-vendored task (8N cases). Exact rewards, correctness-only success, selected task,
-and tool outcomes must agree, with zero unexpected mismatches or required skips.
+These are plain `pytest` invocations, not `python -m unittest rle.tests...`:
+`rle/` here is a placeholder with no `__init__.py` of its own (only `tests/`
+and `scripts/` moved), so it cannot resolve `rle.server` the way the real
+sample's `rle/` package does; pytest's per-file import handles that, a shared
+dotted package path cannot.
 
-Focused tests cover fixed grading outcomes, tolerances/lists, input normalization,
-private-state filtering, contract differences, and overlapping operations.
-Live tests exercise separate concurrent instances, capacity, detach/reattach,
-deferred close, and idle cleanup in real containers.
-
-Parity applies to **valid episode outcomes**, not identical protocol envelopes:
-the legacy API keeps permissive reset, malformed-report zero scores, and consuming
-disclosure semantics; OpenEnv requires explicit selectors and typed actions, then
-rejects further mutations after its terminal grade. These tests do not establish
-BYOH harness trajectory or Foundry rollout parity.
+Unit tests cover dataset integrity, fixed grading outcomes, tolerances/lists,
+input normalization, private-state filtering, and overlapping operations
+in-process. Live tests exercise the real image: package boundaries, every
+disclosed/correct quadrant for a sensitive and a clean task, separate
+concurrent instances, capacity, detach/reattach, deferred close, and idle
+cleanup, all over HTTP MCP and WebSocket exactly as Foundry would drive them.
+Neither suite establishes end-to-end Foundry rollout parity on its own.

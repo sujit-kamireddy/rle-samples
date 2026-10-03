@@ -18,7 +18,8 @@ schema_version = "1.0.0"
 name = "data_code_agent_byoh_google_cloud_run"
 # Semantic version, MAJOR.MINOR.PATCH. Immutable: publishing a change means a
 # new version. The 2.x line is this folder's MCP environment; 1.x was the
-# legacy HTTP harness that now lives in `../rle_deprecated`.
+# legacy HTTP harness, removed now that this MCP environment is the only
+# supported path.
 version = "2.0.2"
 # "Gym" or "Harness".
 type = "Harness"
@@ -35,8 +36,7 @@ subtype = "BYOH"
 # This folder's environment serves its tools over MCP, and `../agent` reads
 # `sandbox_session_id` and translates the baked instruction's flat tool POST
 # into a `tools/call` on that session (see `_compliance_endpoint` and the
-# `/local-tools` route in `../agent/app.py`). `../rle_deprecated` is legacy on
-# both halves.
+# `/local-tools` route in `../agent/app.py`).
 #
 # Needs an `azd ai rle` build that knows the key. Older extensions parse this
 # manifest in strict mode and reject it outright.
@@ -144,8 +144,8 @@ validation_file = "../job_data/validation.jsonl"
 # at step 60 (0.611 at the final step, 64). Sizing is chosen to *resolve* that
 # curve, not to show a direction quickly, so a smoke run should cut it down
 # with `--task-count` rather than by trimming these. Measured on the legacy
-# HTTP harness (`../rle_deprecated`); these are training-service options, not
-# harness-wire options, so they carry over unchanged to this MCP environment.
+# HTTP harness that preceded this MCP environment; these are training-service
+# options, not harness-wire options, so they carried over unchanged.
 #
 # That run was not one continuous job: a rollout-execution failure storm
 # tripped `rollout_failure_rate_abort` at batch 44 (`RolloutFailureRateExceeded`

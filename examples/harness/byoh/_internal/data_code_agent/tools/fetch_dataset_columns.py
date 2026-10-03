@@ -34,9 +34,13 @@ import urllib.request
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent.parent
-DEFAULT_INDEX = ROOT / "agent" / "vendor" / "task-index.json.gz"
-DEFAULT_OUT = ROOT / "tools" / "vendor" / "dataset-columns.json"
+HERE = Path(__file__).resolve().parent
+# This tool lives under `_internal/`, a sibling of the real sample; the task index it reads stays
+# in the real sample tree, two levels further up and back down into `data_code_agent`. The cache
+# it writes is this tool's own and stays local to `HERE`.
+SAMPLE_ROOT = HERE.parents[2] / "data_code_agent"
+DEFAULT_INDEX = SAMPLE_ROOT / "agent" / "vendor" / "task-index.json.gz"
+DEFAULT_OUT = HERE / "vendor" / "dataset-columns.json"
 
 HEADER_BYTES = 8192
 TIMEOUT_SEC = 60
@@ -116,7 +120,7 @@ def main() -> int:
     parser.add_argument("--limit", type=int, default=0, help="only fetch the first N datasets")
     args = parser.parse_args()
 
-    sys.path.insert(0, str(ROOT / "harness"))
+    sys.path.insert(0, str(SAMPLE_ROOT / "harness"))
     import gzip
 
     rows = json.loads(gzip.decompress(args.index.read_bytes()))
