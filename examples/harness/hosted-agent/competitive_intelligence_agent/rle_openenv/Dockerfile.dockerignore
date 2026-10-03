@@ -1,0 +1,12 @@
+# The build context is the sample root, so most of it is excluded here.
+# Only the environment's own code and the four shared `rl/` modules are needed.
+**/__pycache__
+**/*.pyc
+agent/
+tools/
+job_data/
+rle/Dockerfile
+rle/rle.toml
+rle_openenv/README.md
+rle_openenv/tests/
+README.md
