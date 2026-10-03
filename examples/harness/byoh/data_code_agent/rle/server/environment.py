@@ -12,7 +12,7 @@ from uuid import uuid4
 from azure.ai.projects.rle.environments import GradeAction, RLEnvironment
 
 from rle.server import compliance
-from rle.server.vendor.grader import grade
+from rle.server.grader import grade
 from rle.server.models import TaskObservation, TaskState
 from rle.server.tasks.tasks import _Task, load_tasks
 

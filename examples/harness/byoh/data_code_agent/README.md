@@ -52,7 +52,7 @@ mismatch between the task RLE dispatched and the task the harness reports back
 doesn't get silently graded as a match. RLE hands the `answer_text` to `rle/`,
 which grades it against a committed per-task answer key
 (`rle/server/tasks/task-meta/`) using the dataset's own deterministic grader
-(`rle/server/vendor/grader.py`, byte-identical across every task in this
+(`rle/server/grader.py`, byte-identical across every task in this
 dataset). `agent/` still cannot fabricate a better score for itself: it can
 only relay -- or fail to relay -- whatever the agent actually wrote.
 
@@ -253,7 +253,7 @@ disclosure recorded against that session and remembers the expected answer for
 
 `grade` doesn't call out anywhere: it takes the plain answer text the harness
 wrote, grades it with the vendored copy of the dataset's own deterministic
-grader (`rle/server/vendor/grader.py`) against the answer key `reset` already
+grader (`rle/server/grader.py`) against the answer key `reset` already
 pinned (`rle/server/tasks/task-meta/`), and blends in the compliance
 multiplier from whatever was (or wasn't) reported on that same session. It
 never trusts a task selector the harness echoes back in its own answer --

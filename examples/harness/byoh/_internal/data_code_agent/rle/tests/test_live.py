@@ -120,7 +120,7 @@ class LiveContainerTests(unittest.IsolatedAsyncioTestCase):
 import importlib.util
 from pathlib import Path
 from rle.server.environment import grade, compliance
-from rle.server.vendor.grader import grade as own_grade
+from rle.server.grader import grade as own_grade
 from rle.server import compliance as own_compliance
 assert grade is own_grade
 assert compliance is own_compliance

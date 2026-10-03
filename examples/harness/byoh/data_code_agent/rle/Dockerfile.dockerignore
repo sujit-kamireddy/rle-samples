@@ -8,8 +8,6 @@
 !__init__.py
 !server/
 !server/*.py
-!server/vendor/
-!server/vendor/*.py
 !server/tasks/
 !server/tasks/*.py
 !server/tasks/task-meta/
