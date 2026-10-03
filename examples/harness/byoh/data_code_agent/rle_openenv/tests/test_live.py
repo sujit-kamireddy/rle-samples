@@ -138,14 +138,16 @@ assert not Path('/app/server/openenv_app.py').exists()
 assert not Path('/app/server/openenv_environment.py').exists()
 """,
             "openenv": """
+import importlib.util
 from pathlib import Path
 from rle_openenv.server.environment import grade, compliance
-from rle.server.vendor.grader import grade as shared_grade
-from rle.server import compliance as shared_compliance
-assert grade is shared_grade
-assert compliance is shared_compliance
+from rle_openenv.server.vendor.grader import grade as own_grade
+from rle_openenv.server import compliance as own_compliance
+assert grade is own_grade
+assert compliance is own_compliance
 assert Path('/app/rle_openenv/server/vendor/task-meta').is_dir()
-assert not Path('/app/rle/server/env.py').exists()
+assert not Path('/app/rle').exists()
+assert importlib.util.find_spec('rle') is None
 assert not Path('/app/agent').exists()
 assert not Path('/app/rle_openenv/tests').exists()
 """,

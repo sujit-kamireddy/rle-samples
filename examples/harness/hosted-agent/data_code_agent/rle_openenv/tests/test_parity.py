@@ -9,9 +9,13 @@ import unittest
 from unittest import mock
 from uuid import uuid4
 
+# `compliance` is the deprecated harness's copy: the uses below are all of its
+# per-rollout state, which only that service keeps. The OpenEnv service carries
+# its own copy and is patched through `openenv_compliance` where a case has to
+# observe both services at once.
 from rle.server import compliance, env as legacy
 from rle.server.vendor.grader import grade
-from rle_openenv.server import environment
+from rle_openenv.server import compliance as openenv_compliance, environment
 
 from .parity import (
     Pair, Report, datasets, differences, fixture, quiet_transport, synthetic_tasks,
@@ -110,6 +114,7 @@ class FocusedParityTests(unittest.TestCase):
                     mock.patch.object(legacy, "_grade", side_effect=spy),
                     mock.patch.object(environment, "grade", side_effect=spy),
                     mock.patch.object(compliance, "evaluate", side_effect=evaluate),
+                    mock.patch.object(openenv_compliance, "evaluate", side_effect=evaluate),
                 ):
                     self.assert_case(row, answer, expected=(reward, bool(reward)))
                 self.assertEqual(len(calls), 2)

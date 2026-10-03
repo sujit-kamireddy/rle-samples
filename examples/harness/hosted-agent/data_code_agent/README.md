@@ -28,7 +28,8 @@ Two containers:
 
 [`rle_openenv/`](./rle_openenv) contains the standalone OpenEnv service, its
 Dockerfile, dependencies, session client, tests, and question-enriched metadata.
-It reuses the legacy grader and compliance evaluator without changing the
+It carries its own copy of the grader and compliance evaluator, kept in
+lockstep with the legacy ones by the parity suites, and changes neither the
 existing Harness API or deployment.
 
 See its [README](./rle_openenv/README.md) for local setup, full-dataset parity

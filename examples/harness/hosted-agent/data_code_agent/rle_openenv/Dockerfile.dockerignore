@@ -1,3 +1,7 @@
+# Deny by default, then name exactly what the image needs. The deprecated
+# harness is absent from this allowlist on purpose: it keeps the decoupling
+# honest, since a COPY that reached back into it would fail the build rather
+# than quietly re-coupling the image to a folder that is going away.
 **
 !rle_openenv/
 !rle_openenv/requirements.txt
@@ -5,11 +9,6 @@
 !rle_openenv/server/
 !rle_openenv/server/*.py
 !rle_openenv/server/vendor/
+!rle_openenv/server/vendor/*.py
 !rle_openenv/server/vendor/task-meta/
 !rle_openenv/server/vendor/task-meta/*.json.gz
-!rle/
-!rle/server/
-!rle/server/__init__.py
-!rle/server/compliance.py
-!rle/server/vendor/
-!rle/server/vendor/grader.py

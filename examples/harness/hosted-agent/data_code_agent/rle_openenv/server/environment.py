@@ -19,8 +19,11 @@ from fastmcp import FastMCP
 from openenv.core.env_server.types import Observation, State
 from pydantic import BaseModel, ConfigDict, StrictStr, ValidationError
 
-from rle.server import compliance
-from rle.server.vendor.grader import grade
+# Copies of the legacy harness's modules, not imports of them, so this package
+# stands on its own once the deprecated harness is deleted. While both exist the
+# parity suite drives each service over its own copy and asserts they agree.
+from rle_openenv.server import compliance
+from rle_openenv.server.vendor.grader import grade
 
 _LOG = logging.getLogger(__name__)
 _TASK_META_DIR = Path(__file__).parent / "vendor" / "task-meta"

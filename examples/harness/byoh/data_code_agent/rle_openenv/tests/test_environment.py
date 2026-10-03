@@ -6,12 +6,13 @@ import json
 import threading
 import unittest
 from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
 from unittest.mock import patch
 
 from fastapi.testclient import TestClient
 from pydantic import ValidationError
 
-from rle.server import compliance
+from rle_openenv.server import compliance
 from rle_openenv.server.app import app, build_app
 from rle_openenv.server.environment import (
     GradeAction,
@@ -32,15 +33,36 @@ class EnvironmentTests(unittest.TestCase):
             env.reset(split=SPLIT, task_index=index)
         return env
 
-    def test_distinct_service_package_reuses_legacy_grading_modules(self):
-        from rle.server import env as legacy
+    def test_distinct_service_package_carries_its_own_grading_modules(self):
+        """Duplication's one risk is drift, so assert the copies stay identical."""
         from rle_openenv.server import environment
+        from rle_openenv.server.vendor import grader
 
-        self.assertIs(environment.grade, legacy._grade)
-        self.assertIs(environment.compliance, legacy.compliance)
         self.assertEqual(
-            ByohRLEEnvironment.__module__, "rle_openenv.server.environment"
+            type(self.make_env(index=None)).__module__,
+            "rle_openenv.server.environment",
         )
+
+        try:
+            from rle.server import compliance as deprecated_compliance
+            from rle.server import env as deprecated
+            from rle.server.vendor import grader as deprecated_grader
+        except ImportError:
+            self.skipTest("the deprecated harness is gone; nothing left to compare")
+
+        # Distinct objects: this service keeps grading once the other is deleted.
+        self.assertIsNot(environment.grade, deprecated._grade)
+        self.assertIsNot(environment.compliance, deprecated.compliance)
+        for ours, theirs in (
+            (grader, deprecated_grader),
+            (compliance, deprecated_compliance),
+        ):
+            self.assertNotEqual(ours.__file__, theirs.__file__)
+            self.assertEqual(
+                Path(ours.__file__).read_bytes(),
+                Path(theirs.__file__).read_bytes(),
+                f"{Path(ours.__file__).name} has drifted from the deprecated copy",
+            )
 
     def test_grade_action_is_strict_and_cannot_override_task(self):
         for payload in (

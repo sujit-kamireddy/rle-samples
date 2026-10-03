@@ -8,9 +8,19 @@ control share that instance; multiple sessions can run independently in one
 container.
 
 This service is separate from the existing [Harness environment](../rle).
-It reuses the existing [grader](../rle/server/vendor/grader.py) and
-[compliance evaluator](../rle/server/compliance.py), not independently maintained
-copies. The agent runner, legacy HTTP API, and CSV provisioning remain unchanged.
+Grading is not reimplemented from scratch, and it is not imported from the
+legacy harness either: this folder carries its own copy of the
+[grader](./server/vendor/grader.py) and the
+[compliance evaluator](./server/compliance.py). The agent runner, legacy HTTP
+API, and CSV provisioning remain unchanged.
+
+That duplication is a deliberate stopgap. `../rle` is scheduled for deletion
+once this variant is proven, and nothing in this folder or in its image reads
+it, so the delete is a `rm -rf` rather than a migration. While both copies
+exist, `test_distinct_service_package_carries_its_own_grading_modules` asserts
+they are distinct objects loaded from byte-identical files, and the parity
+suites drive both services over the whole dataset and require the rewards to
+match. Those tests skip automatically once `../rle` is gone.
 
 ## Delivery phases
 
@@ -24,10 +34,10 @@ copies. The agent runner, legacy HTTP API, and CSV provisioning remain unchanged
 
 Run all commands below from the parent `data_code_agent/` directory unless
 otherwise specified. The **sample root is the OpenEnv Docker build context**,
-so the image can copy the two shared legacy Python modules without duplicating
-their source in this folder. It does not copy the agent or legacy HTTP server.
-The Dockerfile-specific ignore file restricts the build context to these inputs,
-excluding agent data, tests, and Python bytecode.
+so paths in the Dockerfile are written as `rle_openenv/...`. The image copies
+nothing from `../rle`: not the agent, not the legacy HTTP server, and not its
+grading modules. The Dockerfile-specific ignore file restricts the build
+context to this folder, excluding agent data, tests, and Python bytecode.
 
 ```bash
 docker build -f rle_openenv/Dockerfile -t byoh-rle-openenv:local .
