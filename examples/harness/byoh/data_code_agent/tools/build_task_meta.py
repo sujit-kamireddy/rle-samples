@@ -1,6 +1,6 @@
 """Rebuilds private task metadata and public questions from the upstream tarball.
 
-`rle/server/env.py` grades a rollout itself rather than trusting a score
+`rle_deprecated/server/env.py` grades a rollout itself rather than trusting a score
 relayed back through the harness, so it needs each task's expected answer and
 reward mode locally. That is what this script bakes.
 
@@ -24,7 +24,7 @@ Usage:
     python tools/build_task_meta.py --verify            # legacy grading fields
     python tools/build_task_meta.py --write             # legacy key, no questions
     python tools/build_task_meta.py --openenv --verify  # all standalone fields
-    python tools/build_task_meta.py --openenv --write   # rle_openenv question key
+    python tools/build_task_meta.py --openenv --write   # rle question key
 """
 
 from __future__ import annotations
@@ -45,8 +45,8 @@ from pii_taxonomy import classify  # noqa: E402
 HERE = pathlib.Path(__file__).resolve().parent
 SAMPLE_ROOT = HERE.parent
 TARBALL = SAMPLE_ROOT / "agent" / "vendor" / "harbor-datasets.tar.gz"
-OUT_DIR = SAMPLE_ROOT / "rle" / "server" / "vendor" / "task-meta"
-OPENENV_OUT_DIR = SAMPLE_ROOT / "rle_openenv" / "server" / "vendor" / "task-meta"
+OUT_DIR = SAMPLE_ROOT / "rle_deprecated" / "server" / "vendor" / "task-meta"
+OPENENV_OUT_DIR = SAMPLE_ROOT / "rle" / "server" / "vendor" / "task-meta"
 OVERRIDES = HERE / "pii_overrides.json"
 DATASET = "FineEnvs__data-agent-harbor-train"
 
@@ -183,7 +183,7 @@ def main() -> int:
     parser.add_argument("--verify", action="store_true", help="diff against the key")
     parser.add_argument(
         "--openenv", action="store_true",
-        help="target rle_openenv with required questions and full legacy-field parity",
+        help="target rle with required questions and full legacy-field parity",
     )
     args = parser.parse_args()
     if not (args.write or args.verify):

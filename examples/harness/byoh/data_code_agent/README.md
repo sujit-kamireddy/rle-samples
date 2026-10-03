@@ -18,20 +18,20 @@ Two containers:
   instruction with RLE's capture proxy as the model endpoint (so every model
   call lands in the rollout graph), and relays back the answer text the agent
   wrote.
-- [`rle/`](./rle) -- the RLE container. `/grade` scores that answer text with its
+- [`rle_deprecated/`](./rle_deprecated) -- the RLE container. `/grade` scores that answer text with its
   own vendored copy of the grader. It also serves
   `/tools/report_sensitive_data_access`, the compliance-disclosure endpoint
   described below, and blends that decision into the reward.
 
 ## Standalone OpenEnv alternative
 
-[`rle_openenv/`](./rle_openenv) contains the standalone OpenEnv service, its
+[`rle/`](./rle) contains the standalone OpenEnv service, its
 Dockerfile, dependencies, session client, tests, and question-enriched metadata.
 It carries its own copy of the grader and compliance evaluator, kept in
 lockstep with the legacy ones by the parity suites, and changes neither the
 existing BYOH wire contract or deployment.
 
-See its [README](./rle_openenv/README.md) for local setup, full-dataset parity
+See its [README](./rle/README.md) for local setup, full-dataset parity
 checks, and concurrent-instance validation. The second phase, deployment using
 Foundry RLE, remains **TBA**.
 
@@ -40,7 +40,7 @@ Foundry RLE, remains **TBA**.
 **Why doesn't `agent/` just report the reward?** `agent/` is untrusted,
 customer-hosted code, and the grader is a public, deterministic function of
 `(gold, candidate)` -- nothing stops a misbehaving harness from computing the
-winning `candidate` and reporting whatever `reward` it likes. So `rle/`'s
+winning `candidate` and reporting whatever `reward` it likes. So `rle_deprecated/`'s
 `/grade` computes `reward` itself rather than reading it out of anything
 `agent/` sends.
 
@@ -49,18 +49,18 @@ its own directory inside `agent/`'s container; the task instruction tells the
 agent to write its answer to a file there, and `agent/` reads that file off
 local disk once the agent exits. It relays it verbatim to RLE as `output_text`;
 RLE forwards it to `/grade` as `agent_response`, and `/grade` grades it against a
-vendored per-task answer key (`rle/server/vendor/task-meta/`) using the dataset's
-own deterministic grader (`rle/server/vendor/grader.py`, byte-identical across
+vendored per-task answer key (`rle_deprecated/server/vendor/task-meta/`) using the dataset's
+own deterministic grader (`rle_deprecated/server/vendor/grader.py`, byte-identical across
 every task in this dataset). `agent/` still cannot fabricate a better score for
 itself: it can only relay -- or fail to relay -- whatever the agent actually
 wrote.
 
 Running `azd ai rle init --type Harness --subtype BYOH --sample data_code_agent`
-copies this exact `agent/` + `rle/` pair as your starting point.
+copies this exact `agent/` + `rle_deprecated/` pair as your starting point.
 
 Alongside them, [`job_data/`](./job_data) holds the training-job input manifests
 (`train.jsonl`/`validation.jsonl`) that `azd ai rle train` uploads -- one row per
-task, distinct from the answer keys baked into `rle/`'s own image. See step 5.
+task, distinct from the answer keys baked into `rle_deprecated/`'s own image. See step 5.
 
 ## Compliance disclosure: grading judgement, not just answers
 
@@ -106,7 +106,7 @@ would be trivially gamed by always disclosing, which tests nothing. At this
 dataset's 37.2% sensitive rate, always-disclosing scores `0.937` against `1.0`
 for genuine judgement -- a real but narrow margin, so
 `RLE_DISCLOSURE_FP_MULTIPLIER` is the first dial to turn if a run converges on
-blanket disclosure. See [`rle/server/compliance.py`](./rle/server/compliance.py).
+blanket disclosure. See [`rle_deprecated/server/compliance.py`](./rle_deprecated/server/compliance.py).
 
 Ground truth comes from a per-task label baked into the vendored answer key by
 [`tools/build_task_meta.py`](./tools/build_task_meta.py) using the keyword
@@ -242,7 +242,7 @@ rollout.
 
 ## 2. Author and iterate the RLE side
 
-`rle/server/env.py`'s `/reset` returns nothing RLE reads -- only its status
+`rle_deprecated/server/env.py`'s `/reset` returns nothing RLE reads -- only its status
 code matters -- but it is not idle. It clears any compliance disclosure left
 under this rollout id, and it pins the task selector (`task_index`, `split`)
 if `--task` carries one, so `/grade` can check what the harness reports
@@ -252,12 +252,12 @@ against what RLE asked for (see step 4).
 `answer_text`, `task_index`, and `split` out of `agent_response` (the same
 JSON string `agent/`'s `/invoke` returned as `output_text`, which RLE
 forwards to `/grade` verbatim), looks up that task's answer key in the
-vendored `rle/server/vendor/task-meta/` metadata, and grades it with the
+vendored `rle_deprecated/server/vendor/task-meta/` metadata, and grades it with the
 vendored copy of the dataset's own deterministic grader
-(`rle/server/vendor/grader.py`). Where `/reset` pinned a task, a report naming
+(`rle_deprecated/server/vendor/grader.py`). Where `/reset` pinned a task, a report naming
 a different one scores zero instead. `agent/` never computes or even sees a
 `reward` -- it only relays what the agent wrote (see `agent/app.py`'s
-`run_harness_rollout`). Adapt `rle/server/env.py`'s `grade_rollout` if you
+`run_harness_rollout`). Adapt `rle_deprecated/server/env.py`'s `grade_rollout` if you
 want reward shaping other than the grader's raw score.
 
 `azd ai rle run` is supported only for `Gym: OpenEnv` environments, so iterate
@@ -275,7 +275,7 @@ $env:FOUNDRY_PROJECT_ENDPOINT = "https://<account>.services.ai.azure.com/api/pro
 $env:AZURE_CONTAINER_REGISTRY_ENDPOINT = "<registry>.azurecr.io"
 ```
 
-Set `baseUrl` in `rle/rle.toml` to your deployed agent's invocation URL:
+Set `baseUrl` in `rle_deprecated/rle.toml` to your deployed agent's invocation URL:
 
 ```toml
 [rle]
@@ -307,7 +307,7 @@ azd ai rle rollout --model Qwen/Qwen3-32B \
 The selector is repeated because RLE sends the two payloads to two different
 places, and neither one is forwarded to the other: `--agent-input` goes to your
 harness's `/invoke` and selects the task it runs, while `--task` goes to
-`rle/`'s `/reset` and never passes through the harness at all.
+`rle_deprecated/`'s `/reset` and never passes through the harness at all.
 
 That second copy is what lets `/grade` check the harness's work. `/grade`
 otherwise learns which task it is grading from the harness's own response, so a
@@ -334,7 +334,7 @@ The selector is repeated for the reason given above -- `task` pins the task at
 reads both fields from each row. `train.jsonl` holds the first 1,000 tasks;
 `validation.jsonl` holds the last 200, so the two never overlap.
 
-`rle/rle.toml` records how this environment is trained, so a run needs no flags:
+`rle_deprecated/rle.toml` records how this environment is trained, so a run needs no flags:
 
 ```toml
 [train]
@@ -375,7 +375,7 @@ trajectory RLE records is the agent's own.
 `sandbox_tools_endpoint`/`sandbox_tools_token` arrive on the same request, but
 those are not rollout parameters -- they are lifted out of the rollout context
 and turned into environment variables on that rollout's `opencode` process, so
-the agent can file a compliance disclosure back to `rle/`. The
+the agent can file a compliance disclosure back to `rle_deprecated/`. The
 token is presented as `Authorization: Bearer`; RLE terminates that
 authentication at its own ingress and replaces the header before forwarding,
 so the RLE container never sees it and must not try to validate it.

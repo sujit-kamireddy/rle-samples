@@ -21,7 +21,7 @@ thing authenticating the poll and withdraw calls, and it is therefore what
 rollouts are stored under here. `rollout_id`, which arrives on the same request,
 is unique only within a project -- a correlation key for logs, not an identity.
 
-What RLE polls for is the answer text the agent wrote, never a reward. `../rle`'s
+What RLE polls for is the answer text the agent wrote, never a reward. `../rle_deprecated`'s
 `/grade` computes the reward itself from that text, which is what stops a harness
 claiming a score it did not earn.
 
@@ -49,7 +49,7 @@ repeats it. An agent with a shell -- which is exactly what
 `--dangerously-skip-permissions` grants -- can therefore
 `grep -rlF "<its own question>"` the suite, land on its own task directory and
 read its own answer without analysing anything. Measured at 25 of 25 sampled
-tasks. So the answers do not ship here: the grading key lives in `../rle`'s
+tasks. So the answers do not ship here: the grading key lives in `../rle_deprecated`'s
 container, which gives the agent no shell.
 
 Keep it that way. Anything added to this image is readable by the agent.
@@ -80,7 +80,7 @@ without out-of-memory restarts.
 The per-rollout compliance credentials (`sandbox_tools_endpoint` /
 `sandbox_tools_token`, which RLE sends on `/invoke`) are lifted out of the
 rollout context and set as `COMPLIANCE_ENDPOINT` / `COMPLIANCE_TOKEN` on that
-rollout's `opencode` process, so the agent can file the disclosure that `../rle`
+rollout's `opencode` process, so the agent can file the disclosure that `../rle_deprecated`
 grades. They are per-process,
 never process-global: concurrent rollouts would otherwise overwrite each other's
 and misattribute a disclosure with no error anywhere.
@@ -116,7 +116,7 @@ concurrency (default 16).
 `vendor/harbor-datasets.tar.gz` is the upstream task suite. It is **not** copied
 into the image -- see "What the harness is given" -- it is the source the
 `../tools/` scripts read to generate what *is* shipped:
-`vendor/task-index.json.gz`, `vendor/pull_bucket.py` and `../rle`'s vendored
+`vendor/task-index.json.gz`, `vendor/pull_bucket.py` and `../rle_deprecated`'s vendored
 answer key.
 
 Three patches are applied to it, all reproducible and all verifiable without a

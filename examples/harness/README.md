@@ -33,9 +33,21 @@ separately:
 - `agent/` — the harness/agent code. For `BYOH` this is a small service you
   deploy anywhere and register with RLE by base URL. For `HostedAgent` this is
   the agent code that runs as a Foundry Hosted Agent version.
-- `rle/` — the RLE side: the container `azd ai rle init --type Harness`
-  scaffolds, filled in with a concrete task setup, mock tools, and grader
-  (`rle/server/env.py`), plus `rle/rle.toml` and `rle/Dockerfile`.
+- `rle/` — the RLE side: the environment container, with its concrete task
+  setup, tool surface and grader, plus its `rle.toml` and `Dockerfile`.
+
+`rle/` implements the OpenEnv protocol, which the RLE environment contract is
+converging on across every type and subtype. The environment it describes is
+unchanged: the harness still drives your `agent/`, the agent still calls the
+environment's tools, and the environment still owns grading. Only the wire
+format between RLE and the environment differs.
+
+Each sample also keeps `rle_deprecated/`, the original hand-rolled
+`azd ai rle init --type Harness` scaffold that serves `/reset`,
+`/tools/*` and `/grade` from `rle_deprecated/server/env.py`. It is the
+published, end-to-end validated path today, and the sample READMEs still
+walk through it. It is retained so the two can be graded side by side, and
+goes once `rle/` is validated against Foundry.
 
 [`byoh/data_code_agent`](./byoh/data_code_agent) wraps Hugging Face's
 `FineEnvs/data-agent` collection — 5,000 data-analysis tasks over real CSVs —

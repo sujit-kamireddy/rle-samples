@@ -14,7 +14,20 @@ FROM python:3.12-slim
 ARG PIP_INDEX_URL
 ARG PIP_FALLBACK_INDEX_URL
 
-# Use the fallback only when the primary package index cannot be reached.
+# `git` is here only because `requirements.txt` still pins the SDK from a git
+# ref; it can go once the `rle` extra ships on PyPI. See that file.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends git \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Unlike the legacy harness image, this one does install openenv: the OpenEnv
+# step protocol is exactly what it serves. `azure-ai-projects[rle]` brings the
+# `RLEnvironment` base class and fastmcp with it. loom is still not installed --
+# it pulls torch, and `vendor/` carries the few hundred lines of its tool
+# decorator that the simulated tools actually need.
+COPY rle/requirements.txt /app/requirements.txt
 RUN if [ -n "${PIP_FALLBACK_INDEX_URL}" ] && \
        ! pip download --no-deps --quiet --index-url "${PIP_INDEX_URL}" --dest /tmp/idxprobe six >/dev/null 2>&1; then \
         echo "Primary index unreachable; falling back to ${PIP_FALLBACK_INDEX_URL}"; \
@@ -22,44 +35,40 @@ RUN if [ -n "${PIP_FALLBACK_INDEX_URL}" ] && \
     fi; \
     rm -rf /tmp/idxprobe; \
     pip install --no-cache-dir --progress-bar off --index-url "${PIP_INDEX_URL}" \
-        "fastapi==0.115.6" "uvicorn==0.34.0" "pydantic==2.10.4"
+        -r /app/requirements.txt
 
-# A Harness RLE serves /health, /reset, /tools/* and /grade, so this image needs
-# an HTTP framework and nothing more. It deliberately does not install openenv:
-# that package carries the Gym/OpenEnv step protocol, which RLE never calls on a
-# Harness container. Nor does it install loom, whose tool decorator the
-# simulated tools use -- loom pulls torch, and a four-route container has no use
-# for a training stack. `vendor/` carries the few hundred lines actually needed;
-# `tests/test_rle_vendor_parity.py` fails if they drift from upstream.
-
-WORKDIR /app
-
-# The world, the tasks, the simulated tools and the rubric are shared verbatim
-# with the Loom RL runs (`rl/`). Copying rather than re-implementing is what
-# makes a reward measured in this container comparable with one measured there.
+# This image is self-contained: the world, the tasks, the simulated tools and
+# the rubric are copied from `rle/` itself, not from the legacy
+# harness. `rle/` carries an identical copy for now, and
+# `tests/test_environment.py` asserts the two still grade the same, but nothing
+# in this image reads it -- which is what lets `rle/` be deleted outright.
 #
-# The dataset is deliberately absent. Every task arrives whole in the `/reset`
-# body, so baking `data/rl/` in would add nothing the container can use -- and
-# those rows carry the expected decision and the verified snapshot, which is
-# answer key. It does not belong in an image the agent's sandbox can reach.
-COPY rl/ /app/rl/
-COPY vendor/ /app/vendor/
-COPY server/ /app/rle/server/
+# The agent, the dataset and the legacy Dockerfile are excluded by
+# `Dockerfile.dockerignore`: those rows carry the expected decision and the
+# verified snapshot, which is answer key, and do not belong in an image the
+# agent's sandbox can reach.
+COPY rle/__init__.py /app/rle/__init__.py
+COPY rle/rl/ /app/rle/rl/
+COPY rle/vendor/ /app/rle/vendor/
+COPY rle/server/ /app/rle/server/
 
-# `rl/simulated_tools.py` imports `loom_cookbook.tool_use`, which resolves to
-# the vendored copy; `rle.server.env` imports `rl.*` from the workdir.
-ENV PYTHONPATH=/app/vendor:/app
+# `rle.rl.simulated_tools` imports `loom_cookbook.tool_use`, which
+# resolves to the vendored copy; everything else is a `rle.*` import
+# rooted at the workdir.
+ENV PYTHONPATH=/app/rle/vendor:/app
 ENV PYTHONUNBUFFERED=1
 
-# Import the app and the server that will run it. RLE polls /health and gives
-# up with RolloutDependencyFailed if the container never answers, which reports
-# a missing dependency as a rollout failure -- so it is worth failing here,
-# where the error names the module, instead of there.
-RUN python -c "import uvicorn, rle.server.env as m; print('RLE harness server OK:', m.app)"
+# Import the app and the server that will run it. A missing dependency reported
+# here names the module; reported at rollout time it arrives as an opaque
+# RolloutDependencyFailed.
+RUN python -c "import uvicorn, rle.server.app as m; print('OpenEnv RLE server OK:', m.app)"
 
 EXPOSE 8000
 
+# One worker: `create_app` keeps its sessions in process memory, so a second
+# worker would not recognise the session ids the first one minted.
+#
 # `python -m uvicorn`, not the `uvicorn` console script: the module is what was
 # installed and verified above, while the script is a PATH lookup that can come
 # out differently in the sandbox than it does in a build step.
-CMD ["python", "-m", "uvicorn", "rle.server.env:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["python", "-m", "uvicorn", "rle.server.app:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1"]

@@ -8,7 +8,7 @@ this container.
 
 The `BYOH` copy of this sample
 (`azd ai rle init --type Harness --subtype BYOH --sample data_code_agent`) runs
-the same rollout against the same `../rle` container. Only the invocation
+the same rollout against the same `../rle_deprecated` container. Only the invocation
 contract differs, and `opencode_direct.py` is byte-identical between the two.
 
 RLE's contract, all of it in `main.py`:
@@ -30,15 +30,15 @@ RLE's contract, all of it in `main.py`:
   JSON string that has to be parsed back out -- `parse_agent_input` does that,
   and also accepts a bare index so `azd ai rle rollout --agent-input 3` works.
 - The final assistant message is this rollout's `output_text`. RLE forwards
-  that string verbatim to `../rle`'s `/grade` as `agent_response`.
+  that string verbatim to `../rle_deprecated`'s `/grade` as `agent_response`.
 - `GET /readiness` -- the Responses host's own probe route. This agent adds no
   `/health` of its own.
 
 `agent_session_id` is set to the rollout id, and `agentVersion` from
-`rle/rle.toml` is never sent -- RLE records it as target metadata only, so the
+`rle_deprecated/rle.toml` is never sent -- RLE records it as target metadata only, so the
 container cannot read its own version.
 
-What RLE receives is the answer text the agent wrote, never a reward. `../rle`'s
+What RLE receives is the answer text the agent wrote, never a reward. `../rle_deprecated`'s
 `/grade` computes the reward itself from that text, which is what stops a harness
 claiming a score it did not earn. A rollout that fails returns the traceback as
 its answer text rather than raising: an exception out of the handler reaches RLE
@@ -85,7 +85,7 @@ repeats it. An agent with a shell -- which is exactly what
 `--dangerously-skip-permissions` grants -- can therefore
 `grep -rlF "<its own question>"` the suite, land on its own task directory and
 read its own answer without analysing anything. Measured at 25 of 25 sampled
-tasks. So the answers do not ship here: the grading key lives in `../rle`'s
+tasks. So the answers do not ship here: the grading key lives in `../rle_deprecated`'s
 container, which gives the agent no shell.
 
 Keep it that way. Anything added to this image is readable by the agent.
@@ -103,7 +103,7 @@ The per-rollout compliance credentials (the
 `x-client-rle-sandbox-tools-endpoint` / `x-client-rle-sandbox-tools-token`
 headers) are lifted out of the rollout context and set as
 `COMPLIANCE_ENDPOINT` / `COMPLIANCE_TOKEN` on that rollout's `opencode`
-process, so the agent can file the disclosure that `../rle`
+process, so the agent can file the disclosure that `../rle_deprecated`
 grades. They are per-process,
 never process-global: concurrent rollouts would otherwise overwrite each other's
 and misattribute a disclosure with no error anywhere.
@@ -139,7 +139,7 @@ concurrency (default 16).
 `vendor/harbor-datasets.tar.gz` is the upstream task suite. It is **not** copied
 into the image -- see "What the harness is given" -- it is the source the
 `../tools/` scripts read to generate what *is* shipped:
-`vendor/task-index.json.gz`, `vendor/pull_bucket.py` and `../rle`'s vendored
+`vendor/task-index.json.gz`, `vendor/pull_bucket.py` and `../rle_deprecated`'s vendored
 answer key.
 
 Three patches are applied to it, all reproducible and all verifiable without a
@@ -220,7 +220,7 @@ docker run --rm -p 8088:8088 \
 ```
 
 Push this image to the registry your Foundry project can pull from, register it
-as a Hosted Agent, and put that agent's name and version in `rle/rle.toml` as
+as a Hosted Agent, and put that agent's name and version in `rle_deprecated/rle.toml` as
 `agentName` / `agentVersion`. There is no base URL to register: RLE resolves the
 agent from the project and calls
 `{project}/agents/{agentName}/endpoint/protocols/openai/responses` itself.

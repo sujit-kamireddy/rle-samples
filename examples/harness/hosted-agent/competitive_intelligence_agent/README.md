@@ -21,7 +21,7 @@ land close to the same curve.
 | path | what it is |
 | --- | --- |
 | `agent/` | the agent itself, as a Foundry Hosted Agent speaking the Responses protocol |
-| `rle/` | the RLE container: the simulated world, the tool surface and the grader |
+| `rle_deprecated/` | the RLE container: the simulated world, the tool surface and the grader |
 | `job_data/` | 655 training scenarios and 120 held-out evaluation scenarios |
 | `tools/verify_dataset.py` | proves the two never share a scenario |
 | `tools/smoke_grade.py` | proves a local RLE container grades the answer key highest |
@@ -136,7 +136,7 @@ dimensions that were both low and movable. The other five keep enough weight to
 stay guardrails, so a policy that starts leaking the canary or calling mutating
 tools still loses real reward, but not enough to dilute the signal.
 
-`rle/rl/grading.py` also computes `BENCHMARK_WEIGHTS`, a flatter set used for
+`rle_deprecated/rl/grading.py` also computes `BENCHMARK_WEIGHTS`, a flatter set used for
 reporting rather than training. Both are returned in `/grade`'s `info.metrics`,
 so a run can be read either way without retraining.
 
@@ -197,7 +197,7 @@ faithfully optimise whatever is actually being measured.
 ### Why the agent cannot report its own reward
 
 `agent/` never computes a reward and never sees one. It returns a brief, and
-`rle/`'s `/grade` scores that brief against an answer key the agent container
+`rle_deprecated/`'s `/grade` scores that brief against an answer key the agent container
 never receives. This is not ceremony. The agent is the artefact being
 optimised, so any number it produces about its own performance is a number the
 optimiser can learn to produce directly instead of doing the work.
@@ -313,7 +313,7 @@ request, which is the contract described at the end of this file.
 
 Push the image to the registry your Foundry project can pull from and register
 it as a Hosted Agent. Note its **name** and **version**, which are what
-`rle/rle.toml` points at in step 3.
+`rle_deprecated/rle.toml` points at in step 3.
 
 There is nothing to expose publicly here and no endpoint of your own to
 protect. RLE resolves the agent through the project and calls it with the
@@ -321,7 +321,7 @@ caller's own bearer token, so it is reachable only through Foundry.
 
 ## 2. Author and iterate the RLE side
 
-`rle/server/env.py` serves the four routes RLE calls, and nothing else:
+`rle_deprecated/server/env.py` serves the four routes RLE calls, and nothing else:
 
 ```text
 GET  /health   readiness, polled before /reset
@@ -375,7 +375,7 @@ export FOUNDRY_PROJECT_ENDPOINT="https://<account>.services.ai.azure.com/api/pro
 export AZURE_CONTAINER_REGISTRY_ENDPOINT="<registry>.azurecr.io"
 ```
 
-Point `rle/rle.toml` at the agent you registered in step 1:
+Point `rle_deprecated/rle.toml` at the agent you registered in step 1:
 
 ```toml
 [rle]
@@ -423,7 +423,7 @@ A rollout that returns a reward between 0 and 1 with seven `dim/` entries in
 
 ## 5. Start the training run
 
-`rle/rle.toml` records everything, so the run needs no flags beyond the
+`rle_deprecated/rle.toml` records everything, so the run needs no flags beyond the
 version. It must run from the folder holding `rle.toml`, because the CLI reads
 `./rle.toml` and resolves `training_file` and `validation_file` relative to the
 working directory:
@@ -506,7 +506,7 @@ and its real tool calls, the thing that gets trained. The agent is not asked to
 emit training data; it just does its job through a proxy that is recording.
 
 `x-client-rle-sandbox-tools-endpoint` and `-token` arrive on the same request
-and are how the agent reaches `rle/`'s `/tools/*` for that rollout. The token is
+and are how the agent reaches `rle_deprecated/`'s `/tools/*` for that rollout. The token is
 presented as `Authorization: Bearer`, and RLE terminates that authentication at
 its own ingress and replaces the header before forwarding, so the RLE container
 never sees it and must not try to validate it.

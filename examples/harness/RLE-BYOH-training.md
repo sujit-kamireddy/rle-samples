@@ -33,7 +33,7 @@ baseUrl = "https://data-code-agent-sujit-107203347434.us-east1.run.app/invoke"
 ```
 
 This is the **hosted harness `/invoke` URL**, not the training API. Run
-`azd ai rle show --output json` from `rle/` and confirm version `1.0.0` is
+`azd ai rle show --output json` from `rle_deprecated/` and confirm version `1.0.0` is
 **Ready** in the selected project; it is already published, so do not
 republish it. A Foundry Hosted Agent Responses endpoint cannot simply replace
 the BYOH `/invoke` URL — that is a different subtype with a different wire
@@ -55,7 +55,7 @@ and `validation.jsonl` (200 disjoint tasks). Each JSONL row contains
 {"task":{"split":"FineEnvs/data-agent-harbor-train","task_index":0},"agent_input":{"split":"FineEnvs/data-agent-harbor-train","task_index":0}}
 ```
 
-From `rle/`, `[train]` in `rle.toml` points to those files as
+From `rle_deprecated/`, `[train]` in `rle.toml` points to those files as
 `../job_data/train.jsonl` and `../job_data/validation.jsonl`; the CLI uploads
 them automatically. It also sets model `qwen3-32b-1`, `group_size = 4`, and
 `max_concurrent_rollouts = 8`. Override the files for one job with
