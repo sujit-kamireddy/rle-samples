@@ -24,9 +24,7 @@ WORKDIR /app
 
 # Unlike the legacy harness image, this one does install openenv: the OpenEnv
 # step protocol is exactly what it serves. `azure-ai-projects[rle]` brings the
-# `RLEnvironment` base class and fastmcp with it. loom is still not installed --
-# it pulls torch, and `vendor/` carries the few hundred lines of its tool
-# decorator that the simulated tools actually need.
+# `RLEnvironment` base class and fastmcp with it.
 COPY requirements.txt /app/requirements.txt
 RUN if [ -n "${PIP_FALLBACK_INDEX_URL}" ] && \
        ! pip download --no-deps --quiet --index-url "${PIP_INDEX_URL}" --dest /tmp/idxprobe six >/dev/null 2>&1; then \
@@ -50,13 +48,9 @@ RUN if [ -n "${PIP_FALLBACK_INDEX_URL}" ] && \
 # not something `Dockerfile.dockerignore` needs to reach across to exclude.
 COPY __init__.py /app/rle/__init__.py
 COPY rl/ /app/rle/rl/
-COPY vendor/ /app/rle/vendor/
 COPY server/ /app/rle/server/
 
-# `rle.rl.simulated_tools` imports `loom_cookbook.tool_use`, which
-# resolves to the vendored copy; everything else is a `rle.*` import
-# rooted at the workdir.
-ENV PYTHONPATH=/app/rle/vendor:/app
+ENV PYTHONPATH=/app
 ENV PYTHONUNBUFFERED=1
 # Dockerfile.dockerignore keeps stale __pycache__ out of what gets COPY'd in,
 # but the sanity-check import below runs inside the image, after that --
