@@ -1,9 +1,5 @@
 """Tests for the RLE BYOH invocation contract this harness has to speak.
 
-These exist because the contract drifted once without anything failing until a live rollout: RLE
-renamed three `rollout_context` fields, and since they are required on a pydantic model, the only
-symptom was a `422` on dispatch -- which reads like a broken harness rather than version skew.
-
 The lifecycle assertions below are RLE's, not ours, and are transcribed from
 `ByohRolloutTargetInvoker`: the acknowledgement must be exactly `202` (not merely 2xx), the poll
 resource is `{baseUrl}/rollouts/{operation_id}` derived by RLE from the *registered* base URL, and
@@ -20,38 +16,28 @@ from fastapi.testclient import TestClient
 
 from app import ROLLOUTS, InvocationRequest, RolloutContext, app
 
-MASTER_CONTEXT = {
+ROLLOUT_CONTEXT = {
     "model_endpoint": "https://proxy.invalid/v1",
     "model_api_key": "session-key",
-    "sandbox_tools_endpoint": "https://tools.invalid/tools",
-    "sandbox_tools_token": "tools-token",
-    "sandbox_session_id": "session-abc",
-}
-# The spelling RLE used before the rename. A deployed harness outlives a single RLE release, so
-# both have to keep working -- see the note on `RolloutContext`.
-LEGACY_CONTEXT = {
-    "capture_proxy_endpoint": "https://proxy.invalid/v1",
-    "capture_proxy_session_key": "session-key",
-    "sandbox_tools_endpoint": "https://tools.invalid/tools",
-    "sandbox_tools_bearer_token": "tools-token",
-    "sandbox_session_id": "session-abc",
+    "mcp_endpoint": "https://tools.invalid/tools",
+    "mcp_bearer_token": "tools-token",
+    "mcp_session_id": "session-abc",
 }
 
 
-@pytest.mark.parametrize("context", [MASTER_CONTEXT, LEGACY_CONTEXT], ids=["master", "legacy"])
-def test_both_wire_spellings_of_rollout_context_are_accepted(context):
-    parsed = RolloutContext.model_validate(context)
+def test_rollout_context_accepts_rles_current_wire_contract():
+    parsed = RolloutContext.model_validate(ROLLOUT_CONTEXT)
     assert parsed.model_endpoint == "https://proxy.invalid/v1"
     assert parsed.model_api_key == "session-key"
-    assert parsed.sandbox_tools_endpoint == "https://tools.invalid/tools"
-    assert parsed.sandbox_tools_token == "tools-token"
+    assert parsed.mcp_endpoint == "https://tools.invalid/tools"
+    assert parsed.mcp_bearer_token == "tools-token"
 
 
 def test_rollout_context_still_requires_every_field():
     """A silently-defaulted field would send the agent at the wrong model or drop its tool token."""
-    for omit in MASTER_CONTEXT:
+    for omit in ROLLOUT_CONTEXT:
         with pytest.raises(Exception):
-            RolloutContext.model_validate({k: v for k, v in MASTER_CONTEXT.items() if k != omit})
+            RolloutContext.model_validate({k: v for k, v in ROLLOUT_CONTEXT.items() if k != omit})
 
 
 def test_invocation_uses_rles_operation_id_rather_than_minting_one():
@@ -59,7 +45,7 @@ def test_invocation_uses_rles_operation_id_rather_than_minting_one():
         "rollout_id": "rollout-1",
         "operation_id": "operation-1",
         "agent_input": {"task_index": 3},
-        "rollout_context": MASTER_CONTEXT,
+        "rollout_context": ROLLOUT_CONTEXT,
     })
     assert request.operation_id == "operation-1"
     assert request.rollout_id == "rollout-1"
@@ -78,7 +64,7 @@ def test_dispatch_acknowledges_with_202_and_a_poll_interval(monkeypatch):
             "rollout_id": "rollout-2",
             "operation_id": "operation-2",
             "agent_input": {"task_index": 0},
-            "rollout_context": MASTER_CONTEXT,
+            "rollout_context": ROLLOUT_CONTEXT,
         })
         assert response.status_code == 202
         assert 250 <= response.json()["retry_after_ms"] <= 15000
@@ -103,7 +89,7 @@ def test_poll_reports_the_answer_under_output_text(monkeypatch):
             "rollout_id": "rollout-3",
             "operation_id": "operation-3",
             "agent_input": {"task_index": 0},
-            "rollout_context": MASTER_CONTEXT,
+            "rollout_context": ROLLOUT_CONTEXT,
         })
         for _ in range(200):
             body = client.get("/invoke/rollouts/operation-3").json()
@@ -124,7 +110,7 @@ def test_a_failed_rollout_is_reported_on_the_poll_not_the_dispatch(monkeypatch):
             "rollout_id": "rollout-4",
             "operation_id": "operation-4",
             "agent_input": {"task_index": 0},
-            "rollout_context": MASTER_CONTEXT,
+            "rollout_context": ROLLOUT_CONTEXT,
         }).status_code == 202
         for _ in range(200):
             body = client.get("/invoke/rollouts/operation-4").json()

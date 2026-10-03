@@ -4,7 +4,7 @@ Isolation
 ---------
 Rollouts share this container and `opencode` runs with `--dangerously-skip-permissions`, so the
 boundary between two concurrent rollouts is a directory, not a VM. Two things make that safe. RLE
-scopes the capture-proxy session key and the sandbox-tools URL and token per rollout, so neither is
+scopes the capture-proxy session key and the MCP-tools URL and token per rollout, so neither is
 usable across them. And this container holds no grading key to find -- see "What the harness is
 given" below.
 

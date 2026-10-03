@@ -38,8 +38,8 @@ projects can legitimately send the same one to a shared harness.
          "rollout_context": {
            "model_endpoint": "https://.../rle/v1.0/capture-proxy/v1",
            "model_api_key": "...",
-           "sandbox_tools_endpoint": "https://.../rollouts/<rollout-id>/tools",
-           "sandbox_tools_token": "..."
+           "mcp_endpoint": "https://.../rollouts/<rollout-id>/tools",
+           "mcp_bearer_token": "..."
          }
        }
 
@@ -88,7 +88,7 @@ from typing import Any
 import httpx
 from fastapi import Body, FastAPI, Header, Response
 from fastapi.responses import JSONResponse
-from pydantic import AliasChoices, BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict
 
 import opencode_direct
 
@@ -199,27 +199,19 @@ if _LLM_URL and not _MODEL:
 class RolloutContext(BaseModel):
     # These names are RLE's wire contract, not ours. `model_endpoint`/`model_api_key` are the
     # route to the model, pointed at RLE's capture proxy so the trajectory is recorded;
-    # `sandbox_tools_endpoint` addresses the per-rollout container that also serves `/reset` and
-    # `/grade` (tools are a sibling of those, not a path under them), and `sandbox_tools_token` is
+    # `mcp_endpoint` addresses the per-rollout container that also serves `/reset` and
+    # `/grade` (tools are a sibling of those, not a path under them), and `mcp_bearer_token` is
     # a rollout-scoped capability that expires with the rollout.
-    #
-    # RLE renamed three of these (`capture_proxy_endpoint` -> `model_endpoint`,
-    # `capture_proxy_session_key` -> `model_api_key`, `sandbox_tools_bearer_token` ->
-    # `sandbox_tools_token`). Both spellings are accepted because a harness is customer-deployed
-    # and outlives any single RLE release: a sample that only understood the new names would break
-    # against a region still serving the old ones, and the failure would surface as a 422 on
-    # dispatch, which looks like a harness bug rather than a version skew.
     model_config = ConfigDict(protected_namespaces=())
 
-    model_endpoint: str = Field(validation_alias=AliasChoices("model_endpoint", "capture_proxy_endpoint"))
-    model_api_key: str = Field(validation_alias=AliasChoices("model_api_key", "capture_proxy_session_key"))
-    sandbox_tools_endpoint: str
-    sandbox_tools_token: str = Field(
-        validation_alias=AliasChoices("sandbox_tools_token", "sandbox_tools_bearer_token"))
+    model_endpoint: str
+    model_api_key: str
+    mcp_endpoint: str
+    mcp_bearer_token: str
     # `../rle/rle.toml` publishes with `environmentProtocol = "mcp_environment"`,
     # so RLE always opens one environment session for the rollout and names it
     # here. The tools live on that session's `/mcp` route, not on `/tools/<name>`.
-    sandbox_session_id: str
+    mcp_session_id: str
 
     @property
     def mcp_url(self) -> str:
@@ -230,7 +222,7 @@ class RolloutContext(BaseModel):
         the same rollout-scoped path and authorized by the same bearer token,
         so nothing else about the URL changes.
         """
-        base = self.sandbox_tools_endpoint.rstrip("/")
+        base = self.mcp_endpoint.rstrip("/")
         suffix = "/tools"
         if base.endswith(suffix):
             base = base[: -len(suffix)]
@@ -425,7 +417,7 @@ async def local_tool(
         # The rollout is over. Saying so would describe this harness's
         # internals to a model whose prompt is the thing under test.
         return JSONResponse({"error": "not_found"}, status_code=404)
-    if context.sandbox_tools_token and authorization != _BEARER + context.sandbox_tools_token:
+    if context.mcp_bearer_token and authorization != _BEARER + context.mcp_bearer_token:
         return JSONResponse({"error": "unauthorized"}, status_code=401)
 
     request = {
@@ -434,13 +426,13 @@ async def local_tool(
         "params": {
             "name": tool_name,
             "arguments": payload,
-            "session_id": context.sandbox_session_id,
+            "session_id": context.mcp_session_id,
         },
         "id": 1,
     }
     headers = (
-        {"Authorization": _BEARER + context.sandbox_tools_token}
-        if context.sandbox_tools_token
+        {"Authorization": _BEARER + context.mcp_bearer_token}
+        if context.mcp_bearer_token
         else {}
     )
     try:
@@ -513,7 +505,7 @@ async def run_harness_rollout(
             # `report_sensitive_data_access`. It reaches the agent as
             # environment variables on that rollout's own `opencode` process.
             compliance_endpoint=_compliance_endpoint(operation_id),
-            compliance_token=rollout_context.sandbox_tools_token,
+            compliance_token=rollout_context.mcp_bearer_token,
             rollout_id=rollout_id,
         )
     except opencode_direct.RolloutError as exc:

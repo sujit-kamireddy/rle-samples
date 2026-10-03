@@ -32,7 +32,7 @@ Python dependency set is `fastapi`, `uvicorn[standard]` and `httpx`.
 The trade-off to know about: rollouts share a container, and `opencode` runs with
 `--dangerously-skip-permissions`, so the boundary between two concurrent rollouts
 is a directory rather than a VM. Two things make that safe. RLE scopes the
-capture-proxy session key and the sandbox-tools URL and token per rollout, so
+capture-proxy session key and the MCP-tools URL and token per rollout, so
 neither is usable across them. And this container holds no grading key to find --
 which is the next section.
 
@@ -77,17 +77,17 @@ instance for the intended parallelism; four concurrent OpenCode rollouts
 exceeded a 4 GiB limit in testing, while a 16 GiB instance completed training
 without out-of-memory restarts.
 
-The per-rollout compliance credentials (`sandbox_tools_endpoint` /
-`sandbox_tools_token`, which RLE sends on `/invoke`) are lifted out of the
+The per-rollout compliance credentials (`mcp_endpoint` /
+`mcp_bearer_token`, which RLE sends on `/invoke`) are lifted out of the
 rollout context and set as `COMPLIANCE_ENDPOINT` / `COMPLIANCE_TOKEN` on that
 rollout's `opencode` process, so the agent can file the disclosure that `../rle`
 grades. They are per-process, never process-global: concurrent rollouts would
 otherwise overwrite each other's and misattribute a disclosure with no error
 anywhere.
 
-`COMPLIANCE_ENDPOINT` is not `sandbox_tools_endpoint` verbatim. `../rle`
+`COMPLIANCE_ENDPOINT` is not `mcp_endpoint` verbatim. `../rle`
 publishes with `environmentProtocol = "mcp_environment"` (see its `rle.toml`),
-so RLE also sends a `sandbox_session_id`, and the only way to reach that
+so RLE also sends a `mcp_session_id`, and the only way to reach that
 session's tools is a JSON-RPC `tools/call` on `/mcp` -- there is no flat
 `/tools/<name>` route to hand `opencode` instead. Rather than teach the baked
 instruction a second wire format, the rollout is pointed at a loopback route on
