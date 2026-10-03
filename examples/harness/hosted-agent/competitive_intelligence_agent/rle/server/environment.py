@@ -51,6 +51,7 @@ import os
 from typing import Any, Callable, Optional
 
 from azure.ai.projects.rle.environments import GradeAction, RLEnvironment
+from fastmcp.tools.function_tool import FunctionTool
 from loom_cookbook.tool_use import ToolInput
 from openenv.core.env_server.types import Observation, State
 
@@ -127,35 +128,50 @@ def _tool_templates() -> list[Any]:
 def _make_tool_wrapper(template: Any, resolve: Callable[[str], Any]) -> Callable[..., Any]:
     """An MCP-callable wrapper around one simulated tool.
 
-    FastMCP builds a tool's JSON schema from the wrapped function's signature,
-    so the signature is rebuilt here from the tool's own pydantic argument
-    model. The schema an agent sees over MCP is therefore generated from the
-    same model ``FunctionTool.run`` validates against, and cannot drift from it.
-
     Dispatch goes through ``FunctionTool.run``, the entry point Loom's episode
     loop uses, so a call recorded here is the call the rubric scores. ``run``
     never raises: invalid arguments and tool faults both come back as an error
     result. That is deliberate -- a malformed call is the agent's mistake, and
     the rubric needs to see the wasted call rather than have the attempt fault.
+
+    That contract only holds if the call reaches ``run``, so the signature
+    build here is deliberately permissive: every argument optional and
+    untyped. FastMCP validates a call against this signature
+    *before* the body runs and turns a rejection into a JSON-RPC error, which
+    would fault the agent's attempt instead of handing it a tool error it
+    could read and correct. Keeping the signature open leaves Loom's own
+    validation the only one, which is what the legacy HTTP route did.
+
+    The permissive signature would otherwise publish a uselessly vague schema,
+    so ``_register_tools`` replaces it with one generated from the tool's own
+    pydantic argument model. The schema an agent reads is therefore still
+    generated from the same model ``run`` validates against, and cannot drift
+    from it.
+
+    Arguments the caller omitted arrive as ``None`` and are dropped, so Loom
+    sees a genuinely absent argument and applies its own default or its own
+    "required" error, rather than a ``None`` the tool never offered.
+
+    One divergence from the legacy route survives: an argument name no tool
+    declares is still rejected by FastMCP, which cannot wrap a function that
+    takes ``**kwargs``. Loom ignored those. A missing or mistyped argument,
+    the far commoner mistake, now behaves as it did.
     """
-    parameters = []
-    annotations: dict[str, Any] = {}
-    for name, field in template._params_model.model_fields.items():
-        default = inspect.Parameter.empty if field.is_required() else field.default
-        parameters.append(
-            inspect.Parameter(
-                name,
-                inspect.Parameter.KEYWORD_ONLY,
-                default=default,
-                annotation=field.annotation,
-            )
+    parameters = [
+        inspect.Parameter(
+            name, inspect.Parameter.KEYWORD_ONLY, default=None, annotation=Any
         )
-        annotations[name] = field.annotation
+        for name in template._params_model.model_fields
+    ]
+    annotations: dict[str, Any] = {
+        name: Any for name in template._params_model.model_fields
+    }
     annotations["return"] = str
 
     async def call(**arguments: Any) -> str:
         tool = resolve(template.name)
-        result = await tool.run(ToolInput(arguments=arguments, call_id=""))
+        supplied = {name: value for name, value in arguments.items() if value is not None}
+        result = await tool.run(ToolInput(arguments=supplied, call_id=""))
         messages = result.messages or []
         # The tool's single message carries a JSON string, and that string is
         # what the model saw as the tool's output during training.
@@ -166,6 +182,29 @@ def _make_tool_wrapper(template: Any, resolve: Callable[[str], Any]) -> Callable
     call.__signature__ = inspect.Signature(parameters, return_annotation=str)
     call.__annotations__ = annotations
     return call
+
+
+def _register_tools(environment: Any, resolve: Callable[[str], Any]) -> list[str]:
+    """Registers the surface's tools and publishes their real schemas.
+
+    Registration goes through the inherited ``tool`` decorator so the base
+    class keeps its own bookkeeping, then each tool is re-registered with the
+    schema generated from its pydantic argument model, replacing the vague one
+    FastMCP derives from the permissive signature above. ``remove_tool`` first,
+    because adding over a live name is a duplicate registration.
+    """
+    names = []
+    for template in _tool_templates():
+        wrapper = _make_tool_wrapper(template, resolve)
+        environment.tool()(wrapper)
+        described = FunctionTool.from_function(
+            wrapper, name=template.name, description=template.description
+        )
+        described.parameters = template._params_model.model_json_schema()
+        environment.mcp_server.local_provider.remove_tool(template.name)
+        environment.mcp_server.local_provider.add_tool(described)
+        names.append(template.name)
+    return names
 
 
 class CompetitiveIntelEnvironment(RLEnvironment):
@@ -179,9 +218,7 @@ class CompetitiveIntelEnvironment(RLEnvironment):
         # cannot be registered before it exists.
         super().__init__()
         self._set_state(CompetitiveIntelState())
-        self._tool_names = [template.name for template in _tool_templates()]
-        for template in _tool_templates():
-            self.tool()(_make_tool_wrapper(template, self._require_tool))
+        self._tool_names = _register_tools(self, self._require_tool)
 
     def _require_tool(self, name: str) -> Any:
         """The live tool for ``name``, or a loud failure if there is no episode.
