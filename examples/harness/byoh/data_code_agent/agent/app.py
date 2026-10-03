@@ -216,22 +216,19 @@ class RolloutContext(BaseModel):
     sandbox_tools_endpoint: str
     sandbox_tools_token: str = Field(
         validation_alias=AliasChoices("sandbox_tools_token", "sandbox_tools_bearer_token"))
-    # Present only when the environment was published with
-    # `environmentProtocol = "mcp_environment"`. RLE then opens one environment
-    # session for the rollout and names it here, and the tools live on that
-    # session's `/mcp` route rather than on `/tools/<name>`. Absent means the
-    # legacy protocol, so this doubles as the protocol switch -- the same
-    # condition the service itself applies when it decides whether to send it.
-    sandbox_session_id: str | None = None
+    # `../rle/rle.toml` publishes with `environmentProtocol = "mcp_environment"`,
+    # so RLE always opens one environment session for the rollout and names it
+    # here. The tools live on that session's `/mcp` route, not on `/tools/<name>`.
+    sandbox_session_id: str
 
     @property
     def mcp_url(self) -> str:
         """This rollout's `/mcp` route, derived from its `/tools` one.
 
-        RLE hands over one endpoint per rollout and it names the legacy route,
-        so the MCP route is reached by swapping the last segment. Both are
-        served by the same rollout-scoped path and authorized by the same
-        bearer token, so nothing else about the URL changes.
+        RLE hands over one endpoint per rollout, named `.../tools`, so the MCP
+        route is reached by swapping the last path segment. Both are served by
+        the same rollout-scoped path and authorized by the same bearer token,
+        so nothing else about the URL changes.
         """
         base = self.sandbox_tools_endpoint.rstrip("/")
         suffix = "/tools"
@@ -393,23 +390,14 @@ _PORT = os.environ.get("PORT", "8080")
 _BEARER = "Bearer "
 
 
-def _compliance_endpoint(operation_id: str, context: RolloutContext) -> str:
+def _compliance_endpoint(operation_id: str) -> str:
     """Where this rollout's `opencode` should file its disclosure.
 
-    Under the legacy protocol that is the environment's own `/tools` route and
-    the agent posts to it directly. Under `mcp_environment` there is no such
-    route: the tool lives on the rollout's environment session and is only
-    reachable as a JSON-RPC `tools/call`. Rather than teach the baked
-    instruction a second wire format, the agent is pointed at a loopback route
-    on this service that speaks it on the agent's behalf.
-
-    Keeping the instruction identical across protocols is the point. The
-    instruction is part of the graded prompt, so a protocol that changed it
-    would also change what the model is asked to do, and a reward comparison
-    between the two would no longer be measuring the protocol.
+    The compliance tool lives on the rollout's environment session and is only
+    reachable as a JSON-RPC `tools/call`, not a flat POST. Rather than teach the
+    baked instruction a second wire format, the agent is pointed at a loopback
+    route on this service that translates for it.
     """
-    if not context.sandbox_session_id:
-        return context.sandbox_tools_endpoint
     return f"http://127.0.0.1:{_PORT}{_LOCAL_TOOLS_PREFIX}/{operation_id}"
 
 
@@ -433,11 +421,9 @@ async def local_tool(
     against it.
     """
     context = ROLLOUTS.context(operation_id)
-    if context is None or not context.sandbox_session_id:
-        # Either the rollout is over, or it is a legacy one that should have
-        # gone straight to the environment. Neither is something the agent can
-        # act on, and saying which would describe this harness's internals to a
-        # model whose prompt is the thing under test.
+    if context is None:
+        # The rollout is over. Saying so would describe this harness's
+        # internals to a model whose prompt is the thing under test.
         return JSONResponse({"error": "not_found"}, status_code=404)
     if context.sandbox_tools_token and authorization != _BEARER + context.sandbox_tools_token:
         return JSONResponse({"error": "unauthorized"}, status_code=401)
@@ -478,8 +464,8 @@ async def local_tool(
     result = result if isinstance(result, dict) else {}
     structured = result.get("structuredContent")
     if isinstance(structured, dict):
-        # FastMCP returns the tool's own dict here, which is exactly what the
-        # legacy route used to return as its whole body.
+        # FastMCP returns the tool's own dict here, which is what the agent
+        # expects as the whole body.
         return JSONResponse(structured)
     text = "".join(
         str(part.get("text", ""))
@@ -526,7 +512,7 @@ async def run_harness_rollout(
             # order to file a compliance disclosure against `../rle`'s
             # `report_sensitive_data_access`. It reaches the agent as
             # environment variables on that rollout's own `opencode` process.
-            compliance_endpoint=_compliance_endpoint(operation_id, rollout_context),
+            compliance_endpoint=_compliance_endpoint(operation_id),
             compliance_token=rollout_context.sandbox_tools_token,
             rollout_id=rollout_id,
         )

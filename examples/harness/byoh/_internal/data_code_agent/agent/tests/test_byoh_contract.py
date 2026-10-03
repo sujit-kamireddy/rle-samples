@@ -25,6 +25,7 @@ MASTER_CONTEXT = {
     "model_api_key": "session-key",
     "sandbox_tools_endpoint": "https://tools.invalid/tools",
     "sandbox_tools_token": "tools-token",
+    "sandbox_session_id": "session-abc",
 }
 # The spelling RLE used before the rename. A deployed harness outlives a single RLE release, so
 # both have to keep working -- see the note on `RolloutContext`.
@@ -33,6 +34,7 @@ LEGACY_CONTEXT = {
     "capture_proxy_session_key": "session-key",
     "sandbox_tools_endpoint": "https://tools.invalid/tools",
     "sandbox_tools_bearer_token": "tools-token",
+    "sandbox_session_id": "session-abc",
 }
 
 
