@@ -24,6 +24,19 @@ Two containers:
   `/tools/report_sensitive_data_access`, the compliance-disclosure endpoint
   described below, and blends that decision into the reward.
 
+## Standalone OpenEnv alternative
+
+[`rle_openenv/`](./rle_openenv) contains the standalone OpenEnv service, its
+Dockerfile, dependencies, session client, tests, and question-enriched metadata.
+It reuses the legacy grader and compliance evaluator without changing the
+existing Harness API or deployment.
+
+See its [README](./rle_openenv/README.md) for local setup, full-dataset parity
+checks, and concurrent-instance validation. The second phase, deployment using
+Foundry RLE, remains **TBA**.
+
+## Existing Harness workflow
+
 **Why doesn't `agent/` just report the reward?** `agent/` is untrusted,
 customer-hosted code, and the grader is a public, deterministic function of
 `(gold, candidate)` -- nothing stops a misbehaving harness from computing the
