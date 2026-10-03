@@ -124,7 +124,7 @@ from rle.server.vendor.grader import grade as own_grade
 from rle.server import compliance as own_compliance
 assert grade is own_grade
 assert compliance is own_compliance
-assert Path('/app/rle/server/vendor/task-meta').is_dir()
+assert Path('/app/rle/server/tasks/task-meta').is_dir()
 assert not Path('/app/agent').exists()
 assert not Path('/app/rle/tests').exists()
 """

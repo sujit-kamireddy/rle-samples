@@ -10,8 +10,10 @@
 !server/*.py
 !server/vendor/
 !server/vendor/*.py
-!server/vendor/task-meta/
-!server/vendor/task-meta/*.json.gz
+!server/tasks/
+!server/tasks/*.py
+!server/tasks/task-meta/
+!server/tasks/task-meta/*.json.gz
 # Re-deny bytecode cache the allowlist above would otherwise sweep in from a
 # local working tree (it is gitignored, not git-excluded from the build).
 **/__pycache__
