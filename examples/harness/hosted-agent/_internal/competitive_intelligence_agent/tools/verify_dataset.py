@@ -1,7 +1,9 @@
 """Audits ``job_data/`` for train/eval contamination and reports its mix.
 
-Run from the sample root::
+Run from the sibling `_internal/` copy of this sample (see its own
+``tools/``)::
 
+    cd ../_internal/competitive_intelligence_agent
     python tools/verify_dataset.py
 
 Exits non-zero if any evaluation scenario also appears in training, so this can
@@ -43,7 +45,11 @@ import json
 import sys
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent.parent
+# This file was relocated to `_internal/` (see `../rle/tests/conftest.py`), so
+# its own directory is no longer inside the sample that ships `job_data/`.
+# Reach the real sample root the same way those tests do, rather than
+# deriving it from this file's own (now relocated) position.
+ROOT = Path(__file__).resolve().parents[3] / "competitive_intelligence_agent"
 JOB_DATA = ROOT / "job_data"
 
 

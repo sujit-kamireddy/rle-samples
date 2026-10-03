@@ -24,16 +24,15 @@ land close to the same curve.
 | `rle/` | the RLE container on the OpenEnv protocol, which the RLE environment contract is converging on |
 | `job_data/` | 655 training scenarios and 120 held-out evaluation scenarios |
 
-This sample's maintainer-only content -- the legacy harness and the two
-`tools/` scripts below, plus the test suite referenced further down -- lives
-outside this tree, in a sibling
+This sample's maintainer-only content -- the two `tools/` scripts below, plus
+the test suite referenced further down -- lives outside this tree, in a
+sibling
 [`_internal/competitive_intelligence_agent/`](../_internal/competitive_intelligence_agent)
 copy of this sample. `azd ai rle init` does not scaffold it; clone the repo (or
 browse it on GitHub) to reach it.
 
 | path | what it is |
 | --- | --- |
-| [`rle_deprecated/`](../_internal/competitive_intelligence_agent/rle_deprecated) | the same environment on the original `/reset`, `/tools/*`, `/grade` harness protocol: the published, end-to-end validated path today |
 | [`tools/verify_dataset.py`](../_internal/competitive_intelligence_agent/tools/verify_dataset.py) | proves the two never share a scenario |
 | [`tools/smoke_grade.py`](../_internal/competitive_intelligence_agent/tools/smoke_grade.py) | proves a local RLE container grades the answer key highest |
 
@@ -147,10 +146,9 @@ dimensions that were both low and movable. The other five keep enough weight to
 stay guardrails, so a policy that starts leaking the canary or calling mutating
 tools still loses real reward, but not enough to dilute the signal.
 
-The legacy harness's `rl/grading.py` (preserved outside this sample tree, in
-`_internal/`) also computes `BENCHMARK_WEIGHTS`, a flatter set used for
-reporting rather than training. Both are returned in `/grade`'s `info.metrics`,
-so a run can be read either way without retraining.
+`rle/server/grading.py` also computes `BENCHMARK_WEIGHTS`, a flatter set used
+for reporting rather than training. Both are returned in `grade`'s
+`info.metrics`, so a run can be read either way without retraining.
 
 ### The brief the grader reads
 
@@ -195,6 +193,7 @@ and asserts the answer key wins:
 
 ```console
 $ cd ../_internal/competitive_intelligence_agent  # sibling of this sample
+$ pip install -r ../../competitive_intelligence_agent/rle/requirements.txt
 $ python tools/smoke_grade.py
 variant           expected    said          reward  verdict
 clean_material    material    material       0.590        1  <- answer key
@@ -212,15 +211,15 @@ faithfully optimise whatever is actually being measured.
 ### Why the agent cannot report its own reward
 
 `agent/` never computes a reward and never sees one. It returns a brief, and
-the legacy harness's `/grade` scores that brief against an answer key the agent container
-never receives. This is not ceremony. The agent is the artefact being
-optimised, so any number it produces about its own performance is a number the
-optimiser can learn to produce directly instead of doing the work.
+this environment's `grade` scores that brief against an answer key the agent
+container never receives. This is not ceremony. The agent is the artefact
+being optimised, so any number it produces about its own performance is a
+number the optimiser can learn to produce directly instead of doing the work.
 
 The task rows carry the answer key (`material`, `expects_abstain`,
 `golden_expected_behavior` and the verified snapshot), which is why the
 dataset is not baked into the RLE image either. Every task arrives whole in the
-`/reset` body from the calling job, so the answer key lives with the caller and
+`reset` call from the calling job, so the answer key lives with the caller and
 never enters a container the agent's rollout can reach.
 
 ## The dataset
@@ -338,30 +337,32 @@ caller's own bearer token, so it is reachable only through Foundry.
 
 ## 2. Author and iterate the RLE side
 
-The legacy harness's `server/env.py` (preserved outside this sample tree, in
-`_internal/`) serves the four routes RLE calls, and nothing else:
+`rle/server/environment.py` subclasses `RLEnvironment`, the authoring
+interface in `azure-ai-projects[rle]`, which supplies the protocol over MCP and
+nothing else:
 
 ```text
-GET  /health   readiness, polled before /reset
-POST /reset    the caller's task, verbatim
-POST /tools/*  the agent's tool calls, served per rollout
-POST /grade    {"rollout": ..., "agent_response": "..."} -> a reward
+GET  /health      readiness, polled before reset
+     reset        the caller's task, verbatim
+MCP  tools/*      the agent's tool calls, served per rollout
+     grade        the rubric, over the final answer
 ```
 
-`/reset` builds that rollout's world from the task body and holds it in memory
-keyed by rollout id. `/tools/<name>` serves evidence out of that world, which
-is what makes the run reproducible: there is no network client anywhere in the
-module, so a rollout sees the same search results and the same documents every
-time, and the Fabric throttling that caps the production agent near eight
-concurrent runs does not apply. `/grade` parses the brief out of
-`agent_response`, looks up the answer key from the task `/reset` was given, and
-scores it.
+`reset` builds that rollout's world from the task and holds it on the session.
+The agent's tool calls are served by the nine tools this environment registers
+explicitly on its MCP server (see `_register_production_tools`), each reading
+out of that same world, which is what makes the run reproducible: there is no
+network client anywhere in `tools/simulated_tools.py`, so a rollout sees the
+same search results and the same documents every time, and the Fabric
+throttling that caps the production agent near eight concurrent runs does not
+apply. `grade` parses the brief out of the agent's final answer, looks up the
+answer key from the task `reset` was given, and scores it.
 
 `rle/server/tasks.py`, `rle/server/world.py`,
-`rle/server/tools/simulated_tools.py` and `rle/server/grading.py` are shared
-verbatim with the offline evaluation harness. Sharing the modules rather than
-reimplementing them is the point: a reward measured here means what a reward
-measured there means, because it is the same code path.
+`rle/server/tools/simulated_tools.py` and `rle/server/grading.py` are imported
+unmodified rather than reimplemented here (see `environment.py`'s own
+docstring) -- the task generator, simulated world, tools and rubric this
+environment scores every rollout against.
 
 Build and smoke-test it before publishing:
 
@@ -375,13 +376,14 @@ Then, in a second terminal:
 
 ```bash
 curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:8000/health
+pip install -r "$SAMPLE/rle/requirements.txt"
 python "$SAMPLE/../_internal/competitive_intelligence_agent/tools/smoke_grade.py"
 ```
 
 The build itself imports the app and fails there if a dependency is missing,
 rather than letting RLE discover it as a rollout failure. `smoke_grade.py`
 goes further and checks the environment is scoring the thing you meant: it
-drives a real `/reset` then `/grade` cycle per variant and asserts the answer
+drives a real `reset` then `grade` cycle per variant and asserts the answer
 key outscores both alternatives. It needs no model and no credentials.
 
 ## 3. Publish a version
@@ -500,6 +502,7 @@ x-client-rle-model-endpoint: https://.../rle/v1.0/capture-proxy/v1
 x-client-rle-model-api-key: ...
 x-client-rle-sandbox-tools-endpoint: https://.../rollouts/<rollout-id>/tools
 x-client-rle-sandbox-tools-token: ...
+x-client-rle-sandbox-session-id: ...
 
 {"agent_session_id": "<rollout id>",
  "input": [{"type": "message", "role": "user",
@@ -509,7 +512,7 @@ x-client-rle-sandbox-tools-token: ...
 
 There is no acknowledgement, no poll and no withdraw. The response *is* the
 result, and the final assistant message text becomes the rollout's
-`output_text`, which RLE forwards to `/grade` verbatim.
+`output_text`, which RLE forwards to `grade` verbatim.
 
 Two consequences matter before changing `agent/main.py`.
 
@@ -524,8 +527,11 @@ it is what makes the agent's own multi-turn trajectory, with its real prompts
 and its real tool calls, the thing that gets trained. The agent is not asked to
 emit training data; it just does its job through a proxy that is recording.
 
-`x-client-rle-sandbox-tools-endpoint` and `-token` arrive on the same request
-and are how the agent reaches the legacy harness's `/tools/*` for that rollout. The token is
+`x-client-rle-sandbox-tools-endpoint` and `-token` arrive on the same request;
+`-session-id` is the id of the MCP session this environment opened for the
+rollout in `reset`. Together they are how the agent's tool calls land on that
+same session instead of a fresh one, which is what `agent/rollout_context.py`
+threads through to `SandboxTools`. The token is
 presented as `Authorization: Bearer`, and RLE terminates that authentication at
 its own ingress and replaces the header before forwarding, so the RLE container
 never sees it and must not try to validate it.

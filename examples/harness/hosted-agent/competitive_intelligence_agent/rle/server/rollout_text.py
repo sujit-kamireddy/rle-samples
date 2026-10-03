@@ -1,12 +1,5 @@
 """Turning what RLE hands back into the text the rubric should score.
 
-Duplicated from the legacy harness's ``rle_deprecated/server/env.py`` (now
-preserved outside this sample tree, in `_internal/`, purely for a
-grading-parity test) so this environment owns every line it runs and
-``rle_deprecated/`` can be deleted outright. The two copies are identical today
-and ``test_environment.py`` asserts the rewards still match while both exist;
-once ``rle_deprecated/`` goes, this is the only copy.
-
 These three helpers are not incidental. The first two are the difference
 between a run that trains and a run whose reward is constant, and the third is
 what makes a grading crash legible through RLE's 200-character error cap.

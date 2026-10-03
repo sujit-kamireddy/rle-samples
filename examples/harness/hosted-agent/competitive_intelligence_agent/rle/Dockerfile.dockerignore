@@ -1,7 +1,6 @@
 # The build context is this folder (`rle/`) itself -- `azd ai rle publish`
 # always builds from the directory holding rle.toml. This image is
-# self-contained and copies nothing from the legacy harness, which is a
-# sibling folder already outside this context.
+# self-contained: everything it needs is copied from this folder.
 **/__pycache__
 **/*.pyc
 README.md

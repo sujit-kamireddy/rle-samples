@@ -1,9 +1,9 @@
-"""The OpenEnv environment, checked against the harness it was ported from.
+"""The OpenEnv environment's ``reset``/``step``/``grade`` contract.
 
-The point of these tests is parity. This environment exists to express the same
-rollout through a different protocol, so the thing worth asserting is that the
-protocol is all that changed: the same task, the same tool calls and the same
-final answer must produce the same reward here as they do through ``../rle``.
+These tests drive ``CompetitiveIntelEnvironment`` through its public protocol:
+a task handed to ``reset`` produces the declared production tool surface, tool
+calls land in the session the rubric reads, and ``grade`` turns a final answer
+into a reward RLE will accept.
 """
 
 from __future__ import annotations
@@ -14,21 +14,9 @@ from typing import Any
 
 import pytest
 from azure.ai.projects.rle.environments import GradeAction
-from fastapi.testclient import TestClient
 from openenv.core.env_server.mcp_environment import CallToolAction, ListToolsAction
 
 from rle.server.environment import TOOL_SURFACE, CompetitiveIntelEnvironment
-
-# `rle_deprecated/` is scheduled for deletion, and this environment no longer
-# imports anything from it: `rle/` carries its own copy of the world, the
-# tasks, the tools and the rubric. The legacy app is loaded here only so
-# `test_grade_matches_the_legacy_harness` can hold the duplicate to account
-# while both copies exist. It skips, rather than errors, the moment
-# `rle_deprecated/` goes, and this block goes with it.
-try:
-    from rle_deprecated.server.env import app as legacy_app
-except ImportError:  # pragma: no cover - the state after `rle_deprecated/` is deleted
-    legacy_app = None
 
 
 # This file was relocated to `_internal/` (see `conftest.py`), so its own
@@ -144,42 +132,6 @@ def test_an_unreadable_task_fails_loudly(env):
 def test_grade_before_reset_is_a_protocol_error(env):
     with pytest.raises(RuntimeError, match="No active episode"):
         env.grade(GradeAction(answer=ANSWER))
-
-
-@pytest.mark.skipif(legacy_app is None, reason="the legacy `rle_deprecated/` harness has been removed")
-def test_grade_matches_the_legacy_harness(task):
-    """Same task, same tool call, same answer -- same reward.
-
-    This is the test that justifies the port, and now also the test that keeps
-    the duplicated ``rl/`` honest. Both environments are driven through their
-    own public protocol over their own copy of the rubric, so what is compared
-    is two complete paths, not two calls into one shared function.
-    """
-    openenv_env = CompetitiveIntelEnvironment()
-    openenv_env.reset(episode_id="ep-1", **task)
-    openenv_env.step(
-        CallToolAction(tool_name="web_search", arguments={"search_query": task["query"]})
-    )
-    ported = openenv_env.step(GradeAction(answer=ANSWER))
-    openenv_env.close()
-
-    with TestClient(legacy_app) as client:
-        assert client.post("/reset", json=task).status_code == 200
-        assert (
-            client.post(
-                "/tools/web_search", json={"search_query": task["query"]}
-            ).status_code
-            == 200
-        )
-        legacy = client.post("/grade", json={"agent_response": ANSWER}).json()
-
-    assert ported.reward == legacy["reward"]
-    assert ported.is_success == legacy["is_success"]
-    assert ported.info == legacy["info"]
-    # A reward that is identically zero on both sides would pass the three
-    # assertions above while proving nothing about the rubric.
-    assert 0.0 < ported.reward <= 1.0
-    assert ported.info["parsed"] is True
 
 
 def test_reward_stays_inside_the_managed_rle_range(task):
