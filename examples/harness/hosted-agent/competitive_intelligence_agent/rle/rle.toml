@@ -21,7 +21,7 @@ name = "competitive_intelligence_agent"
 # Bump before republishing: registered versions are immutable. The 2.x line is
 # this folder's MCP environment; 1.x was the legacy HTTP harness that now
 # lives in `../rle_deprecated`.
-version = "2.0.0"
+version = "2.0.1"
 type = "Harness"
 subtype = "HostedAgent"
 

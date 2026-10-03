@@ -11,13 +11,27 @@ from openenv.core.env_server.types import ConcurrencyConfig
 
 from .environment import (
     GradeAction,
-    ByohRLEEnvironment,
+    DataCodeAgentRLEnvironment,
     TaskObservation,
     TaskState,
 )
 
+#: One rollout per container, matching what an RLE sandbox actually schedules:
+#: this environment's sessions are isolated enough to raise it, but a real
+#: deployment never benefits from raising it, only from more containers.
+DEFAULT_MAX_CONCURRENT_ENVS = 1
 
-def build_app(*, max_concurrent_envs: int, session_timeout: float) -> FastAPI:
+#: How long a detached session may idle before it is reclaimed. A rollout that
+#: stops calling tools and never grades would otherwise hold its slot for the
+#: life of the container.
+DEFAULT_SESSION_TIMEOUT_SECONDS = 600.0
+
+
+def build_app(
+    *,
+    max_concurrent_envs: int = DEFAULT_MAX_CONCURRENT_ENVS,
+    session_timeout: float = DEFAULT_SESSION_TIMEOUT_SECONDS,
+) -> FastAPI:
     if type(max_concurrent_envs) is not int or max_concurrent_envs < 1:
         raise ValueError("max_concurrent_envs must be a positive integer")
     if (
@@ -27,7 +41,7 @@ def build_app(*, max_concurrent_envs: int, session_timeout: float) -> FastAPI:
     ):
         raise ValueError("session_timeout must be finite and positive")
     return create_app(
-        ByohRLEEnvironment,
+        DataCodeAgentRLEnvironment,
         GradeAction,
         TaskObservation,
         state_cls=TaskState,
@@ -40,13 +54,22 @@ def build_app(*, max_concurrent_envs: int, session_timeout: float) -> FastAPI:
 
 
 def app() -> FastAPI:
-    """Uvicorn factory requiring explicit capacity and detached-idle timeout."""
+    """Uvicorn factory. Defaults above apply unless OPENENV_MAX_CONCURRENT_ENVS or
+    OPENENV_SESSION_TIMEOUT_SECONDS overrides them; both still validate as finite
+    and positive.
+    """
     try:
-        capacity = int(os.environ["OPENENV_MAX_CONCURRENT_ENVS"])
-        timeout = float(os.environ["OPENENV_SESSION_TIMEOUT_SECONDS"])
-    except (KeyError, ValueError):
+        capacity = int(
+            os.environ.get("OPENENV_MAX_CONCURRENT_ENVS", DEFAULT_MAX_CONCURRENT_ENVS)
+        )
+        timeout = float(
+            os.environ.get(
+                "OPENENV_SESSION_TIMEOUT_SECONDS", DEFAULT_SESSION_TIMEOUT_SECONDS
+            )
+        )
+    except ValueError:
         raise ValueError(
-            "Set OPENENV_MAX_CONCURRENT_ENVS to a positive integer and "
-            "OPENENV_SESSION_TIMEOUT_SECONDS to a finite positive number"
+            "OPENENV_MAX_CONCURRENT_ENVS must be a positive integer and "
+            "OPENENV_SESSION_TIMEOUT_SECONDS must be a finite positive number"
         ) from None
     return build_app(max_concurrent_envs=capacity, session_timeout=timeout)

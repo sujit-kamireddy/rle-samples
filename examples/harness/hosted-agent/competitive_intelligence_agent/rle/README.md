@@ -48,13 +48,14 @@ automatically once `../rle_deprecated` is gone.
 ## Build and run locally
 
 Run every command below from the parent `competitive_intelligence_agent/`
-directory. The **sample root is the Docker build context**, not this folder.
-The [Dockerfile-specific ignore file](./Dockerfile.dockerignore) keeps the
-agent, its tooling, the job data and `rle_deprecated/` itself out of that context, so the
-image cannot pick up a dependency on the folder that is about to be deleted.
+directory. The **Docker build context is this folder (`rle/`) itself**, not
+the sample root: `azd ai rle publish` always builds from the directory
+holding `rle.toml`. The agent, its tooling, the job data and `rle_deprecated/`
+are sibling folders already outside that context, so the image cannot pick up
+a dependency on the folder that is about to be deleted.
 
 ```bash
-docker build -f rle/Dockerfile -t ci-rle-openenv:local .
+docker build -f rle/Dockerfile -t ci-rle-openenv:local rle/
 docker run --rm -p 127.0.0.1:8000:8000 ci-rle-openenv:local
 ```
 

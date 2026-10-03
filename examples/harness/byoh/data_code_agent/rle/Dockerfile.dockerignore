@@ -1,14 +1,18 @@
-# Deny by default, then name exactly what the image needs. The deprecated
-# harness is absent from this allowlist on purpose: it keeps the decoupling
-# honest, since a COPY that reached back into it would fail the build rather
-# than quietly re-coupling the image to a folder that is going away.
+# Deny by default, then name exactly what the image needs. The build context
+# is this folder (`rle/`) itself -- `azd ai rle publish` always builds from
+# the directory holding rle.toml, so these paths are relative to here, not
+# the sample root. The deprecated harness is a sibling folder outside this
+# context already; this allowlist exists to keep tests, docs and local cruft
+# out of the image, not to reach across folders.
 **
-!rle/
-!rle/requirements.txt
-!rle/__init__.py
-!rle/server/
-!rle/server/*.py
-!rle/server/vendor/
-!rle/server/vendor/*.py
-!rle/server/vendor/task-meta/
-!rle/server/vendor/task-meta/*.json.gz
+!requirements.txt
+!__init__.py
+!server/
+!server/*.py
+!server/vendor/
+!server/vendor/*.py
+!server/vendor/task-meta/
+!server/vendor/task-meta/*.json.gz
+# Re-deny bytecode cache the allowlist above would otherwise sweep in from a
+# local working tree (it is gitignored, not git-excluded from the build).
+**/__pycache__

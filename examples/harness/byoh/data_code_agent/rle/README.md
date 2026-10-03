@@ -33,35 +33,52 @@ match. Those tests skip automatically once `../rle_deprecated` is gone.
 ## Build and run locally
 
 Run all commands below from the parent `data_code_agent/` directory unless
-otherwise specified. The **sample root is the OpenEnv Docker build context**,
-so paths in the Dockerfile are written as `rle/...`. The image copies
-nothing from `../rle_deprecated`: not the agent, not the legacy HTTP server, and not its
-grading modules. The Dockerfile-specific ignore file restricts the build
-context to this folder, excluding agent data, tests, and Python bytecode.
+otherwise specified. The **Docker build context is this `rle/` folder**, not
+the sample root, matching where `azd ai rle publish` resolves `rle.toml` and
+builds from, so paths in the Dockerfile are written relative to here. The
+image copies nothing from `../rle_deprecated`: not the agent, not the legacy
+HTTP server, and not its grading modules. The Dockerfile-specific ignore file
+restricts the build context to this folder, excluding tests and Python
+bytecode.
 
 ```bash
-docker build -f rle/Dockerfile -t byoh-rle-openenv:local .
-docker run --rm -p 127.0.0.1:8000:8000 \
-  -e OPENENV_MAX_CONCURRENT_ENVS=4 \
-  -e OPENENV_SESSION_TIMEOUT_SECONDS=300 \
-  byoh-rle-openenv:local
+docker build -f rle/Dockerfile -t byoh-rle-openenv:local rle/
+docker run --rm -p 127.0.0.1:8000:8000 byoh-rle-openenv:local
 ```
 
-Capacity and the detached-session idle timeout must both be explicitly set to
-positive values. These values are examples, not implicit defaults. Use **one
-Uvicorn worker**: session IDs belong to that process.
+Use **one Uvicorn worker**: session IDs belong to that process.
 
 Alternatively, create an isolated Python environment and run from the sample root:
 
 ```bash
 python -m pip install -r rle/requirements.txt
-OPENENV_MAX_CONCURRENT_ENVS=4 OPENENV_SESSION_TIMEOUT_SECONDS=300 \
-  uvicorn rle.server.app:app --factory --host 127.0.0.1 --port 8000 --workers 1
+uvicorn rle.server.app:app --factory --host 127.0.0.1 --port 8000 --workers 1
 ```
 
 OpenEnv is pinned to `0.6.0`, which supports attaching WebSocket control to an
 HTTP-created MCP session. This is OpenEnv's JSON-RPC interface with session
 extensions, not a claim of compatibility with every Streamable HTTP MCP client.
+
+### Capacity
+
+`OPENENV_MAX_CONCURRENT_ENVS` defaults to `1`, matching what a real RLE sandbox
+schedules per container. Unlike the CI sample, this environment sets
+`SUPPORTS_CONCURRENT_SESSIONS = True`: every session gets its own
+`DataCodeAgentRLEnvironment` instance with no shared process-level state, so
+the default may be raised for higher local throughput, e.g.
+`-e OPENENV_MAX_CONCURRENT_ENVS=4`. Once the configured capacity is reached,
+further `openenv/session/create` calls fail with a `SessionCapacityError`
+(surfaced as a JSON-RPC error carrying `active_sessions` and `max_sessions`)
+rather than silently overcommitting.
+
+`OPENENV_SESSION_TIMEOUT_SECONDS` defaults to `600`. It bounds how long a
+detached session may idle before it is reclaimed, so a rollout that stops
+calling tools and never grades cannot hold its slot for the life of the
+container.
+
+Both variables are optional overrides. Set either to an invalid value
+(non-integer, non-positive, or non-finite) and startup raises `ValueError`
+instead of serving with a broken limit.
 
 ## Session and grading contract
 
@@ -155,7 +172,7 @@ With test requirements installed, run from the sample root:
 
 ```bash
 # Existing Harness command is unchanged and does not import OpenEnv.
-(cd rle && python -m unittest discover -s tests -t .)
+(cd rle_deprecated && python -m unittest discover -s tests -t .)
 
 # Focused local implementation and differential checks.
 OPENENV_PARITY_REPORT=/tmp/openenv-focused-parity.json \
@@ -167,8 +184,8 @@ OPENENV_PARITY_REPORT=/tmp/openenv-parity.json \
   python -m unittest rle.tests.test_full_dataset
 
 # Real containers, HTTP MCP, WebSockets, and independent concurrent sessions.
-docker build -t byoh-rle-legacy:local rle
-docker build -f rle/Dockerfile -t byoh-rle-openenv:local .
+docker build -t byoh-rle-legacy:local rle_deprecated
+docker build -f rle/Dockerfile -t byoh-rle-openenv:local rle/
 LEGACY_TEST_IMAGE=byoh-rle-legacy:local \
 OPENENV_TEST_IMAGE=byoh-rle-openenv:local \
 OPENENV_LIVE_REPORT=/tmp/openenv-live.json \
