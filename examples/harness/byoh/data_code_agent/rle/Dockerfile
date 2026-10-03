@@ -7,13 +7,16 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
-COPY rle/requirements.txt .
+COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
-COPY rle/__init__.py ./rle/__init__.py
-# Everything this image runs lives under rle/, including its own copies
-# of the grading modules. The deprecated harness is excluded from the build
-# context outright, so a COPY that reached back into it would fail the build.
-COPY rle/server/ ./rle/server/
+COPY __init__.py ./rle/__init__.py
+# The build context is this folder (`rle/`) itself -- `azd ai rle publish`
+# always builds from the directory holding rle.toml, so COPY sources are
+# relative to here, not the sample root. The deprecated harness is a sibling
+# folder outside this context already, so a COPY that reached for it would
+# fail the build rather than quietly re-coupling the image to a folder that
+# is going away.
+COPY server/ ./rle/server/
 
 EXPOSE 8000
 CMD ["uvicorn", "rle.server.app:app", "--factory", "--host", "0.0.0.0", "--port", "8000", "--workers", "1"]

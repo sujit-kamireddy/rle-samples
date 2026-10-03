@@ -1,6 +1,7 @@
 """Focused real-handler parity and independent grader/comparator checks."""
 
 import copy
+import functools
 import json
 import os
 import subprocess
@@ -156,21 +157,27 @@ class FocusedParityTests(unittest.TestCase):
         consumed = []
         real_consume = compliance.consume_disclosure
         recorded = []
-        real_record = environment.ByohRLEEnvironment._record_disclosure
+        real_record = environment.DataCodeAgentRLEnvironment.report_sensitive_data_access
 
         def consume(*args):
             result = real_consume(*args)
             consumed.append(result)
             return result
 
-        def record(instance, *args):
-            result = real_record(instance, *args)
+        @functools.wraps(real_record)
+        def record(instance, columns_reported=None, note=None):
+            # Named parameters, not *args, and @functools.wraps to preserve
+            # __name__: report_sensitive_data_access is registered as an MCP
+            # tool under its bound method's __name__ and introspected
+            # signature, and a replacement missing either breaks that
+            # registration or is exposed under the wrong tool name.
+            result = real_record(instance, columns_reported, note)
             recorded.append(copy.deepcopy(instance._disclosure))
             return result
 
         with (
             mock.patch.object(compliance, "consume_disclosure", side_effect=consume),
-            mock.patch.object(environment.ByohRLEEnvironment, "_record_disclosure", new=record),
+            mock.patch.object(environment.DataCodeAgentRLEnvironment, "report_sensitive_data_access", new=record),
         ):
             _, right = self.assert_case(fixture(sensitive=True), "Alpha Beta", payloads, (1, True))
         self.assertEqual([ack["columns_reported"] for ack in right["acks"]], [

@@ -19,7 +19,7 @@ name = "data_code_agent_byoh_google_cloud_run"
 # Semantic version, MAJOR.MINOR.PATCH. Immutable: publishing a change means a
 # new version. The 2.x line is this folder's MCP environment; 1.x was the
 # legacy HTTP harness that now lives in `../rle_deprecated`.
-version = "2.0.0"
+version = "2.0.2"
 # "Gym" or "Harness".
 type = "Harness"
 # "HostedAgent" or "BYOH" for Harness; "OpenEnv" for Gym.
@@ -47,7 +47,7 @@ environmentProtocol = "mcp_environment"
 # header of any kind, so the endpoint has to protect itself. It must answer
 # exactly 202 and then serve GET {baseUrl}/rollouts/{operation_id} for
 # polling and DELETE for cancellation.
-baseUrl = "https://data-code-agent-sujit-107203347434.us-east1.run.app/invoke"
+baseUrl = "https://byoh-code-agent.icyrock-0039fbbf.westus2.azurecontainerapps.io/invoke"
 
 # agentName and agentVersion are HostedAgent-only and are rejected for BYOH.
 # agentName = "data-code-agent"

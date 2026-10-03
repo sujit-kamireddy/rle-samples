@@ -27,7 +27,7 @@ WORKDIR /app
 # `RLEnvironment` base class and fastmcp with it. loom is still not installed --
 # it pulls torch, and `vendor/` carries the few hundred lines of its tool
 # decorator that the simulated tools actually need.
-COPY rle/requirements.txt /app/requirements.txt
+COPY requirements.txt /app/requirements.txt
 RUN if [ -n "${PIP_FALLBACK_INDEX_URL}" ] && \
        ! pip download --no-deps --quiet --index-url "${PIP_INDEX_URL}" --dest /tmp/idxprobe six >/dev/null 2>&1; then \
         echo "Primary index unreachable; falling back to ${PIP_FALLBACK_INDEX_URL}"; \
@@ -38,25 +38,30 @@ RUN if [ -n "${PIP_FALLBACK_INDEX_URL}" ] && \
         -r /app/requirements.txt
 
 # This image is self-contained: the world, the tasks, the simulated tools and
-# the rubric are copied from `rle/` itself, not from the legacy
-# harness. `rle/` carries an identical copy for now, and
+# the rubric are copied from this folder (`rle/`) itself, not from the legacy
+# harness. `rle_deprecated/` carries an identical copy for now, and
 # `tests/test_environment.py` asserts the two still grade the same, but nothing
-# in this image reads it -- which is what lets `rle/` be deleted outright.
+# in this image reads it -- which is what lets `rle_deprecated/` be deleted
+# outright.
 #
-# The agent, the dataset and the legacy Dockerfile are excluded by
-# `Dockerfile.dockerignore`: those rows carry the expected decision and the
-# verified snapshot, which is answer key, and do not belong in an image the
-# agent's sandbox can reach.
-COPY rle/__init__.py /app/rle/__init__.py
-COPY rle/rl/ /app/rle/rl/
-COPY rle/vendor/ /app/rle/vendor/
-COPY rle/server/ /app/rle/server/
+# The build context is this folder itself -- `azd ai rle publish` always
+# builds from the directory holding rle.toml -- so the agent, the dataset and
+# the legacy Dockerfile are all sibling folders already outside this context,
+# not something `Dockerfile.dockerignore` needs to reach across to exclude.
+COPY __init__.py /app/rle/__init__.py
+COPY rl/ /app/rle/rl/
+COPY vendor/ /app/rle/vendor/
+COPY server/ /app/rle/server/
 
 # `rle.rl.simulated_tools` imports `loom_cookbook.tool_use`, which
 # resolves to the vendored copy; everything else is a `rle.*` import
 # rooted at the workdir.
 ENV PYTHONPATH=/app/rle/vendor:/app
 ENV PYTHONUNBUFFERED=1
+# Dockerfile.dockerignore keeps stale __pycache__ out of what gets COPY'd in,
+# but the sanity-check import below runs inside the image, after that --
+# without this, it would recreate bytecode cache the ignore file just excluded.
+ENV PYTHONDONTWRITEBYTECODE=1
 
 # Import the app and the server that will run it. A missing dependency reported
 # here names the module; reported at rollout time it arrives as an opaque

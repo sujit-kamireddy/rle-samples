@@ -16,7 +16,7 @@ from rle.server import compliance
 from rle.server.app import app, build_app
 from rle.server.environment import (
     GradeAction,
-    ByohRLEEnvironment,
+    DataCodeAgentRLEnvironment,
     TaskState,
     grade,
     load_tasks,
@@ -26,8 +26,8 @@ SPLIT = "FineEnvs/data-agent-harbor-train"
 
 
 class EnvironmentTests(unittest.TestCase):
-    def make_env(self, index: int | None = 35) -> ByohRLEEnvironment:
-        env = ByohRLEEnvironment()
+    def make_env(self, index: int | None = 35) -> DataCodeAgentRLEnvironment:
+        env = DataCodeAgentRLEnvironment()
         self.addCleanup(env.close)
         if index is not None:
             env.reset(split=SPLIT, task_index=index)
@@ -81,7 +81,7 @@ class EnvironmentTests(unittest.TestCase):
         self.assertEqual(env.state.status, "uninitialized")
         for operation in (
             lambda: env.step(GradeAction(answer="x")),
-            lambda: env._record_disclosure([], None),
+            lambda: env.report_sensitive_data_access([], None),
         ):
             with self.assertRaisesRegex(RuntimeError, "active episode"):
                 operation()
@@ -92,7 +92,7 @@ class EnvironmentTests(unittest.TestCase):
         self.assertEqual(env.state.attempt, 1)
         for operation in (
             lambda: env.step(GradeAction(answer="EstimatedSalary")),
-            lambda: env._record_disclosure([], None),
+            lambda: env.report_sensitive_data_access([], None),
         ):
             with self.assertRaisesRegex(RuntimeError, "active episode"):
                 operation()
@@ -104,7 +104,7 @@ class EnvironmentTests(unittest.TestCase):
 
     def test_reset_rejects_selectors_atomically(self):
         env = self.make_env()
-        env._record_disclosure(["income"], None)
+        env.report_sensitive_data_access(["income"], None)
         before = env.state
         invalid = [
             {},
@@ -126,7 +126,7 @@ class EnvironmentTests(unittest.TestCase):
     def test_reset_clears_only_its_instance_and_returns_detached_data(self):
         first, second = self.make_env(), self.make_env()
         for env in (first, second):
-            env._record_disclosure(["income"], None)
+            env.report_sensitive_data_access(["income"], None)
         previous_id = first.state.episode_id
         reset = first.reset(split=SPLIT, task_index=35)
         reset.metadata["caller"] = "modified"
@@ -163,7 +163,7 @@ class EnvironmentTests(unittest.TestCase):
 
     def test_public_snapshots_do_not_expose_private_records(self):
         env = self.make_env()
-        env._record_disclosure(["income"], "private note sentinel")
+        env.report_sensitive_data_access(["income"], "private note sentinel")
         result = env.step(GradeAction(answer="incorrect"))
         forbidden = {
             "expected_answer", "has_pii", "pii_categories", "atol", "rtol",
@@ -212,7 +212,7 @@ class EnvironmentTests(unittest.TestCase):
                 def mutate():
                     mutation_started.set()
                     if mutation == "disclose":
-                        return first._record_disclosure(["income"], None)
+                        return first.report_sensitive_data_access(["income"], None)
                     if mutation == "reset":
                         return first.reset(split=SPLIT, task_index=30)
                     return first.close()
@@ -263,12 +263,32 @@ class EnvironmentTests(unittest.TestCase):
 
 
 class AppTests(unittest.TestCase):
-    def test_configuration_requires_explicit_finite_positive_limits(self):
+    def test_build_app_rejects_non_finite_positive_limits(self):
         for capacity, timeout in ((0, 1), (True, 1), (2, 0), (2, float("nan"))):
             with self.subTest(capacity=capacity, timeout=timeout):
                 with self.assertRaises(ValueError):
                     build_app(max_concurrent_envs=capacity, session_timeout=timeout)
-        with patch.dict("os.environ", {}, clear=True), self.assertRaises(ValueError):
+
+    def test_app_falls_back_to_defaults_when_env_unset(self):
+        with patch.dict("os.environ", {}, clear=True):
+            with TestClient(app()) as client:
+                rpc = lambda request_id: client.post(
+                    "/mcp",
+                    json={
+                        "jsonrpc": "2.0",
+                        "id": request_id,
+                        "method": "openenv/session/create",
+                        "params": {},
+                    },
+                ).json()
+                first, second = rpc(1), rpc(2)
+        self.assertNotIn("error", first)
+        self.assertEqual(second["error"]["data"]["max_sessions"], 1)
+
+    def test_app_still_rejects_invalid_env_override(self):
+        with patch.dict(
+            "os.environ", {"OPENENV_MAX_CONCURRENT_ENVS": "0"}, clear=True
+        ), self.assertRaises(ValueError):
             app()
 
     def test_schema_is_grade_action_and_safe_state(self):
