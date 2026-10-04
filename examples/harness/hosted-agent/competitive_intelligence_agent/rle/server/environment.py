@@ -332,6 +332,15 @@ class CompetitiveIntelEnvironment(RLEnvironment):
         -- so tool discipline, evidence fidelity and action restraint are
         scored from what the agent *did*, not only from what it said.
 
+        ``action.rollout_graph`` is passed through unchanged, if the rollout
+        target supplied one, so the rubric can fold tool-call parse errors
+        into the reward and surface upstream model-call errors as a metric.
+        It is ``None`` for every rollout this sample currently grades --
+        this environment runs on the hosted-agent (MCP) execution path, which
+        does not yet plumb a rollout graph through to ``grade`` -- and
+        ``grade_episode`` handles that the same way it would handle one that
+        arrived partially stripped by a grader-facing sanitizer.
+
         ``grade_episode`` is a coroutine and this method is not, which is what
         ``create_app`` expects: it runs a synchronous ``step`` in a thread pool,
         so there is no running loop here to conflict with.
@@ -340,8 +349,15 @@ class CompetitiveIntelEnvironment(RLEnvironment):
             raise RuntimeError("No active episode; call reset before grade.")
 
         try:
-            agent_response = _final_text(action.answer or "")
-            result = asyncio.run(grade_episode(self._task, self._session, agent_response))
+            agent_response = _final_text(action.response or "")
+            result = asyncio.run(
+                grade_episode(
+                    self._task,
+                    self._session,
+                    agent_response,
+                    rollout_graph=action.rollout_graph,
+                )
+            )
         except Exception as error:
             logger.exception(
                 "grade failed task=%s variant=%s", self._task.task_id, self._task.variant

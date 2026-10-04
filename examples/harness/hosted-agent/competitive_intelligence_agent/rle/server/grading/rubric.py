@@ -46,12 +46,33 @@ from ..tools.simulated_tools import MUTATING_TOOL_NAMES, ToolSession
 
 FORMAT_COEF = 0.1
 
+#: Per-malformed-tool-call penalty, and the cap on their total contribution.
+#: A tool call the model itself emitted with broken syntax (unparsable JSON,
+#: a missing name, ...) is the policy's own fault in a way an upstream
+#: timeout is not -- see ``model_call_errors`` below -- so it is folded into
+#: the reward rather than only reported. Scaled per error rather than
+#: binary like the format penalty because one stray call and twenty are not
+#: the same failure, but capped at the same order of magnitude as
+#: ``FORMAT_COEF`` so a pathological rollout cannot swamp the materiality and
+#: evidence signal the reward mostly exists to carry.
+TOOL_CALL_ERROR_COEF = 0.02
+TOOL_CALL_ERROR_CAP = 0.1
 
-def normalise_reward(penalised: float) -> float:
-    """Map the penalised score's [-FORMAT_COEF, 1] onto managed RLE's [0, 1].
+#: The worst-case total penalty contribution across every penalty term,
+#: fixed rather than computed per episode. ``normalise_reward`` needs one
+#: constant floor applied identically to every rollout in a group: if the
+#: floor instead shrank for episodes that happened not to hit a penalty, the
+#: affine map would differ rollout to rollout and GRPO's group-relative
+#: advantage would stop being a constant-scale transform of the raw
+#: penalised score.
+PENALTY_FLOOR = FORMAT_COEF + TOOL_CALL_ERROR_CAP
+
+
+def normalise_reward(penalised: float, floor: float = FORMAT_COEF) -> float:
+    """Map the penalised score's [-floor, 1] onto managed RLE's [0, 1].
 
     Rescaling rather than clamping, because the two differ exactly where it
-    matters. Clamping sends every unparsed rollout scoring under FORMAT_COEF to
+    matters. Clamping sends every unparsed rollout scoring under the floor to
     the same 0.0, and GRPO takes its gradient from the spread *within* a group:
     a group whose members all score 0.0 has no advantage and teaches nothing.
     Those rollouts are the bulk of what a cold policy emits, so the run would
@@ -60,13 +81,59 @@ def normalise_reward(penalised: float) -> float:
     that did not.
 
     The cost is an honest one to state: a parsed rollout scoring 0 correct
-    lands at FORMAT_COEF / (1 + FORMAT_COEF), not 0, so the floor of the curve
-    sits just above zero.
+    lands at floor / (1 + floor), not 0, so the floor of the curve sits just
+    above zero.
+
+    ``floor`` defaults to ``FORMAT_COEF`` so direct callers that only ever
+    applied the format penalty see unchanged behaviour; ``grade_episode``
+    passes ``PENALTY_FLOOR``, which also accounts for the tool-call-error
+    penalty below.
 
     The clamp guards only float drift and a judge returning outside [0, 1]; the
     arithmetic is already in range.
     """
-    return min(1.0, max(0.0, (penalised + FORMAT_COEF) / (1.0 + FORMAT_COEF)))
+    return min(1.0, max(0.0, (penalised + floor) / (1.0 + floor)))
+
+
+def _rollout_graph_error_counts(rollout_graph: dict[str, Any] | None) -> tuple[int, int]:
+    """Defensively read ``(n_tool_call_errors, n_model_call_errors)`` off a rollout graph.
+
+    ``rollout_graph`` comes from RLE's capture proxy by way of ``GradeAction``,
+    and is ``None`` whenever the rollout target does not supply one -- which,
+    as of this writing, is every rollout this sample grades: the hosted-agent
+    (MCP) execution path does not yet plumb a rollout graph through to
+    ``grade`` at all. Treat that as the normal case, not an error, and read
+    every field as optional so a partially-sanitised graph degrades to a
+    smaller count instead of raising.
+
+    Prefer the count fields over the detailed lists they summarise, because
+    the counts are cheaper to keep and so more likely to survive sanitisation
+    for grading: a grader-facing sanitizer can legitimately strip a detailed
+    list (message content, stack traces) while keeping its count. Falling
+    back to counting the detailed list only covers the case where a count is
+    itself missing from an older or differently-shaped graph.
+    """
+    if not rollout_graph:
+        return 0, 0
+
+    n_tool_call_errors = 0
+    for turn in rollout_graph.get("turns", None) or ():
+        if not isinstance(turn, dict):
+            continue
+        count = turn.get("n_tool_call_errors", None)
+        if isinstance(count, (int, float)):
+            n_tool_call_errors += int(count)
+        else:
+            n_tool_call_errors += len(turn.get("tool_call_errors", None) or ())
+
+    model_call_errors = rollout_graph.get("model_call_errors", None)
+    if isinstance(model_call_errors, list):
+        n_model_call_errors = len(model_call_errors)
+    else:
+        stats = rollout_graph.get("stats", None) or {}
+        n_model_call_errors = int(stats.get("n_model_call_errors", None) or 0)
+
+    return n_tool_call_errors, n_model_call_errors
 
 #: The benchmark rubric's own weights
 #: (`evaluators/competitive-intelligence-baseline/rubric_dimensions.json`).
@@ -717,6 +784,7 @@ async def grade_episode(
     judge: JudgeFn | None = None,
     judge_weight: float = 5.0,
     weights: dict[str, float] | None = None,
+    rollout_graph: dict[str, Any] | None = None,
 ) -> GradeResult:
     """Score one completed episode.
 
@@ -734,6 +802,25 @@ async def grade_episode(
     wholly wrong one, which is exactly the distinction the penalty exists to
     draw. An affine map keeps it: it is monotone with a positive scale, so
     group-relative advantages are unchanged apart from a constant factor.
+
+    ``rollout_graph`` is optional and defaults to ``None``, which every
+    existing caller gets automatically: as of this writing the hosted-agent
+    execution path this sample runs on does not supply one at all (see
+    ``environment.py``), and even where RLE does supply one, a grader-facing
+    sanitizer bug can strip the detailed ``model_call_errors`` list before it
+    arrives here. ``_rollout_graph_error_counts`` reads it defensively for
+    exactly that reason. The two error kinds it reports are folded in
+    differently:
+
+    * ``tool_call_errors`` -- the model's own malformed tool-call syntax --
+      is the policy's fault, so it becomes a reward penalty, scaled like the
+      format penalty above.
+    * ``model_call_errors`` -- upstream sampling failures (timeouts, 5xxs)
+      -- is not the policy's fault, so it is surfaced only as a metric, not
+      folded into the reward: penalising the agent for its backend being
+      slow or unavailable would add noise to the signal that is uncorrelated
+      with policy quality, which is the same reason this module keeps the
+      LLM judge off the training path by default (see the module docstring).
     """
     decision = parse_decision(final_text)
 
@@ -758,8 +845,12 @@ async def grade_episode(
     correct = aggregate_dimensions(task, dims, weights)
     benchmark_correct = aggregate_dimensions(task, dims, BENCHMARK_WEIGHTS)
     format_score = 1.0 if decision.parsed else 0.0
-    penalised = FORMAT_COEF * (format_score - 1.0) + correct
-    reward = normalise_reward(penalised)
+    n_tool_call_errors, n_model_call_errors = _rollout_graph_error_counts(rollout_graph)
+    tool_call_error_penalty = min(
+        TOOL_CALL_ERROR_CAP, TOOL_CALL_ERROR_COEF * n_tool_call_errors
+    )
+    penalised = FORMAT_COEF * (format_score - 1.0) - tool_call_error_penalty + correct
+    reward = normalise_reward(penalised, floor=PENALTY_FLOOR)
 
     metrics: dict[str, float] = {f"dim/{k}": v for k, v in dims.items()}
     metrics["format"] = format_score
@@ -770,6 +861,11 @@ async def grade_episode(
     metrics["benchmark_correct"] = benchmark_correct
     metrics["n_tool_calls"] = float(len(session.calls))
     metrics["mutating_calls"] = float(len(session.mutating_calls))
+    # Observability for both rollout-graph error kinds; see the docstring
+    # above for why only the first is also folded into the reward.
+    metrics["n_tool_call_errors"] = float(n_tool_call_errors)
+    metrics["tool_call_error_penalty"] = tool_call_error_penalty
+    metrics["n_model_call_errors"] = float(n_model_call_errors)
     metrics[f"variant/{task.variant}"] = correct
     # Exact-match verdict accuracy, reported separately because it is the headline
     # number for the production comparison and is far sparser than the reward.

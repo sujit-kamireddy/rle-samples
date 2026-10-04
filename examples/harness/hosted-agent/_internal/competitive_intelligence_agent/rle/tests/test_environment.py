@@ -131,7 +131,7 @@ def test_an_unreadable_task_fails_loudly(env):
 
 def test_grade_before_reset_is_a_protocol_error(env):
     with pytest.raises(RuntimeError, match="No active episode"):
-        env.grade(GradeAction(answer=ANSWER))
+        env.grade(GradeAction(response=ANSWER))
 
 
 def test_reward_stays_inside_the_managed_rle_range(task):
@@ -140,7 +140,50 @@ def test_reward_stays_inside_the_managed_rle_range(task):
     for row in rows:
         environment = CompetitiveIntelEnvironment()
         environment.reset(episode_id=row["task_id"], **row)
-        observation = environment.grade(GradeAction(answer=ANSWER))
+        observation = environment.grade(GradeAction(response=ANSWER))
         assert 0.0 <= observation.reward <= 1.0, row["task_id"]
         assert observation.done is True
         environment.close()
+
+
+def test_tool_call_errors_on_the_rollout_graph_penalise_the_reward(task):
+    """A malformed tool call is the policy's own fault, so it costs reward.
+
+    ``rollout_graph`` is ``None`` for every rollout this sample grades today
+    -- see ``environment.grade``'s docstring -- so this pins the behaviour
+    for the day a rollout target does supply one, rather than leaving it
+    untested until then.
+    """
+    clean_env = CompetitiveIntelEnvironment()
+    clean_env.reset(episode_id=task["task_id"], **task)
+    clean = clean_env.grade(GradeAction(response=ANSWER))
+    clean_env.close()
+
+    errored_env = CompetitiveIntelEnvironment()
+    errored_env.reset(episode_id=task["task_id"], **task)
+    rollout_graph = {"turns": [{"n_tool_call_errors": 2}, {"n_tool_call_errors": 1}]}
+    errored = errored_env.grade(GradeAction(response=ANSWER, rollout_graph=rollout_graph))
+    errored_env.close()
+
+    assert errored.info["metrics"]["n_tool_call_errors"] == 3.0
+    assert errored.reward < clean.reward
+    assert 0.0 <= errored.reward <= 1.0
+
+
+def test_model_call_errors_on_the_rollout_graph_are_observability_only(task):
+    """An upstream sampling failure is not the policy's fault, so it must not move the reward."""
+    clean_env = CompetitiveIntelEnvironment()
+    clean_env.reset(episode_id=task["task_id"], **task)
+    clean = clean_env.grade(GradeAction(response=ANSWER))
+    clean_env.close()
+
+    errored_env = CompetitiveIntelEnvironment()
+    errored_env.reset(episode_id=task["task_id"], **task)
+    rollout_graph = {
+        "model_call_errors": [{"error_code": "timeout"}, {"error_code": "http_error"}]
+    }
+    observed = errored_env.grade(GradeAction(response=ANSWER, rollout_graph=rollout_graph))
+    errored_env.close()
+
+    assert observed.info["metrics"]["n_model_call_errors"] == 2.0
+    assert observed.reward == clean.reward
