@@ -5,25 +5,22 @@ set to the rollout id, and hands the rollout's runtime context over as request
 headers::
 
     x-client-rle-rollout-id
-    x-client-rle-model-endpoint          # capture proxy
-    x-client-rle-model-api-key           # its session key
-    x-client-rle-sandbox-tools-endpoint  # this rollout's tool routes
-    x-client-rle-sandbox-tools-token     # bearer for them
-    x-client-rle-sandbox-session-id      # the MCPEnvironment session, if any
+    x-client-rle-model-endpoint      # capture proxy
+    x-client-rle-model-api-key       # its session key
+    x-client-rle-mcp-endpoint        # this rollout's tool routes
+    x-client-rle-mcp-bearer-token    # bearer for them
+    x-client-rle-mcp-session-id      # the MCPEnvironment session, if any
 
 They are strictly per-request. At process start they do not exist -- the
 container is warm long before any rollout arrives -- and two rollouts served
 concurrently by the same process carry different values. Anything derived from
 them therefore has to be built per request and passed down the call chain.
 
-The last header is the protocol discriminator. RLE sends it only when the
-published environment declares ``mcp_environment``, in which case the service
-has already opened one private OpenEnv session, reset it with this rollout's
-task, and will grade the final answer on that same session. The agent's tool
-calls have to land on that session or the grader scores an episode in which
-the agent did nothing, so the id is threaded straight into ``SandboxTools``.
-Without the header the environment is the older one that answers a plain
-``POST <tools endpoint>/<tool name>``, and ``SandboxTools`` keeps speaking it.
+RLE has already opened one private OpenEnv session, reset it with this
+rollout's task, and will grade the final answer on that same session. The
+agent's tool calls have to land on that session or the grader scores an
+episode in which the agent did nothing, so the session id is threaded
+straight into ``RolloutTools``.
 
 ``RolloutContext.absent()`` is the production path: no headers, so the agent
 talks to its configured Foundry model and its real toolbox. One build serves
@@ -44,9 +41,9 @@ from telemetry import brief, endpoint
 ROLLOUT_ID_HEADER = "x-client-rle-rollout-id"
 MODEL_ENDPOINT_HEADER = "x-client-rle-model-endpoint"
 MODEL_API_KEY_HEADER = "x-client-rle-model-api-key"
-SANDBOX_TOOLS_ENDPOINT_HEADER = "x-client-rle-sandbox-tools-endpoint"
-SANDBOX_TOOLS_TOKEN_HEADER = "x-client-rle-sandbox-tools-token"
-SANDBOX_SESSION_ID_HEADER = "x-client-rle-sandbox-session-id"
+MCP_ENDPOINT_HEADER = "x-client-rle-mcp-endpoint"
+MCP_BEARER_TOKEN_HEADER = "x-client-rle-mcp-bearer-token"
+MCP_SESSION_ID_HEADER = "x-client-rle-mcp-session-id"
 
 
 @dataclass(frozen=True)
@@ -56,9 +53,9 @@ class RolloutContext:
     rollout_id: Optional[str] = None
     model_endpoint: Optional[str] = None
     model_api_key: Optional[str] = None
-    sandbox_tools_endpoint: Optional[str] = None
-    sandbox_tools_token: Optional[str] = None
-    sandbox_session_id: Optional[str] = None
+    mcp_endpoint: Optional[str] = None
+    mcp_bearer_token: Optional[str] = None
+    mcp_session_id: Optional[str] = None
 
     @property
     def in_rollout(self) -> bool:
@@ -73,10 +70,10 @@ class RolloutContext:
         """This rollout's wiring, two lines, credentials reduced to a presence.
 
         The two endpoints are the interesting half -- they name the capture
-        proxy this rollout's model calls are recorded by and the sandbox its
-        tool calls are answered by, which is what makes the log stream legible
-        next to the CLI. They are safe to show: `brief` drops query strings,
-        where SAS-style credentials would live.
+        proxy this rollout's model calls are recorded by and the MCP endpoint
+        its tool calls are answered by, which is what makes the log stream
+        legible next to the CLI. They are safe to show: `brief` drops query
+        strings, where SAS-style credentials would live.
 
         The API key and the tool token are the other half and are never shown,
         in any form. Both are live credentials for the length of the rollout
@@ -87,17 +84,17 @@ class RolloutContext:
 
         The session id gets the same treatment. It is not a credential, but
         RLE redacts it from the rollout graph, and paired with the tool token
-        it addresses one live session, so this reports only the protocol it
-        implies. ``mcp`` or ``http`` is the diagnostic worth having: it says
-        which of the two wire formats the tool calls below went out in.
+        it addresses the one live session the tool calls below must land on,
+        so a missing session id is the same class of failure as a missing
+        token: reported as a presence, never a value.
 
         Returned as two lines because one was 118 columns and wrapped.
         """
         return (
             f"model {brief(self.model_endpoint)}  key {_presence(self.model_api_key)}",
-            f"tools {brief(self.sandbox_tools_endpoint)}"
-            f"  token {_presence(self.sandbox_tools_token)}"
-            f"  protocol {'mcp' if self.sandbox_session_id else 'http'}",
+            f"tools {brief(self.mcp_endpoint)}"
+            f"  token {_presence(self.mcp_bearer_token)}"
+            f"  session {_presence(self.mcp_session_id)}",
         )
 
     @classmethod
@@ -115,9 +112,9 @@ class RolloutContext:
             rollout_id=lowered.get(ROLLOUT_ID_HEADER),
             model_endpoint=lowered.get(MODEL_ENDPOINT_HEADER),
             model_api_key=lowered.get(MODEL_API_KEY_HEADER),
-            sandbox_tools_endpoint=lowered.get(SANDBOX_TOOLS_ENDPOINT_HEADER),
-            sandbox_tools_token=lowered.get(SANDBOX_TOOLS_TOKEN_HEADER),
-            sandbox_session_id=lowered.get(SANDBOX_SESSION_ID_HEADER),
+            mcp_endpoint=lowered.get(MCP_ENDPOINT_HEADER),
+            mcp_bearer_token=lowered.get(MCP_BEARER_TOKEN_HEADER),
+            mcp_session_id=lowered.get(MCP_SESSION_ID_HEADER),
         )
 
 
@@ -126,7 +123,7 @@ def _presence(secret: Optional[str]) -> str:
     return "ok" if secret else "ABSENT"
 
 
-class SandboxTools:
+class RolloutTools:
     """The rollout's simulated tools, served by the RLE harness container.
 
     During a rollout every tool the agent would call for real is answered by
@@ -135,62 +132,27 @@ class SandboxTools:
     did. The bearer token is scoped to this rollout and to its tool routes
     only; it is not a workspace credential and it expires with the rollout.
 
-    Two wire formats reach the same simulated tools, chosen by whether RLE
-    sent a sandbox session id:
-
-    ``mcp``
-        ``rle/server/environment.py``. One JSON-RPC ``tools/call`` per tool,
-        posted to the rollout's ``/mcp`` route, carrying the session id RLE
-        opened and will grade on. This is the converged protocol.
-
-    ``http``
-        The legacy harness's own route handler. ``POST <endpoint>/<tool name>``
-        with the arguments as the body. Kept because an environment published
-        before the convergence sends no session id, and the agent image is the
-        same one production runs.
-
-    Both return the tool's output as a JSON string, and it is the identical
-    string in both cases: the MCP tool wrapper and the legacy route each
-    forward the single message the simulated tool produced. So ``call`` has
-    one return contract and the agent loop above does not know which ran.
+    Each call is one JSON-RPC ``tools/call``, posted to the rollout's ``/mcp``
+    route and carrying the session id RLE opened and will grade on -- see
+    ``rle/server/environment.py``. The result unwraps to the tool's output as
+    a JSON string, which is the one thing the agent loop above ever sees.
     """
 
     def __init__(self, context: RolloutContext, timeout_s: float = 30.0) -> None:
-        if not context.sandbox_tools_endpoint:
-            raise ValueError("SandboxTools requires a rollout with tool routes.")
-        # The header's value already ends in /tools, so for the legacy route
-        # only the tool name is appended. Adding another /tools would yield
-        # /tools/tools/<name>.
-        self._base = context.sandbox_tools_endpoint.rstrip("/")
-        self._session_id = context.sandbox_session_id
-        self._mcp_url = _mcp_url(self._base)
+        if not context.mcp_endpoint or not context.mcp_session_id:
+            raise ValueError("RolloutTools requires a rollout with an MCP session.")
+        self._url = context.mcp_endpoint.rstrip("/")
+        self._session_id = context.mcp_session_id
         self._headers = (
-            {"Authorization": f"Bearer {context.sandbox_tools_token}"}
-            if context.sandbox_tools_token
+            {"Authorization": f"******"}
+            if context.mcp_bearer_token
             else {}
         )
         self._timeout_s = timeout_s
         self._request_ids = count(1)
 
-    @property
-    def protocol(self) -> str:
-        """``mcp`` or ``http``: which wire format this rollout's tools speak."""
-        return "mcp" if self._session_id else "http"
-
-    async def _post(self, tool_name: str, arguments: dict[str, Any]) -> dict[str, Any]:
-        async with httpx.AsyncClient(timeout=self._timeout_s) as client:
-            response = await client.post(
-                f"{self._base}/{tool_name}",
-                json=arguments,
-                headers=self._headers,
-            )
-            response.raise_for_status()
-            return response.json()
-
-    async def _call_tool_over_mcp(
-        self, tool_name: str, arguments: dict[str, Any]
-    ) -> dict[str, Any]:
-        """One JSON-RPC ``tools/call`` on this rollout's bound session."""
+    async def call(self, tool_name: str, arguments: dict[str, Any]) -> str:
+        """Invokes one simulated tool and returns its output as the model sees it."""
         request = {
             "jsonrpc": "2.0",
             "method": "tools/call",
@@ -203,7 +165,7 @@ class SandboxTools:
         }
         async with httpx.AsyncClient(timeout=self._timeout_s) as client:
             response = await client.post(
-                self._mcp_url, json=request, headers=self._headers
+                self._url, json=request, headers=self._headers
             )
             response.raise_for_status()
             body = response.json()
@@ -218,29 +180,7 @@ class SandboxTools:
                 f"{error.get('message', error)}"
             )
         result = body.get("result")
-        return result if isinstance(result, dict) else {}
-
-    async def call(self, tool_name: str, arguments: dict[str, Any]) -> str:
-        """Invokes one simulated tool and returns its output as the model sees it."""
-        if self._session_id:
-            return _mcp_text(await self._call_tool_over_mcp(tool_name, arguments))
-        payload = await self._post(tool_name, arguments)
-        return str(payload.get("content", ""))
-
-
-def _mcp_url(tools_endpoint: str) -> str:
-    """The rollout's ``/mcp`` route, derived from its ``/tools`` one.
-
-    RLE hands over one endpoint per rollout and it names the legacy route, so
-    the MCP route is reached by swapping the last segment. Both are served by
-    the same rollout-scoped path and authorized by the same bearer token, so
-    nothing else about the URL changes.
-    """
-    base = tools_endpoint.rstrip("/")
-    suffix = "/tools"
-    if base.endswith(suffix):
-        base = base[: -len(suffix)]
-    return f"{base}/mcp"
+        return _mcp_text(result if isinstance(result, dict) else {})
 
 
 def _mcp_text(result: Mapping[str, Any]) -> str:

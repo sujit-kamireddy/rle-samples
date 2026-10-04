@@ -19,7 +19,7 @@ a reward and what an RLE training run sees are the same code.
    RLE or Foundry dependency at all -- see "Build and run locally" below.
 2. **Foundry phase using RLE:** the agent in [`../agent`](../agent) calls tools
    over this folder's `/mcp` JSON-RPC surface. RLE hands it the session to call
-   them on in the `x-client-rle-sandbox-session-id` header, which it only sends
+   them on in the `x-client-rle-mcp-session-id` header, which it only sends
    when the published version's protocol is `mcp_environment`.
 
    RLE picks that path from the `environmentProtocol` field in
