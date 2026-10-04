@@ -224,12 +224,7 @@ class RolloutContext(BaseModel):
 
     @property
     def mcp_url(self) -> str:
-        """This rollout's `/mcp` route.
-
-        Under `environmentProtocol = "mcp_environment"` RLE hands over this
-        route directly, already ending in `/mcp` -- there is no sibling
-        `/tools` route to derive it from. Just strip any trailing slash.
-        """
+        """This rollout's `/mcp` route, with any trailing slash stripped."""
         return self.mcp_endpoint.rstrip("/")
 
 
