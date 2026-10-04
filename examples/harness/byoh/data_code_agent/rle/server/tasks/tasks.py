@@ -25,6 +25,10 @@ class _Task(BaseModel):
     atol: float
     rtol: float
     has_pii: bool
+    # Empty whenever `has_pii` is False; always consistent with it (see
+    # `tools/pii_taxonomy.py`). Never exposed to the agent or in any public
+    # observation/state -- `compliance.py` reads it only to grade severity.
+    pii_categories: tuple[StrictStr, ...] = ()
 
 
 @lru_cache(maxsize=8)

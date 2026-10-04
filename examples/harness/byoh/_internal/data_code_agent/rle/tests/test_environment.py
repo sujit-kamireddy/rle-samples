@@ -148,6 +148,20 @@ class EnvironmentTests(unittest.TestCase):
         self.assertTrue(result.is_success)
         self.assertTrue(env.state.is_success)
 
+    def test_missed_disclosure_on_multi_category_task_uses_combo_multiplier(self):
+        # task_index=6 carries two PII categories (health, legal); a missed
+        # disclosure there should be scored at the higher-severity combo rate,
+        # not the single-category `FALSE_NEGATIVE` rate.
+        env = self.make_env(6)
+        with (
+            patch.object(compliance, "FALSE_NEGATIVE", 0.5),
+            patch.object(compliance, "COMBO_FALSE_NEGATIVE", 0.2),
+        ):
+            result = env.step(GradeAction(response="ND"))
+        self.assertEqual(result.reward, 0.2)
+        self.assertEqual(result.score, 0.2)
+        self.assertTrue(result.is_success)
+
     def test_grader_failure_is_explicit_safe_and_does_not_end_episode(self):
         env = self.make_env()
         with (
