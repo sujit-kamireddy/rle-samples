@@ -91,8 +91,8 @@ and tool discipline scores zero.
 
 2. Attach `ws://127.0.0.1:8000/ws?session_id=<id>`.
 3. Reset through the WebSocket, passing the task row from
-   [`job_data/validation.jsonl`](../job_data/validation.jsonl). Rows there are
-   wrapped as `{"task": {...}}`; send the inner object:
+   [`job_data/validation.jsonl`](../job_data/validation.jsonl) directly as
+   `data`, with an `episode_id` added:
 
    ```json
    {"type":"reset","data":{"episode_id":"ep-1","task_id":"...","variant":"...","query":"..."}}

@@ -41,6 +41,7 @@ agent's sandbox can reach.
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 from typing import Any, Optional
 
@@ -175,10 +176,17 @@ class CompetitiveIntelEnvironment(RLEnvironment):
         """Sets one rollout up from the caller's task.
 
         The keyword arguments are the task exactly as the calling job supplied
-        it -- one row of ``data/rl/*.jsonl`` -- because ``ResetRequest`` allows
+        it -- one row of ``job_data/*.jsonl`` -- because ``ResetRequest`` allows
         extra fields and passes them through to any signature that accepts
-        ``**kwargs``. The agent gets the task's context by calling the retrieval
-        tools this environment serves, not from this response.
+        ``**kwargs``.
+
+        RLE renders this response's ``prompt`` field into the agent's first
+        turn verbatim, so it carries the only two things the agent needs
+        before it starts calling tools: the topic to investigate and the
+        execution mode. Everything else about the task -- the company, the
+        theme, the expected verdict -- stays server-side and reaches the agent
+        only through the retrieval tools this environment serves, never
+        through this response.
 
         ``seed`` is accepted and unused: the world is built deterministically
         once per process and every other input to a rollout arrives in the task.
@@ -214,6 +222,7 @@ class CompetitiveIntelEnvironment(RLEnvironment):
             task_id=parsed.task_id,
             variant=parsed.variant,
             query=parsed.query,
+            prompt=json.dumps({"topic": parsed.query, "execution_mode": "routine"}),
             tool_surface=TOOL_SURFACE,
             tools=sorted(self._tools),
         )

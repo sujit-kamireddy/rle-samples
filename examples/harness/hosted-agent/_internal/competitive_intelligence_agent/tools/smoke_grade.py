@@ -142,13 +142,13 @@ async def run(base: str, eval_path: Path) -> int:
     rows = [json.loads(line) for line in eval_path.read_text().splitlines() if line.strip()]
     by_variant: dict[str, dict] = {}
     for row in rows:
-        by_variant.setdefault(row["task"]["variant"], row)
+        by_variant.setdefault(row["variant"], row)
 
     print(f"{'variant':<18}{'expected':<12}{'said':<12}{'reward':>8}{'verdict':>9}")
     failures = []
 
     for variant, row in sorted(by_variant.items()):
-        task = row["task"]
+        task = row
         want = expected_verdict(task)
 
         graded = await grade_variant(base, task)

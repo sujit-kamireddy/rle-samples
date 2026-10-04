@@ -71,13 +71,13 @@ def load(path: Path) -> list[dict]:
 
 def scenario_hash(row: dict) -> str:
     """Identity of a row's scenario, ignoring the id the generator assigned it."""
-    task = {k: v for k, v in row["task"].items() if k != "task_id"}
+    task = {k: v for k, v in row.items() if k not in ("task_id", "_line")}
     return hashlib.sha256(json.dumps(task, sort_keys=True).encode()).hexdigest()
 
 
 def base_id(row: dict) -> str:
     """The scenario id with any ``#rN`` replicate suffix removed."""
-    return str(row["task"].get("task_id", "")).split("#", 1)[0]
+    return str(row.get("task_id", "")).split("#", 1)[0]
 
 
 def expected_decision(row: dict) -> str:
@@ -88,14 +88,13 @@ def expected_decision(row: dict) -> str:
     unverified rumour expects the agent to decline to rule either way no matter
     what the underlying ground truth happens to be.
     """
-    task = row["task"]
-    if task.get("expects_abstain"):
+    if row.get("expects_abstain"):
         return "abstain"
-    return "material" if task.get("material") else "immaterial"
+    return "material" if row.get("material") else "immaterial"
 
 
 def describe(name: str, rows: list[dict]) -> None:
-    variants = collections.Counter(r["task"].get("variant", "?") for r in rows)
+    variants = collections.Counter(r.get("variant", "?") for r in rows)
     decisions = collections.Counter(expected_decision(r) for r in rows)
 
     print(f"\n{name}: {len(rows)} rows, {len(set(map(base_id, rows)))} scenarios, "

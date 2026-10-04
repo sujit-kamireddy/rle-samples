@@ -425,19 +425,17 @@ Check the loop end to end before paying for a training run:
 ```bash
 cd "$SAMPLE/rle"
 ROW="$(head -1 "$SAMPLE/job_data/validation.jsonl")"
-azd ai rle rollout --version 1.0.0 --model Qwen/Qwen3-32B \
-  --task "$(printf '%s' "$ROW" | jq -c .task)" \
-  --agent-input "$(printf '%s' "$ROW" | jq -c .agent_input)"
+azd ai rle rollout --version 1.0.0 --model Qwen/Qwen3-32B --task "$ROW"
 ```
 
 Pass `--version` for the same reason as `--rle-version` below: without it the
 CLI resolves one itself and can pick a stale published version.
 
-The payload is split because RLE sends the two halves to two different places
-and neither is forwarded to the other. `--agent-input` is serialised into the
-Responses input the agent receives, and `--task` goes to `/reset` without ever
-passing through the agent. That is deliberate: the half carrying the answer key
-goes only to the grader.
+`--task` is the whole row, and it goes only to `/reset`, never to the agent
+directly. RLE renders `reset`'s returned observation into the Responses input
+the agent reads, and that observation's `prompt` field carries only the topic
+and the execution mode -- never the answer key, which stays server-side for
+`grade` alone.
 
 A rollout that returns a reward between 0 and 1 with seven `dim/` entries in
 `info.metrics` means the loop is closed.
@@ -506,9 +504,17 @@ x-client-rle-mcp-session-id: ...
 
 {"agent_session_id": "<rollout id>",
  "input": [{"type": "message", "role": "user",
-            "content": [{"type": "input_text", "text": "<agent_input>"}]}],
+            "content": [{"type": "input_text",
+                         "text": "[{\"role\": \"user\", \"content\": \"<reset's prompt>\"}]"}]}],
  "background": false, "stream": false, "store": false}
 ```
+
+`text` is RLE's rendering of whatever `reset` returned, not a second payload of
+its own: one message, whose `content` is this environment's `prompt` field
+(`rle/server/environment.py`'s `reset`), the only field here carrying the topic
+and execution mode and the only one RLE renders into agent-visible content.
+Every other field `reset` returns -- the task id, the variant, the answer key
+`grade` checks against -- stays out of this request entirely.
 
 There is no acknowledgement, no poll and no withdraw. The response *is* the
 result, and the final assistant message text becomes the rollout's
