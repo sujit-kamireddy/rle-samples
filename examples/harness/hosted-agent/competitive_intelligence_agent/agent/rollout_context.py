@@ -144,7 +144,7 @@ class RolloutTools:
         self._url = context.mcp_endpoint.rstrip("/")
         self._session_id = context.mcp_session_id
         self._headers = (
-            {"Authorization": f"******"}
+            {"Authorization": f"Bearer {context.mcp_bearer_token}"}
             if context.mcp_bearer_token
             else {}
         )
