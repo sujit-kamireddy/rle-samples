@@ -89,7 +89,7 @@ from openai import APIConnectionError, APIStatusError, AsyncOpenAI
 
 from phases import PHASES, ResearchPhase
 from rl_prompts import PRODUCTION_SYSTEM_PROMPT, ROUTINE_SYSTEM_PROMPT, routine_user_prompt
-from rollout_context import RolloutContext, SandboxTools
+from rollout_context import RolloutContext, RolloutTools
 from telemetry import (
     clip as _clip,
     compact as _compact,
@@ -525,7 +525,7 @@ class CompetitiveIntelligenceAgent:
         context: RolloutContext,
         model: str,
         client: AsyncOpenAI,
-        tools: Optional[SandboxTools] = None,
+        tools: Optional[RolloutTools] = None,
         instructions: str = SURFACE_SYSTEM_PROMPT,
         max_output_tokens: int = MAX_OUTPUT_TOKENS,
         rollout_budget_s: Optional[float] = None,

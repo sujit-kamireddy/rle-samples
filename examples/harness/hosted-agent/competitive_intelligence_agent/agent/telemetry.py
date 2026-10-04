@@ -116,7 +116,7 @@ def endpoint(url: Optional[str]) -> str:
 def brief(url: Optional[str], keep: int = 2) -> str:
     """A URL narrowed to the part that identifies it, for a half-width pane.
 
-    The sandbox tool endpoint is a 400-character ARM resource path. Printed on
+    The MCP tool endpoint is a 400-character ARM resource path. Printed on
     every tool call it wrapped six times in a split terminal, so the rollout's
     own story scrolled past at a fraction of the rate it was written. Only the
     host's first two labels and the last few path segments survive -- enough to

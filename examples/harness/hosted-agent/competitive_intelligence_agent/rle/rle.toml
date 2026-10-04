@@ -26,16 +26,13 @@ subtype = "HostedAgent"
 # PROTOCOL.
 #
 # RLE decides whether to open an MCP sandbox session for a rollout from this
-# field, recorded at publish time and immutable for the version. Only when it
-# reads `mcp_environment` does RLE open that session per rollout and pass its
-# id to the agent in the `x-client-rle-sandbox-session-id` header, which is
-# what `../agent` branches on to speak MCP.
+# field, recorded at publish time and immutable for the version. Reading
+# `mcp_environment`, RLE opens that session per rollout and passes its id to
+# the agent in the `x-client-rle-mcp-session-id` header, which `../agent`
+# requires in order to call tools at all.
 #
-# `mcp_environment` is the only value this manifest sets. Omitting the field
-# publishes on RLE's older HTTP tool-route protocol instead, which has no name
-# here because this sample only ever publishes the MCP one. The agent still
-# falls back to that older route if the header is absent, so one build keeps
-# working against an older published version too.
+# `mcp_environment` is the only value this manifest sets, and the only
+# protocol `../agent` speaks.
 #
 # Needs an `azd ai rle` build that knows the key. Older extensions parse this
 # manifest in strict mode and reject it outright.

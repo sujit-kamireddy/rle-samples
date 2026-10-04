@@ -42,7 +42,7 @@ from openai import AsyncOpenAI
 
 from pipeline import CompetitiveIntelligenceAgent
 from request_parsing import parse_response_input
-from rollout_context import RolloutContext, SandboxTools
+from rollout_context import RolloutContext, RolloutTools
 from telemetry import configure as _configure_telemetry, logger, short as _short
 
 # Configured at import so startup lines are visible, and re-asserted per request
@@ -132,7 +132,7 @@ def _build_agent(context: ResponseContext) -> CompetitiveIntelligenceAgent:
         context=rollout,
         model=MODEL_NAME,
         client=client,
-        tools=SandboxTools(rollout),
+        tools=RolloutTools(rollout),
         # The agent retries a slow model call only while the rollout can still
         # pay for it, so it has to know what it was given.
         rollout_budget_s=ROLLOUT_TIMEOUT_S,

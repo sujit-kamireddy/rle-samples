@@ -500,9 +500,9 @@ POST {project}/agents/{agentName}/endpoint/protocols/openai/responses?api-versio
 x-client-rle-rollout-id: ...
 x-client-rle-model-endpoint: https://.../rle/v1.0/capture-proxy/v1
 x-client-rle-model-api-key: ...
-x-client-rle-sandbox-tools-endpoint: https://.../rollouts/<rollout-id>/tools
-x-client-rle-sandbox-tools-token: ...
-x-client-rle-sandbox-session-id: ...
+x-client-rle-mcp-endpoint: https://.../rollouts/<rollout-id>/mcp
+x-client-rle-mcp-bearer-token: ...
+x-client-rle-mcp-session-id: ...
 
 {"agent_session_id": "<rollout id>",
  "input": [{"type": "message", "role": "user",
@@ -527,11 +527,11 @@ it is what makes the agent's own multi-turn trajectory, with its real prompts
 and its real tool calls, the thing that gets trained. The agent is not asked to
 emit training data; it just does its job through a proxy that is recording.
 
-`x-client-rle-sandbox-tools-endpoint` and `-token` arrive on the same request;
+`x-client-rle-mcp-endpoint` and `-bearer-token` arrive on the same request;
 `-session-id` is the id of the MCP session this environment opened for the
 rollout in `reset`. Together they are how the agent's tool calls land on that
 same session instead of a fresh one, which is what `agent/rollout_context.py`
-threads through to `SandboxTools`. The token is
+threads through to `RolloutTools`. The token is
 presented as `Authorization: Bearer`, and RLE terminates that authentication at
 its own ingress and replaces the header before forwarding, so the RLE container
 never sees it and must not try to validate it.
