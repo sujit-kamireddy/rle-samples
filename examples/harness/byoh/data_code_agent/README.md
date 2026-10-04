@@ -174,8 +174,16 @@ the `--task` selector a rollout takes.
 ```
 
 The Harness recipe resets `rle/`'s environment with each row directly; nothing
-else is read from it. `train.jsonl` holds the first 1,000 tasks;
-`validation.jsonl` holds the last 200, so the two never overlap.
+else is read from it. `train.jsonl` and `validation.jsonl` are a stratified,
+disjoint sample built by
+`_internal/data_code_agent/tools/build_training_set.py` -- it draws both from
+the same `(reward_mode, pii_categories-count)` cells at natural frequency
+(no artificial oversampling of rare cells) rather than slicing the task pool
+positionally, so neither file's difficulty mix drifts from the full 5,000-task
+pool's. Re-run it with `--train-size`/`--eval-size` to resize, then update
+`rle/rle.toml`'s `max_train_examples`/`max_test_examples`/`max_steps` to
+match -- that file's comments explain why dataset size and `max_steps` are
+coupled.
 
 `rle/rle.toml` records how this environment is trained, so a run needs no
 flags. Its `[train.options]` are pre-tuned for this environment and produced a
