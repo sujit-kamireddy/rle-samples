@@ -18,7 +18,7 @@ schema_version = "1.0.0"
 name = "data_code_agent_byoh_google_cloud_run"
 # Semantic version, MAJOR.MINOR.PATCH. Immutable: publishing a change means a
 # new version.
-version = "2.0.3"
+version = "2.0.4"
 # "Gym" or "Harness".
 type = "Harness"
 # "HostedAgent" or "BYOH" for Harness; "OpenEnv" for Gym.
@@ -44,7 +44,16 @@ environmentProtocol = "mcp_environment"
 # header of any kind, so the endpoint has to protect itself. It must answer
 # exactly 202 and then serve GET {baseUrl}/rollouts/{operation_id} for
 # polling and DELETE for cancellation.
-baseUrl = "https://byoh-code-agent.icyrock-0039fbbf.westus2.azurecontainerapps.io/invoke"
+# Moved off Azure Container Apps to this environment's namesake host, Google
+# Cloud Run, on a brand-new isolated service (data-code-agent-byoh-sujit,
+# project foundry-509604, region us-east1) rather than reusing either
+# data-code-agent-sujit or data-code-agent-ksujit from earlier in this
+# engagement, to avoid any chance of colliding with another user's traffic or
+# config on those. The URL is predictable before the service is deployed:
+# Cloud Run's <service>-<suffix>.<region>.run.app suffix is the GCP project
+# number, identical across every service in this project (confirmed on both
+# of the services above), not a per-service hash.
+baseUrl = "https://data-code-agent-byoh-sujit-107203347434.us-east1.run.app/invoke"
 
 # agentName and agentVersion are HostedAgent-only and are rejected for BYOH.
 # agentName = "data-code-agent"
