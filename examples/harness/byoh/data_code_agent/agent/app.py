@@ -47,7 +47,7 @@ projects can legitimately send the same one to a shared harness.
          "rollout_context": {
            "model_endpoint": "https://.../rle/v1.0/capture-proxy/v1",
            "model_api_key": "...",
-           "mcp_endpoint": "https://.../rollouts/<rollout-id>/tools",
+           "mcp_endpoint": "https://.../rollouts/<rollout-id>/mcp",
            "mcp_bearer_token": "..."
          }
        }
@@ -224,18 +224,8 @@ class RolloutContext(BaseModel):
 
     @property
     def mcp_url(self) -> str:
-        """This rollout's `/mcp` route, derived from its `/tools` one.
-
-        RLE hands over one endpoint per rollout, named `.../tools`, so the MCP
-        route is reached by swapping the last path segment. Both are served by
-        the same rollout-scoped path and authorized by the same bearer token,
-        so nothing else about the URL changes.
-        """
-        base = self.mcp_endpoint.rstrip("/")
-        suffix = "/tools"
-        if base.endswith(suffix):
-            base = base[: -len(suffix)]
-        return f"{base}/mcp"
+        """This rollout's `/mcp` route, with any trailing slash stripped."""
+        return self.mcp_endpoint.rstrip("/")
 
 
 class InvocationRequest(BaseModel):
