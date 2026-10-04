@@ -38,19 +38,18 @@ which is the next section.
 
 ## What the harness is given
 
-`vendor/task-index.json.gz` (0.4MB, built by `../tools/build_task_index.py`):
-each task's instruction, bucket coordinates and agent timeout. Not the task
-suite (216MB extracted).
+`vendor/task-index.json.gz` (0.4MB, built by
+`../../_internal/data_code_agent/tools/build_task_index.py`): each task's
+instruction, bucket coordinates and agent timeout. Not the task suite (216MB
+extracted).
 
 That is a security boundary, not a size optimisation. Every `task.toml` in the
-suite carries `metadata.gold_answer` and `verifier.env.EXPECTED_ANSWER`, and
-every `instruction.md` quotes its question verbatim while `task.description`
-repeats it. An agent with a shell -- which is exactly what
-`--dangerously-skip-permissions` grants -- can therefore
-`grep -rlF "<its own question>"` the suite, land on its own task directory and
-read its own answer without analysing anything. Measured at 25 of 25 sampled
-tasks. So the answers do not ship here: the grading key lives in `../rle`'s
-container, which gives the agent no shell.
+suite carries `metadata.gold_answer` and `verifier.env.EXPECTED_ANSWER`, so an
+agent with a shell (which `--dangerously-skip-permissions` grants) could grep
+the suite for its own question text and read its own answer without
+analysing anything -- confirmed reproducible on sampled tasks. So the answers
+do not ship here: the grading key lives in `../rle`'s container, which gives
+the agent no shell.
 
 Keep it that way. Anything added to this image is readable by the agent.
 
@@ -65,77 +64,64 @@ never a path. See `opencode_direct.py`.
 
 If OpenCode exits normally without a non-empty `answer.txt`, the harness resumes
 the same OpenCode session once, using the remaining task timeout (at most 120
-seconds), and asks it to write the file. It does not substitute the agent's chat
-message for the required artifact. If the file is still missing, the harness
-reports `ok: false` with a missing-answer error; `/grade` records a zero-reward
-rollout rather than silently treating it as a successful answer.
+seconds), and asks it to write the file. If the file is still missing, the
+harness reports `ok: false` with a missing-answer error; `/grade` records a
+zero-reward rollout rather than silently treating it as a successful answer.
 
 The example keeps rollout state in memory. On Cloud Run, keep it to one instance
 unless you replace that store with shared state: a poll can reach a different
 instance and return 404, and a restart loses in-flight rollouts. Size the
-instance for the intended parallelism; four concurrent OpenCode rollouts
-exceeded a 4 GiB limit in testing, while a 16 GiB instance completed training
-without out-of-memory restarts.
+instance for your intended parallelism -- a 16 GiB instance comfortably ran
+four concurrent OpenCode rollouts where 4 GiB hit out-of-memory restarts.
 
-The per-rollout compliance credentials (`mcp_endpoint` /
-`mcp_bearer_token`, which RLE sends on `/invoke`) are lifted out of the
-rollout context and set as `COMPLIANCE_ENDPOINT` / `COMPLIANCE_TOKEN` on that
-rollout's `opencode` process, so the agent can file the disclosure that `../rle`
-grades. They are per-process, never process-global: concurrent rollouts would
-otherwise overwrite each other's and misattribute a disclosure with no error
-anywhere.
-
-`COMPLIANCE_ENDPOINT` is not `mcp_endpoint` verbatim. `../rle`
-publishes with `environmentProtocol = "mcp_environment"` (see its `rle.toml`),
-so RLE also sends a `mcp_session_id`, and the only way to reach that
-session's tools is a JSON-RPC `tools/call` on `/mcp` -- there is no flat
-`/tools/<name>` route to hand `opencode` instead. Rather than teach the baked
-instruction a second wire format, the rollout is pointed at a loopback route on
-this same service (`/local-tools/{operation_id}/...` in `app.py`), which
-translates the one flat POST the instruction knows how to make into that
-`tools/call`.
+The per-rollout compliance credentials (`mcp_endpoint` / `mcp_bearer_token`,
+sent on `/invoke`) are lifted out of the rollout context and set as
+`COMPLIANCE_ENDPOINT` / `COMPLIANCE_TOKEN` on that rollout's `opencode` process
+(per-process, never global, so concurrent rollouts can't overwrite each
+other's). `COMPLIANCE_ENDPOINT` isn't `mcp_endpoint` verbatim: `../rle`
+publishes under `environmentProtocol = "mcp_environment"`, so reaching its
+tools needs a JSON-RPC `tools/call` on `/mcp`, not a flat route. Rather than
+teach the baked instruction a second wire format, the rollout is pointed at a
+loopback route on this service (`/local-tools/{operation_id}/...` in
+`app.py`) that translates the flat POST into that `tools/call`.
 
 ## Task inputs
 
 `vendor/pull_bucket.py` (shipped to `/opt/pull_bucket.py`, a generated copy of
-`../tools/pull_bucket.py`) fetches a task's input files once per rollout, as a
-subprocess of this service.
+`../../_internal/data_code_agent/tools/pull_bucket.py`) fetches a task's input
+files once per rollout, as a subprocess of this service.
 
 Each `task.toml` names a `BUCKET_BASE_URL`, fetched over anonymous HTTPS with
 nothing but the standard library -- no credentials anywhere in the data path. The
 store grants anonymous read on blobs but not container listing, so the file list
-for a prefix travels with it as `<prefix>/_manifest.txt`; the fetcher decides
-"already downloaded" against that manifest rather than against "is the directory
-non-empty", so a retry after a partial download finishes the job instead of
+for a prefix travels with it as `<prefix>/_manifest.txt`; the fetcher checks
+that manifest, not "is the directory non-empty", to decide what's already
+downloaded, so a retry after a partial download finishes the job instead of
 handing the agent a truncated dataset.
 
 That manifest check is also what makes the fetch resumable, which the largest
-prefixes need: 844MB across 2,004 files takes minutes to pull, well past the
-task's 180s timeout, so being killed mid-fetch is the normal case rather than the
-exceptional one. Each file is moved into place as soon as it lands rather than
-publishing the batch at the end, so every attempt keeps the work of the one
-before it and the retry loop converges (measured: 420 -> 838 -> 1,806 -> 2,004
-files across four attempts, then a clean exit). Publishing atomically at the end
-would instead make each attempt discard the last one's progress. Downloads stage
-through a hidden sibling directory, so a partial file is never visible under a
-name the manifest lists. Set `BUCKET_WORKERS` to widen or narrow the fetch
-concurrency (default 16).
+prefixes need: the biggest is 844MB across 2,004 files, well past the task's
+180s timeout, so being killed mid-fetch is the normal case. Each file is moved
+into place as soon as it lands (verified convergent across retries) rather
+than publishing the batch at the end, which would instead discard each
+attempt's progress. Downloads stage through a hidden sibling directory, so a
+partial file is never visible under a name the manifest lists. Set
+`BUCKET_WORKERS` to widen or narrow the fetch concurrency (default 16).
 
 ## Build-time inputs
 
 `vendor/harbor-datasets.tar.gz` is the upstream task suite. It is **not** copied
 into the image -- see "What the harness is given" -- it is the source the
-`../tools/` scripts read to generate what *is* shipped:
-`vendor/task-index.json.gz`, `vendor/pull_bucket.py` and `../rle`'s vendored
-answer key.
+`../../_internal/data_code_agent/tools/` scripts read to generate what *is*
+shipped: `vendor/task-index.json.gz`, `vendor/pull_bucket.py` and `../rle`'s
+vendored answer key.
 
 Three patches are applied to it, all reproducible and all verifiable without a
 rebuild: an `artifacts` entry on every task so the agent's `answer.txt` is
-collected; the data-handling clause spliced into every `instruction.md` by
-`../tools/bake_compliance_instruction.py`; and the dataset source repointed to a
-public HTTPS object store by `../tools/bake_bucket_source.py`. Each script is
-idempotent and has a `--verify` mode that re-reads the archive and reports drift
-rather than assuming its own last run held.
+collected; the data-handling clause spliced into every `instruction.md`; and the
+dataset source repointed to a public HTTPS object store. Each script is
+idempotent and has a `--verify` mode that re-reads the archive and reports
+drift rather than assuming its own last run held.
 
 ## Run locally
 
@@ -200,15 +186,13 @@ model endpoint nor the task suite.
 
 RLE polls `/invoke/rollouts/{operation_id}` every 500ms for the whole rollout, so
 the access log would otherwise carry several hundred identical `200`s per rollout
-and bury everything the rollout itself reports. Those lines are filtered out here.
-Nothing is lost: the polls that carry information are logged instead, one line each
--- the poll that delivers the result, and any poll naming a rollout this process
-does not have. `POST /invoke` and `DELETE /invoke/rollouts/...` are left alone.
+and bury everything the rollout itself reports. Those lines are filtered out
+here; the poll that delivers the result and any poll naming an unknown rollout
+are still logged. `POST /invoke` and `DELETE /invoke/rollouts/...` are left alone.
 
-That covers the lines this container writes. On Cloud Run the platform logs every
-request a second time, as its own `httpRequest` entry, and no container-side change
-can suppress those. Drop them when reading, by asking only for this container's
-streams:
+On Cloud Run the platform also logs every request a second time as its own
+`httpRequest` entry, which no container-side change can suppress. Drop them when
+reading, by asking only for this container's streams:
 
 ```bash
 gcloud logging read \
@@ -218,11 +202,9 @@ gcloud logging read \
   --limit 100 --format='value(textPayload)'
 ```
 
-For a live stream use `gcloud alpha logging tail` (it needs the `alpha` component)
-with the same resource filter. Two caveats, both found the hard way on gcloud
-586.0.0: the `logName:(...)` clause above is rejected there, and
-`--format='value(textPayload)'` silences the stream entirely, so tail wants the
-plain filter and its default output.
+For a live stream, use `gcloud alpha logging tail` with the same resource filter
+and no `--format` (older `gcloud` versions reject `logName:(...)` and silence the
+stream under `--format='value(textPayload)'`):
 
 ```bash
 gcloud alpha logging tail \
