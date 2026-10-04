@@ -29,10 +29,10 @@ projects can legitimately send the same one to a shared harness.
 
    ``agent_input`` is not the dataset row. RLE resets ``../rle``'s environment
    with that row first, then renders the resulting observation into this chat
-   message list -- our ``TaskObservation`` has no ``messages``/``prompt`` field, so
-   RLE always falls back to JSON-serializing the whole observation (minus
-   ``reward``/``done``) into one user message's ``content``. ``run_harness_rollout``
-   below parses that string back out to recover ``task_index`` and ``split``.
+   message list -- our ``TaskObservation`` sets an explicit ``prompt`` field, so
+   RLE takes that string verbatim as the one user message instead of
+   JSON-serializing the whole observation. ``run_harness_rollout`` below parses
+   that string back out to recover ``task_index`` and ``split``.
 
        POST <base-url>
        {
@@ -41,7 +41,7 @@ projects can legitimately send the same one to a shared harness.
          "agent_input": [
            {
              "role": "user",
-             "content": "{\"question\": \"...\", \"split\": \"FineEnvs/data-agent-harbor-train\", \"task_index\": 0, \"task_name\": \"...\", ...}"
+             "content": "{\"question\": \"...\", \"split\": \"FineEnvs/data-agent-harbor-train\", \"task_index\": 0, \"task_name\": \"...\"}"
            }
          ],
          "rollout_context": {
@@ -483,9 +483,9 @@ def _task_selector_from_agent_input(agent_input: list[dict[str, Any]]) -> dict[s
     """Recovers the `task_index`/`split` selector RLE's `reset` pinned, from the rendered `agent_input`.
 
     RLE no longer forwards the dataset row directly: it resets `../rle`'s environment with it, then
-    renders the resulting observation into this chat message list. `TaskObservation` has no
-    `messages`/`prompt` field, so RLE always falls back to JSON-serializing the whole observation
-    (minus `reward`/`done`) into one user message's `content` -- that JSON is where the selector lives.
+    renders the resulting observation into this chat message list. `TaskObservation` sets an explicit
+    `prompt` field, so RLE takes that string verbatim as the one user message's `content` -- that JSON
+    is where the selector lives.
     """
     if not agent_input:
         return {}

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import logging
 import math
 import threading
@@ -80,11 +81,20 @@ class DataCodeAgentRLEnvironment(RLEnvironment):
         with self._lock:
             if self._public_state.status == "closed":
                 raise RuntimeError("Environment is closed")
+            prompt = json.dumps(
+                {
+                    "question": task.question,
+                    "split": split,
+                    "task_index": task_index,
+                    "task_name": task.task_name,
+                }
+            )
             observation = TaskObservation(
                 question=task.question,
                 split=split,
                 task_index=task_index,
                 task_name=task.task_name,
+                prompt=prompt,
                 reward=0.0,
             )
             self._task = task
