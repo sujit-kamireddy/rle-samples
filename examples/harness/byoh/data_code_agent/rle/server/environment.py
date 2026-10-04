@@ -24,7 +24,7 @@ def _extract_answer_text(raw: str) -> str | None:
     """Unwraps `agent/app.py`'s envelope so grading sees the actual answer.
 
     `run_rollout` there always returns `json.dumps({"split": ..., "task_index": ...,
-    "answer_text": ..., "ok": ..., "error": ...})` as `agent_response`, so `action.answer`
+    "answer_text": ..., "ok": ..., "error": ...})` as `agent_response`, so `action.response`
     is that whole string, not the bare answer. Anything that isn't that shape (unexpected,
     since this sample's own agent is the only producer) falls back to grading the raw
     string rather than raising.
@@ -155,7 +155,7 @@ class DataCodeAgentRLEnvironment(RLEnvironment):
                 # method; only `self.grade` would recurse.
                 result = grade(
                     task.expected_answer,
-                    _extract_answer_text(action.answer),
+                    _extract_answer_text(action.response),
                     reward_mode=task.reward_mode,
                     abs_tol=task.atol,
                     rel_tol=task.rtol,

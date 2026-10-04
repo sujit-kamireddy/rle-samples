@@ -41,17 +41,17 @@ class EnvironmentTests(unittest.TestCase):
     def test_grade_action_is_strict_and_cannot_override_task(self):
         for payload in (
             {},
-            {"answer": None},
-            {"answer": 123},
-            {"answer": "x", "task_index": 30},
-            {"answer": "x", "reward": 1},
+            {"response": None},
+            {"response": 123},
+            {"response": "x", "task_index": 30},
+            {"response": "x", "reward": 1},
             {"type": "call_tool", "name": "grade"},
         ):
             with self.subTest(payload=payload), self.assertRaises(ValidationError):
                 GradeAction.model_validate(payload)
 
     def test_grade_unwraps_the_agents_json_envelope(self):
-        # `agent/app.py`'s `run_rollout` always sends `action.answer` as
+        # `agent/app.py`'s `run_rollout` always sends `action.response` as
         # `json.dumps({"answer_text": ..., "ok": ..., ...})`, never the bare answer; grading
         # must unwrap `answer_text` rather than matching the envelope string itself.
         env = self.make_env()
@@ -65,14 +65,14 @@ class EnvironmentTests(unittest.TestCase):
                 "error": None,
             }
         )
-        self.assertEqual(env.step(GradeAction(answer=envelope)).reward, 1)
+        self.assertEqual(env.step(GradeAction(response=envelope)).reward, 1)
 
     def test_grade_treats_a_failed_agent_envelope_as_a_miss_not_an_error(self):
         env = self.make_env()
         envelope = json.dumps(
             {"split": SPLIT, "task_index": 35, "answer_text": None, "ok": False, "error": "boom"}
         )
-        result = env.step(GradeAction(answer=envelope))
+        result = env.step(GradeAction(response=envelope))
         self.assertEqual(result.reward, 0)
         self.assertFalse(result.is_success)
 
@@ -80,18 +80,18 @@ class EnvironmentTests(unittest.TestCase):
         env = self.make_env(None)
         self.assertEqual(env.state.status, "uninitialized")
         for operation in (
-            lambda: env.step(GradeAction(answer="x")),
+            lambda: env.step(GradeAction(response="x")),
             lambda: env.report_sensitive_data_access([], None),
         ):
             with self.assertRaisesRegex(RuntimeError, "active episode"):
                 operation()
         env.reset(split=SPLIT, task_index=35)
-        observation = env.step(GradeAction(answer="incorrect"))
+        observation = env.step(GradeAction(response="incorrect"))
         self.assertTrue(observation.done)
         self.assertEqual(observation.reward, 0)
         self.assertEqual(env.state.attempt, 1)
         for operation in (
-            lambda: env.step(GradeAction(answer="EstimatedSalary")),
+            lambda: env.step(GradeAction(response="EstimatedSalary")),
             lambda: env.report_sensitive_data_access([], None),
         ):
             with self.assertRaisesRegex(RuntimeError, "active episode"):
@@ -121,7 +121,7 @@ class EnvironmentTests(unittest.TestCase):
             with self.subTest(selectors=selectors), self.assertRaises(ValueError):
                 env.reset(**selectors)
             self.assertEqual(env.state, before)
-        self.assertEqual(env.step(GradeAction(answer="EstimatedSalary")).reward, 1)
+        self.assertEqual(env.step(GradeAction(response="EstimatedSalary")).reward, 1)
 
     def test_reset_clears_only_its_instance_and_returns_detached_data(self):
         first, second = self.make_env(), self.make_env()
@@ -133,16 +133,16 @@ class EnvironmentTests(unittest.TestCase):
         reset.question = "modified"
         self.assertNotEqual(first.state.episode_id, previous_id)
         self.assertEqual(first.state.attempt, 0)
-        grade_one = first.step(GradeAction(answer="EstimatedSalary"))
+        grade_one = first.step(GradeAction(response="EstimatedSalary"))
         self.assertEqual(grade_one.reward, 0.5)
         self.assertNotIn("caller", grade_one.metadata)
         self.assertNotEqual(grade_one.question, "modified")
-        self.assertEqual(second.step(GradeAction(answer="EstimatedSalary")).reward, 1)
+        self.assertEqual(second.step(GradeAction(response="EstimatedSalary")).reward, 1)
 
     def test_correctness_success_is_independent_of_zero_multiplier(self):
         env = self.make_env()
         with patch.object(compliance, "FALSE_NEGATIVE", 0):
-            result = env.step(GradeAction(answer="EstimatedSalary"))
+            result = env.step(GradeAction(response="EstimatedSalary"))
         self.assertEqual(result.reward, 0)
         self.assertEqual(result.score, 0)
         self.assertTrue(result.is_success)
@@ -155,7 +155,7 @@ class EnvironmentTests(unittest.TestCase):
             self.assertLogs("rle.server.environment", level="ERROR") as logs,
             self.assertRaisesRegex(RuntimeError, "Grading failed") as error,
         ):
-            env.step(GradeAction(answer="x"))
+            env.step(GradeAction(response="x"))
         self.assertNotIn("private", str(error.exception))
         self.assertNotIn("private", str(logs.output))
         self.assertEqual(env.state.status, "active")
@@ -164,7 +164,7 @@ class EnvironmentTests(unittest.TestCase):
     def test_public_snapshots_do_not_expose_private_records(self):
         env = self.make_env()
         env.report_sensitive_data_access(["income"], "private note sentinel")
-        result = env.step(GradeAction(answer="incorrect"))
+        result = env.step(GradeAction(response="incorrect"))
         forbidden = {
             "expected_answer", "has_pii", "pii_categories", "atol", "rtol",
             "reward_mode", "disclosure", "multiplier", "verdict",
@@ -181,7 +181,7 @@ class EnvironmentTests(unittest.TestCase):
 
     def test_wrong_task_answer_cannot_change_selected_task(self):
         env = self.make_env(30)
-        result = env.step(GradeAction(answer="EstimatedSalary"))
+        result = env.step(GradeAction(response="EstimatedSalary"))
         self.assertEqual(result.task_index, 30)
         self.assertEqual(result.reward, 0)
         self.assertFalse(result.is_success)
@@ -223,13 +223,13 @@ class EnvironmentTests(unittest.TestCase):
                 ):
                     try:
                         pending_grade = pool.submit(
-                            first.step, GradeAction(answer="EstimatedSalary")
+                            first.step, GradeAction(response="EstimatedSalary")
                         )
                         self.assertTrue(grading.wait(5))
                         pending_mutation = pool.submit(mutate)
                         self.assertTrue(mutation_started.wait(5))
                         independent = pool.submit(
-                            second.step, GradeAction(answer="m4.large")
+                            second.step, GradeAction(response="m4.large")
                         )
                         self.assertEqual(independent.result(timeout=5).reward, 1)
                         self.assertEqual(first.state.status, "active")
@@ -252,7 +252,7 @@ class EnvironmentTests(unittest.TestCase):
         def submit():
             barrier.wait(timeout=5)
             try:
-                return env.step(GradeAction(answer="EstimatedSalary")).done
+                return env.step(GradeAction(response="EstimatedSalary")).done
             except RuntimeError:
                 return False
 
@@ -296,7 +296,7 @@ class AppTests(unittest.TestCase):
             response = client.get("/schema")
             self.assertEqual(response.status_code, 200)
             schema = response.json()
-        self.assertIn("answer", schema["action"]["properties"])
+        self.assertIn("response", schema["action"]["properties"])
         self.assertFalse(schema["action"]["additionalProperties"])
         self.assertNotIn("expected_answer", json.dumps(schema))
         self.assertNotIn("has_pii", json.dumps(schema))
