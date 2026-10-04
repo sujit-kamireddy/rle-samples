@@ -27,7 +27,7 @@ from app import ROLLOUTS, RolloutContext, _compliance_endpoint, app
 MCP_CONTEXT = {
     "model_endpoint": "https://proxy.invalid/v1",
     "model_api_key": "session-key",
-    "mcp_endpoint": "https://tools.invalid/rollouts/r1/tools",
+    "mcp_endpoint": "https://tools.invalid/rollouts/r1/mcp",
     "mcp_bearer_token": "tools-token",
     "mcp_session_id": "session-abc",
 }
@@ -109,8 +109,16 @@ def test_the_session_id_is_required():
         RolloutContext.model_validate(CONTEXT_WITHOUT_SESSION_ID)
 
 
-def test_the_mcp_route_is_the_tools_route_with_its_last_segment_swapped():
+def test_the_mcp_route_is_the_mcp_endpoint_verbatim():
+    """`environmentProtocol = "mcp_environment"` means RLE hands this over already as `/mcp`."""
     context = RolloutContext.model_validate(MCP_CONTEXT)
+    assert context.mcp_url == "https://tools.invalid/rollouts/r1/mcp"
+
+
+def test_the_mcp_route_strips_a_trailing_slash():
+    context = RolloutContext.model_validate(
+        {**MCP_CONTEXT, "mcp_endpoint": "https://tools.invalid/rollouts/r1/mcp/"}
+    )
     assert context.mcp_url == "https://tools.invalid/rollouts/r1/mcp"
 
 
