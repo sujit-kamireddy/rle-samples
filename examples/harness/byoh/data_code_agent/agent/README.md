@@ -162,7 +162,12 @@ curl -s -X POST localhost:8080/invoke \
   -d '{
         "rollout_id": "local-1",
         "operation_id": "op-local-1",
-        "agent_input": {"task_index": 0},
+        "agent_input": [
+          {
+            "role": "user",
+            "content": "{\"task_index\": 0, \"split\": \"FineEnvs/data-agent-harbor-train\"}"
+          }
+        ],
         "rollout_context": {
           "model_endpoint": "https://api.openai.com/v1",
           "model_api_key": "'"$OPENAI_API_KEY"'"

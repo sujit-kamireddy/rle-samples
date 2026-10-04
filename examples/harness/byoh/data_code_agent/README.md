@@ -183,37 +183,32 @@ Registered versions are immutable, so bump `version` before republishing.
 ```bash
 cd rle
 azd ai rle rollout --model Qwen/Qwen3-32B \
-  --task '{"task_index": 0, "split": "FineEnvs/data-agent-harbor-train"}' \
-  --agent-input '{"task_index": 0, "split": "FineEnvs/data-agent-harbor-train"}'
+  --task '{"task_index": 0, "split": "FineEnvs/data-agent-harbor-train"}'
 ```
 
-The selector is repeated because RLE sends the two payloads to two different
-places, and neither one is forwarded to the other: `--agent-input` goes to your
-harness's `/invoke` and selects the task it runs, while `--task` goes to
-`rle/`'s `reset` and never passes through the harness at all.
+`--task` is the only selector now, and it is required: `rle/`'s `reset` rejects
+anything without a concrete `split` and `task_index`. RLE resets the
+environment with it first, then renders whatever `reset` returned into the
+`agent_input` your harness's `/invoke` receives -- so the harness no longer gets
+an independently-suppliable copy that could drift from what grading pinned.
 
-That second copy is what keeps grading honest. Grading never learns which task
-to use from the harness's own response -- it only ever grades against
-whatever `reset` pinned -- so a harness asked for task 4713 that quietly ran
-task 0 instead gets graded against task 4713's answer key regardless of what
-it reports, not a free pass on the task it actually ran.
-
-It stays optional: `--task '{}'` pins nothing and grades on the harness's
-report, which is the right choice when you are the one running the harness and
-want one less thing to keep in sync.
+That still is not a trust-the-harness arrangement: `/grade` reads back only the
+task `reset` pinned, never anything the harness reports about which task it
+ran, so a harness that mishandles `agent_input` and runs the wrong task is
+graded against the task it was actually given regardless of what it reports.
+There is just no second value left to keep in sync, because there is only one.
 
 ## 5. Start a training job
 
-`job_data/` holds the training-job input manifests: one row per task, each
-carrying the same selector a rollout takes.
+`job_data/` holds the training-job input manifests: one row per task, matching
+the `--task` selector a rollout takes.
 
 ```jsonl
-{"task": {"split": "FineEnvs/data-agent-harbor-train", "task_index": 0}, "agent_input": {"split": "FineEnvs/data-agent-harbor-train", "task_index": 0}}
+{"split": "FineEnvs/data-agent-harbor-train", "task_index": 0}
 ```
 
-The selector is repeated for the reason given above -- `task` pins the task at
-`reset`, `agent_input` selects it in the harness -- and the Harness recipe
-reads both fields from each row. `train.jsonl` holds the first 1,000 tasks;
+The Harness recipe resets `rle/`'s environment with each row directly; nothing
+else is read from it. `train.jsonl` holds the first 1,000 tasks;
 `validation.jsonl` holds the last 200, so the two never overlap.
 
 `rle/rle.toml` records how this environment is trained, so a run needs no

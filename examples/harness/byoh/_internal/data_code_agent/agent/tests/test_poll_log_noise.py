@@ -22,7 +22,7 @@ from app import (
     RolloutStore,
 )
 
-from tests.test_byoh_contract import ROLLOUT_CONTEXT
+from tests.test_byoh_contract import AGENT_INPUT, ROLLOUT_CONTEXT
 
 
 def _access_record(method: str, path: str, status: int) -> logging.LogRecord:
@@ -114,7 +114,7 @@ def test_the_running_polls_are_silent_and_the_result_is_logged_once(monkeypatch,
                 json={
                     "rollout_id": "rollout-noise",
                     "operation_id": "operation-noise",
-                    "agent_input": {"task_index": 0},
+                    "agent_input": AGENT_INPUT,
                     "rollout_context": ROLLOUT_CONTEXT,
                 },
             )
