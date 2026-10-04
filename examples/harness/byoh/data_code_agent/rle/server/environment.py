@@ -81,14 +81,11 @@ class DataCodeAgentRLEnvironment(RLEnvironment):
         with self._lock:
             if self._public_state.status == "closed":
                 raise RuntimeError("Environment is closed")
-            prompt = json.dumps(
-                {
-                    "question": task.question,
-                    "split": split,
-                    "task_index": task_index,
-                    "task_name": task.task_name,
-                }
-            )
+            # Only `task_index`/`split` are sent: `app._task_selector_from_agent_input` is the
+            # only consumer, and it reads nothing else. `question`/`task_name` already live on
+            # this observation's other fields; duplicating them into `prompt` too would be inert
+            # bytes on the wire, never read by anything downstream.
+            prompt = json.dumps({"split": split, "task_index": task_index})
             observation = TaskObservation(
                 question=task.question,
                 split=split,

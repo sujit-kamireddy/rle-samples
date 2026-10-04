@@ -41,7 +41,7 @@ projects can legitimately send the same one to a shared harness.
          "agent_input": [
            {
              "role": "user",
-             "content": "{\"question\": \"...\", \"split\": \"FineEnvs/data-agent-harbor-train\", \"task_index\": 0, \"task_name\": \"...\"}"
+             "content": "{\"split\": \"FineEnvs/data-agent-harbor-train\", \"task_index\": 0}"
            }
          ],
          "rollout_context": {

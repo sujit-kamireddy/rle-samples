@@ -39,8 +39,7 @@ def _rendered_agent_input(
 
     `TaskObservation` sets an explicit `prompt` field, so RLE takes that string verbatim as the
     one user message's `content` -- see `RolloutObservationRenderer` upstream and
-    `app._task_selector_from_agent_input`. The real `prompt` also carries `question`/`task_name`;
-    this fixture keeps only what the selector reads.
+    `app._task_selector_from_agent_input`. `prompt` carries only what that selector reads.
     """
     return [{"role": "user", "content": json.dumps({"task_index": task_index, "split": split})}]
 
