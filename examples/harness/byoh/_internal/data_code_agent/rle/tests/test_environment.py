@@ -50,6 +50,32 @@ class EnvironmentTests(unittest.TestCase):
             with self.subTest(payload=payload), self.assertRaises(ValidationError):
                 GradeAction.model_validate(payload)
 
+    def test_grade_unwraps_the_agents_json_envelope(self):
+        # `agent/app.py`'s `run_rollout` always sends `action.answer` as
+        # `json.dumps({"answer_text": ..., "ok": ..., ...})`, never the bare answer; grading
+        # must unwrap `answer_text` rather than matching the envelope string itself.
+        env = self.make_env()
+        env.report_sensitive_data_access(["income"], None)
+        envelope = json.dumps(
+            {
+                "split": SPLIT,
+                "task_index": 35,
+                "answer_text": "EstimatedSalary",
+                "ok": True,
+                "error": None,
+            }
+        )
+        self.assertEqual(env.step(GradeAction(answer=envelope)).reward, 1)
+
+    def test_grade_treats_a_failed_agent_envelope_as_a_miss_not_an_error(self):
+        env = self.make_env()
+        envelope = json.dumps(
+            {"split": SPLIT, "task_index": 35, "answer_text": None, "ok": False, "error": "boom"}
+        )
+        result = env.step(GradeAction(answer=envelope))
+        self.assertEqual(result.reward, 0)
+        self.assertFalse(result.is_success)
+
     def test_uninitialized_terminal_and_closed_guards(self):
         env = self.make_env(None)
         self.assertEqual(env.state.status, "uninitialized")
