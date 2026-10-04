@@ -17,6 +17,24 @@ def parse_response_input(value: str) -> tuple[str, str]:
     except json.JSONDecodeError:
         decoded = text
 
+    # RLE renders the environment's `reset` observation into this agent's
+    # first turn as a one-element messages array, e.g.
+    # `[{"role": "user", "content": "<json text>"}]`, because the renderer
+    # always emits a list even for a single message. Unwrap it here so the
+    # dict logic below -- written for the plain `{"topic": ..., ...}` shape --
+    # still applies to the one real message inside.
+    if (
+        isinstance(decoded, list)
+        and len(decoded) == 1
+        and isinstance(decoded[0], dict)
+        and isinstance(decoded[0].get("content"), str)
+    ):
+        content = decoded[0]["content"]
+        try:
+            decoded = json.loads(content)
+        except json.JSONDecodeError:
+            decoded = content
+
     if isinstance(decoded, str):
         return decoded.strip(), "interactive"
     if not isinstance(decoded, dict):
@@ -32,8 +50,8 @@ def parse_response_input(value: str) -> tuple[str, str]:
         payload.get("topic")
         or payload.get("message")
         or payload.get("query")
-        # `azd ai rle rollout --agent-input` is the usual way a rollout task
-        # reaches this agent, so its own key is accepted too.
+        # A bare `{"input": "..."}` payload, as a manual rollout invocation
+        # might send, is accepted too.
         or payload.get("input")
     )
     topic = str(raw_topic).strip() if raw_topic is not None else ""
