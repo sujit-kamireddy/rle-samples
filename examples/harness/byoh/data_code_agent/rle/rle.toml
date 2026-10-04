@@ -18,7 +18,7 @@ schema_version = "1.0.0"
 name = "data_code_agent_byoh_google_cloud_run"
 # Semantic version, MAJOR.MINOR.PATCH. Immutable: publishing a change means a
 # new version.
-version = "2.0.2"
+version = "2.0.3"
 # "Gym" or "Harness".
 type = "Harness"
 # "HostedAgent" or "BYOH" for Harness; "OpenEnv" for Gym.
@@ -121,7 +121,16 @@ baseUrl = "https://byoh-code-agent.icyrock-0039fbbf.westus2.azurecontainerapps.i
 # ---------------------------------------------------------------------------
 [train]
 # Base model to train. Only RL-enabled models are accepted.
-model = "qwen3-32b-1"
+# Switched from "qwen3-32b-1" to MAI: redoing the proven Qwen3-32B hillclimb
+# (0.255 -> 0.632 over 64 steps, see [train.options] below) with
+# MAI-Code-1.1-Flash instead, to showcase hillclimbing and cost savings
+# against the production gpt-6-astra model using the same harness/environment.
+# This run also widens the dataset past that proving run (see
+# max_train_examples/max_steps below): a stratified, natural-frequency draw
+# over the full 5,000-task pool instead of a 512-task positional slice, to
+# give the compliance combo-PII case (2+ pii_categories) and every reward_mode
+# more room to show a gap, not just raw task count.
+model = "mai/mai-code-1.1-flash"
 # Paths are relative to this file.
 training_file = "../job_data/train.jsonl"
 validation_file = "../job_data/validation.jsonl"
@@ -158,6 +167,12 @@ learning_rate = 5e-5
 # the facade's own default -- set explicitly so it does not silently drift if
 # that default ever changes.
 lora_rank = 32
+# REAL RUN: the proven Qwen schedule. A prior SMOKE-TEST override
+# (group_size=4, batch_size=1, max_steps=4, ~20 rollouts total) validated the
+# MAI model id, mai_harmony_internal renderer and MCP harness end to end on
+# ksujit-rle-eastus2 (ftjob-57dce4652bb54bde990dd1e0, succeeded). These are
+# the values that produced the measured hillclimb described above.
+#
 # Rollouts per group. A GRPO group needs at least two to have any advantage
 # signal at all; 8 gives enough within-group spread that
 # remove_constant_reward_groups rarely empties a step, and lets a group survive
@@ -165,21 +180,39 @@ lora_rank = 32
 group_size = 8
 # Groups per optimiser step. Arrives at the training service as
 # `groups_per_batch`, whose default is 1.
+#
+# max_train_examples and max_steps are coupled through this value, not
+# independent knobs: the recipe's dataset wraps its batch index at
+# ceil(max_train_examples / batch_size), so a max_steps equal to that number
+# (1024 / 8 = 128) sees every curated task exactly once with zero repeats.
+# num_epochs below never gets a chance to start a second pass because
+# max_steps truncates the run first -- raising the dataset size alone,
+# without raising max_steps to match, silently drops the untouched tail of
+# train.jsonl instead of training on it.
 batch_size = 8
 num_epochs = 2
-max_train_examples = 512
-# 100 eval tasks, chosen so a real gain clears the noise floor: at 8 tasks a
+# Built by tools/build_training_set.py (stratified by reward_mode x
+# pii_categories-count, natural frequency, disjoint from validation_file) --
+# not a positional slice of the task pool. Re-run that script with
+# --train-size/--eval-size to resize, then update max_steps/max_test_examples
+# here to match.
+max_train_examples = 1024
+# 150 eval tasks, chosen so a real gain clears the noise floor: at 8 tasks a
 # single flipped rollout moves the score 12.5 points and a 10-point gain is
 # invisible.
-max_test_examples = 100
+max_test_examples = 150
 # Loom has no LR schedule and a finished job cannot be extended, so max_steps is
 # set past the expected stopping point and the run is judged on its curve.
-max_steps = 64
+# See the batch_size comment above for why this must equal
+# max_train_examples / batch_size.
+max_steps = 128
 # Both boundaries are what make a checkpoint durable: the recipe only writes one
 # when a step falls on eval_every or save_every, so a run configured without
-# them trains weights it cannot later recover.
-eval_every = 4
-save_every = 4
+# them trains weights it cannot later recover. 8 gives 16 points across the
+# curve (steps 8/16/.../128, the final step included) without eval overhead
+# dominating step time.
+eval_every = 8
+save_every = 8
 remove_constant_reward_groups = true
 # How many rollouts run at once. Each one is a full `opencode` process in the
 # agent container, so this is bounded by that container's CPU and memory, not by
@@ -192,12 +225,13 @@ remove_constant_reward_groups = true
 # before the cap instead of being truncated into a zero.
 max_concurrent_rollouts = 8
 seed = 42
-# Rollout-failure tolerance. Retry a transient; because the recipe trains a
-# group's survivors rather than discarding all eight when one member fails, a
-# failure costs one rollout rather than a whole group. The abort rate ends the
-# run outright when tripped, so it is set well above the ~32% a first attempt
-# reached.
-rollout_max_retries = 3
+# Rollout-failure tolerance. Because the recipe trains a group's survivors
+# rather than discarding all eight when one member fails, a failure costs one
+# rollout rather than a whole group. The abort rate ends the run outright when
+# tripped, so it is set well above the ~32% a first attempt reached.
+# (rollout_max_retries is omitted: it depends on vienna PR 2329025, which was
+# reverted, and the rle-harness recipe's job_metadata.py now hard-rejects it
+# for every model.)
 rollout_failure_rate_abort = 0.45
 min_trainable_group_members = 2
 # The default bound is 65536 tokens summed across a rollout's trainable roots --
@@ -214,4 +248,7 @@ max_rollout_input_tokens = 131072
 # history. Measured on a single rollout of this environment: `qwen3` gave
 # 3 turns / 3 roots, `qwen3_ext` gave 3 turns / 1 root with no validation
 # findings.
-renderer_name = 'qwen3_ext'
+# Switched to MAI's own renderer: mai_harmony_internal is a capture-only
+# renderer for MAI-Code-1.1-Flash (no local tokenization), per
+# tools/local_finetune_facade/mai_recipe.py in loom.
+renderer_name = 'mai_harmony_internal'

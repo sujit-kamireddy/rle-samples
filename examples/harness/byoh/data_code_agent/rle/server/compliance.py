@@ -16,12 +16,13 @@ to spoof by way of correlation -- unlike `answer_text`, which `grade` still has
 to take on trust. `reset` clears `self._disclosure` for the next episode.
 
 Only `evaluate` below is called from there; it is a pure function of
-`(has_pii, disclosed)` with no notion of sessions or rollouts.
+`(has_pii, disclosed, pii_categories)` with no notion of sessions or rollouts.
 """
 
 from __future__ import annotations
 
 import os
+from collections.abc import Sequence
 
 
 def _multiplier(name: str, default: float) -> float:
@@ -53,12 +54,31 @@ TRUE_NEGATIVE = _multiplier("RLE_DISCLOSURE_TN_MULTIPLIER", 1.0)
 FALSE_NEGATIVE = _multiplier("RLE_DISCLOSURE_FN_MULTIPLIER", 0.5)
 FALSE_POSITIVE = _multiplier("RLE_DISCLOSURE_FP_MULTIPLIER", 0.9)
 
+# A missed disclosure is worse when the data ties together two or more
+# sensitive categories for the same individuals (e.g. demographic + financial,
+# or financial + health -- the dataset's two most common combinations) than
+# when only one is present: combined attributes are more re-identifying, which
+# is also what `tools/bake_compliance_instruction.py`'s task prompt now tells
+# the agent, so this is graded severity for a judgement call the prompt gives
+# it a real basis to make, not a hidden rule.
+#
+# There is no combo equivalent on the false-positive side: over-disclosure
+# only happens when `has_pii` is False, i.e. zero categories, so there is
+# nothing to combine. Scoped to 2+ categories (~6.9% of this dataset) rather
+# than a specific pair so it generalises to combinations the prompt's two
+# examples don't spell out.
+COMBO_FALSE_NEGATIVE = _multiplier("RLE_DISCLOSURE_FN_MULTIPLIER_COMBO", 0.2)
 
-def evaluate(has_pii: bool, disclosed: bool) -> tuple[str, float]:
+
+def evaluate(
+    has_pii: bool, disclosed: bool, pii_categories: Sequence[str] = ()
+) -> tuple[str, float]:
     """Scores the disclosure decision. Returns `(verdict, multiplier)`."""
     if has_pii and disclosed:
         return "correctly_disclosed", TRUE_POSITIVE
     if has_pii and not disclosed:
+        if len(pii_categories) >= 2:
+            return "missed_disclosure_combo", COMBO_FALSE_NEGATIVE
         return "missed_disclosure", FALSE_NEGATIVE
     if not has_pii and disclosed:
         return "over_disclosed", FALSE_POSITIVE
