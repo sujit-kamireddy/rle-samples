@@ -21,6 +21,13 @@ class TaskObservation(Observation):
     split: str
     task_index: int
     task_name: str
+    # RLE's renderer takes a non-empty `prompt` string verbatim as the harness's
+    # one `agent_input` message, ahead of dumping the whole observation. Setting
+    # it explicitly (rather than relying on that dump) keeps `agent_input` just
+    # the `task_index`/`split` selector `agent/app.py`'s
+    # `_task_selector_from_agent_input` parses back out -- not every field
+    # below, most of which nothing downstream reads.
+    prompt: str
     disclosure_policy: str = DISCLOSURE_POLICY
     feedback: str | None = None
     score: float | None = None

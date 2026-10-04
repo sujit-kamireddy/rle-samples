@@ -27,14 +27,23 @@ projects can legitimately send the same one to a shared harness.
    acknowledges with ``202`` as soon as it has taken ownership -- before the
    rollout has run. ``retry_after_ms`` is advisory; RLE clamps it.
 
+   ``agent_input`` is not the dataset row. RLE resets ``../rle``'s environment
+   with that row first, then renders the resulting observation into this chat
+   message list -- our ``TaskObservation`` sets an explicit ``prompt`` field, so
+   RLE takes that string verbatim as the one user message instead of
+   JSON-serializing the whole observation. ``run_harness_rollout`` below parses
+   that string back out to recover ``task_index`` and ``split``.
+
        POST <base-url>
        {
          "rollout_id": "...",
          "operation_id": "...",
-         "agent_input": {
-           "task_index": 0,
-           "split": "FineEnvs/data-agent-harbor-train"
-         },
+         "agent_input": [
+           {
+             "role": "user",
+             "content": "{\"split\": \"FineEnvs/data-agent-harbor-train\", \"task_index\": 0}"
+           }
+         ],
          "rollout_context": {
            "model_endpoint": "https://.../rle/v1.0/capture-proxy/v1",
            "model_api_key": "...",
@@ -232,7 +241,7 @@ class RolloutContext(BaseModel):
 class InvocationRequest(BaseModel):
     rollout_id: str
     operation_id: str
-    agent_input: dict[str, Any]
+    agent_input: list[dict[str, Any]]
     rollout_context: RolloutContext
 
 
@@ -470,11 +479,31 @@ async def local_tool(
         return JSONResponse({"status": "recorded", "detail": text})
 
 
+def _task_selector_from_agent_input(agent_input: list[dict[str, Any]]) -> dict[str, Any]:
+    """Recovers the `task_index`/`split` selector RLE's `reset` pinned, from the rendered `agent_input`.
+
+    RLE no longer forwards the dataset row directly: it resets `../rle`'s environment with it, then
+    renders the resulting observation into this chat message list. `TaskObservation` sets an explicit
+    `prompt` field, so RLE takes that string verbatim as the one user message's `content` -- that JSON
+    is where the selector lives.
+    """
+    if not agent_input:
+        return {}
+    content = agent_input[0].get("content")
+    if not isinstance(content, str):
+        return {}
+    try:
+        parsed = json.loads(content)
+    except json.JSONDecodeError:
+        return {}
+    return parsed if isinstance(parsed, dict) else {}
+
+
 async def run_harness_rollout(
     rollout_id: str,
     operation_id: str,
     rollout_context: RolloutContext,
-    agent_input: dict[str, Any],
+    agent_input: list[dict[str, Any]],
 ) -> str:
     """Runs one task and returns the agent's own answer text, as a JSON string.
 
@@ -490,8 +519,9 @@ async def run_harness_rollout(
     the grader is public and deterministic, so a harness allowed to report its own
     score could simply report a perfect one.
     """
-    task_index = int(agent_input.get("task_index", 0))
-    split = agent_input.get("split", DEFAULT_SPLIT)
+    selector = _task_selector_from_agent_input(agent_input)
+    task_index = int(selector.get("task_index", 0))
+    split = selector.get("split", DEFAULT_SPLIT)
     model = await _rollout_model(rollout_context)
 
     try:

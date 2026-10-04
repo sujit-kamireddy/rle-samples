@@ -9,12 +9,19 @@ RLE is watching.
 
 from __future__ import annotations
 
+import json
 import os
 
 import pytest
 from fastapi.testclient import TestClient
 
-from app import ROLLOUTS, InvocationRequest, RolloutContext, app
+from app import (
+    ROLLOUTS,
+    InvocationRequest,
+    RolloutContext,
+    _task_selector_from_agent_input,
+    app,
+)
 
 ROLLOUT_CONTEXT = {
     "model_endpoint": "https://proxy.invalid/v1",
@@ -23,6 +30,21 @@ ROLLOUT_CONTEXT = {
     "mcp_bearer_token": "tools-token",
     "mcp_session_id": "session-abc",
 }
+
+
+def _rendered_agent_input(
+    task_index: int = 0, split: str = "FineEnvs/data-agent-harbor-train"
+) -> list[dict[str, object]]:
+    """Builds the `agent_input` RLE renders from a `reset` observation, for request fixtures.
+
+    `TaskObservation` sets an explicit `prompt` field, so RLE takes that string verbatim as the
+    one user message's `content` -- see `RolloutObservationRenderer` upstream and
+    `app._task_selector_from_agent_input`. `prompt` carries only what that selector reads.
+    """
+    return [{"role": "user", "content": json.dumps({"task_index": task_index, "split": split})}]
+
+
+AGENT_INPUT = _rendered_agent_input()
 
 
 def test_rollout_context_accepts_rles_current_wire_contract():
@@ -44,7 +66,7 @@ def test_invocation_uses_rles_operation_id_rather_than_minting_one():
     request = InvocationRequest.model_validate({
         "rollout_id": "rollout-1",
         "operation_id": "operation-1",
-        "agent_input": {"task_index": 3},
+        "agent_input": _rendered_agent_input(task_index=3),
         "rollout_context": ROLLOUT_CONTEXT,
     })
     assert request.operation_id == "operation-1"
@@ -63,7 +85,7 @@ def test_dispatch_acknowledges_with_202_and_a_poll_interval(monkeypatch):
         response = client.post("/invoke", json={
             "rollout_id": "rollout-2",
             "operation_id": "operation-2",
-            "agent_input": {"task_index": 0},
+            "agent_input": AGENT_INPUT,
             "rollout_context": ROLLOUT_CONTEXT,
         })
         assert response.status_code == 202
@@ -88,7 +110,7 @@ def test_poll_reports_the_answer_under_output_text(monkeypatch):
         client.post("/invoke", json={
             "rollout_id": "rollout-3",
             "operation_id": "operation-3",
-            "agent_input": {"task_index": 0},
+            "agent_input": AGENT_INPUT,
             "rollout_context": ROLLOUT_CONTEXT,
         })
         for _ in range(200):
@@ -109,7 +131,7 @@ def test_a_failed_rollout_is_reported_on_the_poll_not_the_dispatch(monkeypatch):
         assert client.post("/invoke", json={
             "rollout_id": "rollout-4",
             "operation_id": "operation-4",
-            "agent_input": {"task_index": 0},
+            "agent_input": AGENT_INPUT,
             "rollout_context": ROLLOUT_CONTEXT,
         }).status_code == 202
         for _ in range(200):
@@ -118,6 +140,31 @@ def test_a_failed_rollout_is_reported_on_the_poll_not_the_dispatch(monkeypatch):
                 break
         assert body["status"] == "failed"
         assert "sandbox refused to start" in body["error"]["message"]
+
+
+def test_task_selector_recovers_what_reset_pinned_from_the_rendered_agent_input():
+    """RLE no longer sends `task_index`/`split` directly -- it renders `reset`'s observation into
+    a chat message and this is the harness's one chance to recover them from it."""
+    rendered = _rendered_agent_input(task_index=7, split="FineEnvs/data-agent-harbor-validation")
+    assert _task_selector_from_agent_input(rendered) == {
+        "task_index": 7,
+        "split": "FineEnvs/data-agent-harbor-validation",
+    }
+
+
+@pytest.mark.parametrize(
+    "agent_input",
+    [
+        [],
+        [{"role": "user", "content": "not json"}],
+        [{"role": "user"}],
+        [{"role": "user", "content": "[1, 2, 3]"}],
+    ],
+)
+def test_task_selector_tolerates_an_empty_or_malformed_agent_input(agent_input):
+    """RLE always renders at least one well-formed message in practice, but a harness this
+    permissive should fall back to `run_harness_rollout`'s own defaults rather than crash."""
+    assert _task_selector_from_agent_input(agent_input) == {}
 
 
 def teardown_function() -> None:
