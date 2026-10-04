@@ -114,70 +114,11 @@ Session IDs route state; they are not equivalent to Foundry's authenticated
 rollout headers. Instance isolation is not an OS sandbox: do not give an
 untrusted agent shell access to this grading container.
 
-## Scripted client
+## Maintainer tooling
 
-This sample's maintainer-only tooling (this script, `tools/`, and the test
-suites below) lives outside the scaffolded tree, in a sibling `_internal/`
-copy of this sample -- so `azd ai rle init` does not hand a new user a pile of
-things that are only here to keep the sample itself correct. Run the commands
-in the rest of this document from `_internal/data_code_agent/`, the root of
-that copy, not from this sample root.
-
-```bash
-python -m pip install -r rle/requirements-test.txt
-python -m rle.scripts.session_demo \
-  --url http://127.0.0.1:8000 \
-  --split FineEnvs/data-agent-harbor-train \
-  --task-index 30 --answer "your submitted answer"
-```
-
-Supply `--disclose column1 column2` only when appropriate. Omit it for no
-disclosure; `--disclose` alone records an empty list. The script demonstrates
-session creation, reset, discovery/call, terminal grading, and cleanup; it does
-not run the BYOH harness agent.
-
-## Dataset artifacts
-
-The [task metadata](./server/tasks/task-meta) is generated from the same
-upstream source as the rest of the sample's dataset using
-[build_task_meta.py](../../_internal/data_code_agent/tools/build_task_meta.py)
-(from `_internal/data_code_agent/`, as above):
-
-```bash
-python tools/build_task_meta.py --verify  # diff against the committed key
-python tools/build_task_meta.py --write   # regenerate the committed key
-```
-
-`--verify` fails on any drift in a task's question, expected answer, reward
-mode, tolerances, or sensitivity label; `rle/tests/test_metadata.py` pins the
-same invariants (plus a hash of every non-question field) so corruption of the
-baked dataset is caught in CI, not at grading time.
-
-## Test suite
-
-With test requirements installed, run from `_internal/data_code_agent/`:
-
-```bash
-# Unit tests: dataset metadata and the in-process environment/app.
-python -m pytest rle/tests/test_metadata.py rle/tests/test_environment.py agent/tests/
-
-# Real container, HTTP MCP, WebSockets, and independent concurrent sessions.
-# (build as in "Build and run locally" above, from the sample root, then come back here)
-OPENENV_TEST_IMAGE=byoh-rle-openenv:local \
-OPENENV_LIVE_REPORT=/tmp/openenv-live.json \
-  python -m pytest rle/tests/test_live.py
-```
-
-These are plain `pytest` invocations, not `python -m unittest rle.tests...`:
-`rle/` here is a placeholder with no `__init__.py` of its own (only `tests/`
-and `scripts/` moved), so it cannot resolve `rle.server` the way the real
-sample's `rle/` package does; pytest's per-file import handles that, a shared
-dotted package path cannot.
-
-Unit tests cover dataset integrity, fixed grading outcomes, tolerances/lists,
-input normalization, private-state filtering, and overlapping operations
-in-process. Live tests exercise the real image: package boundaries, every
-disclosed/correct quadrant for a sensitive and a clean task, separate
-concurrent instances, capacity, detach/reattach, deferred close, and idle
-cleanup, all over HTTP MCP and WebSocket exactly as Foundry would drive them.
-Neither suite establishes end-to-end Foundry rollout parity on its own.
+The scripted client, dataset-generation scripts, and test suites for this
+service are maintainer-only tooling and live outside the scaffolded tree, in
+`_internal/data_code_agent/rle/` -- so `azd ai rle init` does not hand a new
+user a pile of things that are only here to keep the sample itself correct.
+See [that folder's README](../../_internal/data_code_agent/rle/README.md) to
+run them.

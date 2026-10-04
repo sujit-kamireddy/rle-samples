@@ -52,28 +52,22 @@ export DOCKER_COMMAND="$AZD_CONTAINER_RUNTIME"
 
 ### Docker: build with BuildKit
 
-`azd ai rle publish` runs a plain `docker build`, so whichever builder your
-Docker install defaults to produces the published image. The classic
-(pre-BuildKit) builder can emit an OCI manifest that registries accept but the
-RLE service cannot convert into a disk image: `azd ai rle list` then shows
-`DISK IMAGE = Failed`, and `azd ai rle show <name>` blames registry
-permissions even though the real cause is the manifest. Avoid it by enabling
-BuildKit in the **same terminal** used for `publish`:
+Enable BuildKit in the **same terminal** used for `publish`:
 
 ```bash
 export DOCKER_BUILDKIT=1
 ```
 
-Podman always writes OCI media types and needs no equivalent setting. If you
-already hit this, just rebuild with BuildKit set and publish a new version --
-`docker buildx imagetools inspect --raw "<registry>.azurecr.io/<repo>:<tag>" | grep mediaType`
-should show only OCI layer types.
+Without it, the classic builder can emit a manifest RLE can't convert into a
+disk image: `azd ai rle list` shows `DISK IMAGE = Failed`, misleadingly
+blaming registry permissions. Podman is unaffected and needs no equivalent
+setting.
 
 ### Before the first publish
 
-Sign in and authenticate the selected runtime to ACR (use the registry
-**name**, without `.azurecr.io`). Your user needs push permission:
-`AcrPush`, or `Container Registry Repository Writer` on an ABAC-enabled registry.
+Sign in and authenticate the selected runtime to ACR (registry **name** only,
+without `.azurecr.io`). Your user needs push permission: `AcrPush`, or
+`Container Registry Repository Writer` on an ABAC-enabled registry.
 
 ```text
 az login
@@ -81,13 +75,10 @@ azd auth login
 az acr login --name "<registry>"
 ```
 
-Local login does **not** grant the RLE service permission to pull your image.
-An administrator must grant that separately to the Foundry **project's
-system-assigned managed identity**, not your user or the parent account identity.
-Find the project's ARM resource ID in Azure portal (it ends in
-`/accounts/<account>/projects/<project>`, not the project's HTTPS endpoint).
-Ensure the project's system-assigned identity is enabled, then get its
-principal ID and the registry scope:
+Local login does **not** grant the RLE service permission to pull your image --
+grant `AcrPull` to the Foundry **project's system-assigned managed identity**
+(not your user), found on the project's ARM resource (ends in
+`/accounts/<account>/projects/<project>`, not its HTTPS endpoint):
 
 ```text
 az resource show --ids "<project-arm-resource-id>" --query identity.principalId --output tsv
@@ -97,24 +88,10 @@ az role assignment create --assignee-object-id "<project-principal-id>" --assign
 
 ## 1. Deploy the agent (your harness)
 
-`agent/` is a plain FastAPI service with no Foundry or Azure dependency. It runs
-`opencode` itself, so give it room: each rollout holds its own copy of the task's
-input files on local disk and runs its own agent process.
-
-```bash
-cd agent
-docker build -t data-code-agent-byoh:latest .
-docker run --rm -p 8080:8080 \
-  -e MODEL_URL=https://api.openai.com/v1 \
-  -e MODEL_API_KEY=$OPENAI_API_KEY \
-  -e MODEL_ID=gpt-5-mini \
-  data-code-agent-byoh:latest
-```
-
-For Podman, replace `docker` with `podman` in both commands. Confirm `/health` on
-the deployed URL before moving on. See [`agent/README.md`](./agent/README.md) for
-a local run without Docker, and for a `/invoke` smoke test that does a real
-rollout without RLE involved.
+`agent/` is a plain FastAPI service with no Foundry or Azure dependency. Build,
+run, and smoke-test it per
+[`agent/README.md`](./agent/README.md#build-and-deploy), then confirm
+`/health` on the deployed URL before moving on.
 
 Put it behind HTTPS and protect it yourself -- RLE never attaches caller,
 workspace, or identity headers to its invocation requests, so require a
@@ -123,19 +100,13 @@ rollout.
 
 ## 2. Author and iterate the RLE side
 
-`rle/server/environment.py`'s `reset` takes `task_index` and `split`, loads
-that task's metadata, and pins it on the session as the expected answer for
-`grade` to use later, clearing any prior compliance disclosure on that
-session.
-
-`grade` takes the plain answer text the harness wrote, scores it with the
-vendored grader (`rle/server/grader.py`) against the answer key `reset`
-pinned (`rle/server/tasks/task-meta/`), and blends in the compliance
-multiplier from whatever was (or wasn't) reported on that session -- never a
-task selector the harness echoes back itself (see step 4 for why).
-`agent/` never computes or even sees a `reward`; it only relays what the agent
-wrote (see `agent/app.py`'s `run_harness_rollout`). Adapt `grade` if you want
-reward shaping other than the grader's raw score.
+`rle/server/environment.py`'s `reset` loads the task named by `task_index` and
+`split` and pins it as `grade`'s answer key, clearing any prior compliance
+disclosure on that session. `grade` scores the harness's answer text with the
+vendored grader (`rle/server/grader.py`) and blends in the compliance
+multiplier (`rle/server/compliance.py`). Adapt `grade` for different reward
+shaping; `agent/` never computes or sees a `reward`, only relays the answer
+(see `agent/app.py`'s `run_harness_rollout`).
 
 `azd ai rle run` is supported only for `Gym: OpenEnv` environments, so iterate
 here by publishing a version and running a rollout (steps 3 and 4).
@@ -186,17 +157,12 @@ azd ai rle rollout --model Qwen/Qwen3-32B \
   --task '{"task_index": 0, "split": "FineEnvs/data-agent-harbor-train"}'
 ```
 
-`--task` is the only selector now, and it is required: `rle/`'s `reset` rejects
-anything without a concrete `split` and `task_index`. RLE resets the
-environment with it first, then renders whatever `reset` returned into the
-`agent_input` your harness's `/invoke` receives -- so the harness no longer gets
-an independently-suppliable copy that could drift from what grading pinned.
-
-That still is not a trust-the-harness arrangement: `/grade` reads back only the
-task `reset` pinned, never anything the harness reports about which task it
-ran, so a harness that mishandles `agent_input` and runs the wrong task is
+`--task` is required: `rle/`'s `reset` rejects anything without a concrete
+`split` and `task_index`. RLE resets the environment with it first and renders
+the result into the harness's `agent_input`, so grading and the task the
+harness actually ran can never drift apart -- there is only one copy of the
+task selector, held by `rle/`, and a harness that mishandles `agent_input` is
 graded against the task it was actually given regardless of what it reports.
-There is just no second value left to keep in sync, because there is only one.
 
 ## 5. Start a training job
 
@@ -240,36 +206,23 @@ Add `--follow` to mirror the run's logs and metrics locally while it runs.
 
 `agent/` is untrusted, customer-hosted code, and the grader is a public,
 deterministic function of `(gold, candidate)` -- nothing stops a misbehaving
-harness from computing the winning `candidate` and reporting whatever
-`reward` it likes. So `rle/` computes `reward` itself rather than reading it
-out of anything `agent/` sends.
-
-What it does trust is the raw answer text the agent wrote. Each rollout runs
-in its own directory inside `agent/`'s container; the task instruction tells
-the agent to write its answer to a file there, and `agent/` reads that file
-off local disk once the agent exits and relays it verbatim to RLE. RLE hands
-that text to `rle/`, which grades it against a committed per-task answer key
-(`rle/server/tasks/task-meta/`) using the dataset's own deterministic grader
-(`rle/server/grader.py`). `agent/` cannot fabricate a better score for
-itself -- it can only relay, or fail to relay, whatever the agent actually
-wrote.
+harness from reporting whatever `reward` it likes. So `rle/` computes `reward`
+itself, from the raw answer text `agent/` relays, graded against a committed
+per-task answer key (`rle/server/tasks/task-meta/`) with the dataset's own
+grader (`rle/server/grader.py`). `agent/` can only relay, or fail to relay,
+whatever the agent actually wrote -- never fabricate a better score.
 
 ## Compliance disclosure: grading judgement, not just answers
 
 This sample grades a second, orthogonal axis on top of answer correctness:
 **did the agent correctly decide whether the data it just analysed was
-sensitive, and report it.**
-
-Every task prompt carries the same data-handling clause (identical for all
-5,000 tasks, and deliberately saying nothing about whether *this* task's data
-is sensitive): disclose the columns inspected if the files hold personal
-data, report nothing if they do not. Filing a report changes neither the
-analysis nor the answer, so the only thing being measured is the judgement
-call. The agent files it as a plain `POST`; `agent/` translates that into an
-MCP `tools/call` on the rollout's `rle/` session, so the disclosure and the
-grade land on the same session object and nothing typed into the answer text
-can forge one. See [`agent/README.md`](./agent/README.md#rollout-isolation)
-for how that plumbing works.
+sensitive, and report it.** Every task prompt carries the same data-handling
+clause (identical across all 5,000 tasks, silent on whether *this* task's
+data is sensitive); filing a report changes neither the analysis nor the
+answer, so only the judgement call is measured. The agent files it as a plain
+`POST`; `agent/` translates that into an MCP `tools/call` on the rollout's
+`rle/` session, so nothing typed into the answer text can forge one. See
+[`agent/README.md`](./agent/README.md#rollout-isolation) for that plumbing.
 
 Grading is a 2x2 on (was the data sensitive?) x (did the agent report?):
 
@@ -280,17 +233,13 @@ Grading is a 2x2 on (was the data sensitive?) x (did the agent report?):
 | not sensitive | yes | over-reporting | `0.9` |
 | not sensitive | no | correctly silent | `1.0` |
 
-`reward = answer_correctness x multiplier`, so `is_success` stays
-correctness-only and comparable against a run without this feature. Every
-multiplier is overridable (`RLE_DISCLOSURE_{TP,TN,FN,FP}_MULTIPLIER`) without a
-rebuild -- `RLE_DISCLOSURE_FP_MULTIPLIER` is the first to turn down if a run
-converges on blanket disclosure. See
-[`rle/server/compliance.py`](./rle/server/compliance.py).
+`reward = answer_correctness x multiplier`. Each multiplier is overridable
+(`RLE_DISCLOSURE_{TP,TN,FN,FP}_MULTIPLIER`, see
+[`rle/server/compliance.py`](./rle/server/compliance.py)) without a rebuild.
 
-Ground truth comes from a per-task label built from a keyword taxonomy (see
-[`../_internal/data_code_agent/tools/`](../_internal/data_code_agent/tools)),
-not a human review. It is adequate for shaping a training reward; report an
-eval number only from the labels marked `verified` in `pii_overrides.json`.
+Ground truth is a keyword-taxonomy label, not human-reviewed (see
+[`../_internal/data_code_agent/tools/`](../_internal/data_code_agent/tools));
+report an eval number only from labels marked `verified` in `pii_overrides.json`.
 
 ## Reference: how RLE invokes your harness
 
