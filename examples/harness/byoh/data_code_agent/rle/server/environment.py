@@ -20,6 +20,24 @@ from rle.server.tasks.tasks import _Task, load_tasks
 _LOG = logging.getLogger(__name__)
 
 
+def _extract_answer_text(raw: str) -> str | None:
+    """Unwraps `agent/app.py`'s envelope so grading sees the actual answer.
+
+    `run_rollout` there always returns `json.dumps({"split": ..., "task_index": ...,
+    "answer_text": ..., "ok": ..., "error": ...})` as `agent_response`, so `action.answer`
+    is that whole string, not the bare answer. Anything that isn't that shape (unexpected,
+    since this sample's own agent is the only producer) falls back to grading the raw
+    string rather than raising.
+    """
+    try:
+        envelope = json.loads(raw)
+    except (TypeError, ValueError):
+        return raw
+    if isinstance(envelope, dict) and "answer_text" in envelope:
+        return envelope["answer_text"]
+    return raw
+
+
 class DataCodeAgentRLEnvironment(RLEnvironment):
     SUPPORTS_CONCURRENT_SESSIONS = True
 
@@ -137,7 +155,7 @@ class DataCodeAgentRLEnvironment(RLEnvironment):
                 # method; only `self.grade` would recurse.
                 result = grade(
                     task.expected_answer,
-                    action.answer,
+                    _extract_answer_text(action.answer),
                     reward_mode=task.reward_mode,
                     abs_tol=task.atol,
                     rel_tol=task.rtol,
