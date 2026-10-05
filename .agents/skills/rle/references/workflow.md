@@ -12,9 +12,12 @@ This copies a working sample out of the samples repo. Pick the closest one:
 
 | If the episode is… | Copy |
 | --- | --- |
-| one prompt, one graded answer, no tools | `math_rl` |
-| schema-driven, multi-turn, with a tool | `code_rl` |
-| typed MCP tools using the SDK base class | `mcp_rl` |
+| code generation with a typed hidden-test checker | `code_rl` |
+| mathematical reasoning with a typed equivalence helper | `math_rl` |
+
+Both shipped samples use the SDK `RLEnvironment` MCP contract. For a
+schema-driven Gym environment, adapt the generic schema-driven contract in
+these references rather than assuming either sample uses it.
 
 ### 2. Adapt, in dependency order
 

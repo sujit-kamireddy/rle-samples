@@ -49,7 +49,7 @@ existing deployment — that should keep driving itself while RLE just scores wh
 
 Start from a sample instead of a blank folder: `azd ai rle init` copies one out of this repo,
 prompting for type/subtype/sample. `examples/gym/openenv/math_rl` and `code_rl` demonstrate
-schema-driven Gym authoring; `mcp_rl` demonstrates the additive SDK `RLEnvironment` MCP mode.
+the SDK `RLEnvironment` MCP mode with typed `check_equivalence` and `check_solution` tools.
 `examples/harness/{byoh,hosted-agent}/*` are the Harness samples.
 
 RLE never reads your source for either type. Everything it needs, it takes declaratively from

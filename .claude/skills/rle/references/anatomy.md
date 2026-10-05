@@ -36,8 +36,10 @@ travels with the image.
 
 **In schema-driven mode, `schema.py` is a public contract, not an implementation detail.** It is serialized to
 `GET /schema` and becomes the model's entire action vocabulary. Docstrings and `Field(description=)`
-text are sent to the model. Write them as instructions to the policy, not as notes to a maintainer —
-see `examples/gym/openenv/math_rl/server/schema.py`.
+text are sent to the model. Write them as instructions to the policy, not as notes to a maintainer.
+The shipped `code_rl` and `math_rl` samples use SDK MCP mode instead, so start a schema-driven
+environment from the generic contract in this skill rather than looking for `server/schema.py` in
+those samples.
 
 **In SDK MCP mode, typed tool signatures are the public contract.** FastMCP derives the input
 schema for each method registered with `self.tool()`. Use concrete parameter types and useful

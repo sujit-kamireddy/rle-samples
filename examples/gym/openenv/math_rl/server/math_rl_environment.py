@@ -1,14 +1,14 @@
-"""``math_rl`` OpenEnv environment: one Hendrycks MATH problem per episode.
+"""SDK MCP math environment: one Hendrycks MATH problem per episode.
 
-``reset()`` selects a problem, ``step()`` grades the submitted answer and
-ends the episode. Grading runs in this container using ``safe_grade``
-(sympy / math-verify, see ``grading.py``).
+``reset()`` selects a problem, the optional ``check_equivalence`` MCP tool
+checks two model-supplied expressions, and ``grade()`` grades the final
+``GradeAction.answer``. Grading runs in this container using ``safe_grade``.
 
 A submission without ``\\boxed{}`` scores ``-FORMAT_COEF`` (below) without
 attempting to grade the raw text: this rewards "submitted a correctly
 formatted final answer" strictly more than "got lucky with unformatted
-text", while still keeping the format penalty small next to the +1/-1
-correctness reward.
+text", while still keeping the format penalty small next to the correctness
+signal.
 """
 
 from __future__ import annotations
@@ -18,12 +18,11 @@ from pathlib import Path
 from typing import Any, Optional
 from uuid import uuid4
 
-from openenv.core.env_server.interfaces import Environment
-from openenv.core.env_server.types import State
+from azure.ai.projects.rle.environments import GradeAction, RLEnvironment
 
 from .dataset import EpisodePicker, load_jsonl, reject_unknown_selectors
-from .grading import extract_boxed, safe_grade
-from .schema import MathAction, MathObservation
+from .grading import extract_boxed, normalize_answer, safe_grade
+from .models import MathObservation, MathState
 
 
 # The penalty applied when a submission has no `\boxed{...}` answer to grade
@@ -31,14 +30,8 @@ from .schema import MathAction, MathObservation
 FORMAT_COEF = 0.1
 
 
-class MathRLEnvironment(Environment[MathAction, MathObservation, State]):
-    """One-shot math-answer environment: reset -> problem, step -> reward.
-
-    A real ``openenv`` ``Environment`` subclass -- see
-    ``examples/gym/openenv/code_rl/server/code_rl_environment.py``'s class docstring for
-    why holding the episode's row on ``self`` is safe under ``openenv``'s
-    own ``/ws`` per-connection session model.
-    """
+class MathRLEnvironment(RLEnvironment):
+    """Dataset-backed math environment with an optional equivalence tool."""
 
     def __init__(
         self,
@@ -47,7 +40,6 @@ class MathRLEnvironment(Environment[MathAction, MathObservation, State]):
         grading_timeout: float = 1.0,
         validation_dataset_path: Optional[str] = None,
     ):
-        super().__init__()
         default_dataset_path = Path(__file__).resolve().parents[1] / "env_data" / "train.jsonl.gz"
         dataset_path = dataset_path or os.environ.get("MATH_RL_DATASET_PATH", str(default_dataset_path))
         self._rows = EpisodePicker(load_jsonl(dataset_path))
@@ -67,8 +59,11 @@ class MathRLEnvironment(Environment[MathAction, MathObservation, State]):
         self._validation_rows: Optional[EpisodePicker] = None
         self._grader = grader
         self._grading_timeout = grading_timeout
-        self._state = State(episode_id=None, step_count=0)
+        self._instance_id = str(uuid4())
         self._current_row: Optional[dict] = None
+        super().__init__()
+        self._set_state(MathState(instance_id=self._instance_id))
+        self.tool()(self.check_equivalence)
 
     def _rows_for_split(self, split: str) -> EpisodePicker:
         """Resolve which baked dataset file a ``reset()`` picks from.
@@ -96,10 +91,15 @@ class MathRLEnvironment(Environment[MathAction, MathObservation, State]):
         reject_unknown_selectors(kwargs)
         index, row = self._rows_for_split(split).pick(seed)
         self._current_row = row
-        self._state = State(
-            episode_id=episode_id or str(uuid4()),
-            step_count=0,
-            extra={"row_index": index},
+        self._set_state(
+            MathState(
+                instance_id=self._instance_id,
+                episode_id=episode_id or str(uuid4()),
+                step_count=0,
+                row_index=index,
+                split=split,
+                active=True,
+            )
         )
         return MathObservation(
             done=False,
@@ -108,26 +108,63 @@ class MathRLEnvironment(Environment[MathAction, MathObservation, State]):
             problem_id=str(index),
         )
 
-    def step(
+    def check_equivalence(
         self,
-        action: MathAction,
+        candidate_expression: str,
+        comparison_expression: str,
+    ) -> dict[str, bool | int | str]:
+        """Safely check whether two model-supplied expressions are equivalent.
+
+        This helper never receives or reveals the dataset's reference answer.
+        It is useful for checking a simplification before final submission.
+        """
+        state = self.state
+        if not state.active or state.graded or self._current_row is None:
+            raise RuntimeError("An active ungraded episode is required")
+        if not candidate_expression.strip() or not comparison_expression.strip():
+            raise ValueError("Both expressions must be non-empty")
+
+        equivalent = bool(
+            safe_grade(
+                candidate_expression,
+                comparison_expression,
+                grader=self._grader,
+                timeout=self._grading_timeout,
+            )
+        )
+        state.helper_called = True
+        state.helper_call_count += 1
+        state.last_candidate_expression = candidate_expression
+        state.last_comparison_expression = comparison_expression
+        state.last_equivalent = equivalent
+        self._set_state(state)
+        return {
+            "equivalent": equivalent,
+            "candidate_normalized": normalize_answer(candidate_expression) or "",
+            "comparison_normalized": normalize_answer(comparison_expression) or "",
+            "helper_call_count": state.helper_call_count,
+            "instance_id": self._instance_id,
+        }
+
+    def grade(
+        self,
+        action: GradeAction,
         timeout_s: Optional[float] = None,
         **kwargs: Any,
     ) -> MathObservation:
-        self._state.step_count += 1
+        if kwargs:
+            raise ValueError(f"Unsupported grade option(s): {sorted(kwargs)}")
+        state = self.state
+        if not state.active or state.graded:
+            raise RuntimeError("An active ungraded episode is required")
         if self._current_row is None:
-            # Only reachable if step() is called before reset() -- this env is only
-            # served over /ws, so the row reset() picked is always still on self.
-            raise ValueError("step() called before reset(): no row to grade against.")
+            raise ValueError("grade() called before reset(): no row to grade against.")
         row = self._current_row
 
         try:
-            given = extract_boxed(action.answer_text)
+            given = extract_boxed(action.answer or "")
             has_format = True
         except ValueError:
-            # No \boxed{} in the submission -- treat it as automatically
-            # incorrect (correct=False below) rather than attempting to
-            # grade the raw, unformatted text.
             given = None
             has_format = False
 
@@ -142,13 +179,19 @@ class MathRLEnvironment(Environment[MathAction, MathObservation, State]):
         correct_score = 1.0 if correct else 0.0
         reward = FORMAT_COEF * (format_score - 1.0) + correct_score
 
+        state.graded = True
+        state.active = False
+        self._set_state(state)
         return MathObservation(
             done=True,
             reward=reward,
             messages=[],
-            metadata={"correct": correct, "format": has_format},
+            helper_called=state.helper_called,
+            helper_call_count=state.helper_call_count,
+            metadata={
+                "correct": correct,
+                "format": has_format,
+                "helper_called": state.helper_called,
+                "helper_call_count": state.helper_call_count,
+            },
         )
-
-    @property
-    def state(self) -> State:
-        return self._state

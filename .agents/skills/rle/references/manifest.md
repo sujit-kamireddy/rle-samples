@@ -29,14 +29,14 @@ schema_version = "1.0.0"
 environment_protocol = "mcp_environment"
 
 [rle]
-name = "mcp_rl"
+name = "code_rl"
 version = "1.0.0"
 type = "Gym"
 subtype = "OpenEnv"
 
 [defaults.reinforcement]
-max_episode_steps = 2
-max_completion_tokens = 1024
+max_episode_steps = 3
+max_completion_tokens = 8192
 ```
 
 ### Rules

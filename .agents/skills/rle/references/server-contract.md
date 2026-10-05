@@ -6,11 +6,11 @@ In schema-driven mode, `server/app.py` uses `create_fastapi_app`:
 
 ```python
 app = create_fastapi_app(
-    MathEnvironment,
-    MathAction,
-    MathObservation,
+    ExampleEnvironment,
+    ExampleAction,
+    ExampleObservation,
     max_concurrent_envs=1,
-    env_name="math_rl",
+    env_name="example_rl",
 )
 ```
 
@@ -18,11 +18,11 @@ SDK MCP mode uses `create_app`, `GradeAction`, and a state class:
 
 ```python
 app = create_app(
-    ArithmeticRLEnvironment,
+    CodeRLEnvironment,
     GradeAction,
-    ArithmeticObservation,
-    state_cls=ArithmeticState,
-    env_name="mcp_rl",
+    CodeObservation,
+    state_cls=CodeState,
+    env_name="code_rl",
     concurrency_config=ConcurrencyConfig(max_concurrent_envs=1),
 )
 ```
