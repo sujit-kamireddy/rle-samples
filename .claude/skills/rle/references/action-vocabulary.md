@@ -1,4 +1,11 @@
-## The action vocabulary: `GET /schema` is the whole story
+## The action vocabulary: choose schema-driven or SDK MCP
+
+The action-variant rules below apply to **schema-driven mode**. In SDK MCP mode,
+`RLEnvironment` supplies MCP `tools/list` and `tools/call`, typed methods registered with
+`self.tool()` define tool schemas, and `GradeAction.answer` carries the terminal response. SDK MCP
+mode sets `environment_protocol = "mcp_environment"` and has no `model_response_field`.
+
+### Schema-driven mode: `GET /schema` is the whole story
 
 RLE derives everything the model may do from the `action` schema your OpenEnv server publishes at
 `GET /schema`. There is no separate tool spec to write, register, or keep in sync. The rule:
@@ -9,10 +16,10 @@ RLE derives everything the model may do from the `action` schema your OpenEnv se
 
 ### Case 1 — no tools (single action)
 
-A plain `Action` subclass. `math_rl` (`server/schema.py`):
+A plain `Action` subclass:
 
 ```python
-class MathAction(Action):
+class AnswerAction(Action):
     answer_text: str = Field(default="", description="...")
 ```
 
@@ -21,7 +28,7 @@ and the model is given no tools. The completion text arrives in `action.answer_t
 
 ### Case 2 — with tools (discriminated union)
 
-A `RootModel` union with an explicit discriminator. `code_rl` (`server/schema.py`):
+A `RootModel` union with an explicit discriminator:
 
 ```python
 class CheckSolutionAction(Action):
@@ -46,6 +53,28 @@ parameters are the variant's other properties, and its description is the class 
 concrete action through `.root` in `step()`.
 
 **Adding a tool is therefore: add a union member.** Nothing else.
+
+### SDK MCP mode: typed tools plus `GradeAction`
+
+```python
+class CodeRLEnvironment(RLEnvironment):
+    def __init__(self):
+        super().__init__()
+        self.tool()(self.check_solution)
+
+    async def check_solution(self, code: str) -> dict:
+        """Run a candidate solution against hidden tests."""
+        ...
+
+    def grade(self, action: GradeAction, **kwargs):
+        ...
+```
+
+Register tools after `super().__init__()` creates the MCP server. Tool and grading evidence must
+live on the same environment instance. Pass `GradeAction` to `create_app` so the terminal step is
+deserialized correctly. Do not add MCP list/call variants or configure a response field yourself.
+The shipped `code_rl` and `math_rl` samples demonstrate this mode with `check_solution` and
+`check_equivalence`, respectively.
 
 ### Conformance rules RLE enforces
 

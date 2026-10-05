@@ -3,6 +3,8 @@
 `rle.toml` is the only file the RLE service reads directly. It is validated at publish time and
 re-read at rollout time.
 
+Schema-driven Gym mode:
+
 ```toml
 schema_version = "1.0.0"
 
@@ -20,6 +22,23 @@ max_completion_tokens = 8192
 model_response_field = "answer_text"
 ```
 
+SDK `RLEnvironment` MCP mode:
+
+```toml
+schema_version = "1.0.0"
+environment_protocol = "mcp_environment"
+
+[rle]
+name = "code_rl"
+version = "1.0.0"
+type = "Gym"
+subtype = "OpenEnv"
+
+[defaults.reinforcement]
+max_episode_steps = 3
+max_completion_tokens = 8192
+```
+
 ### Rules
 
 **`schema_version` must be exactly `"1.0.0"`,** and it is *required whenever any `[defaults.*]`
@@ -29,10 +48,11 @@ silent default.
 **`type` / `subtype` must be `Gym` / `OpenEnv`** for this skill's contract to apply. Other
 combinations select entirely different rollout paths.
 
-**`[defaults.gym_openenv] model_response_field` is mandatory for a Gym/OpenEnv rollout.** Without it
-the rollout is rejected up front with HTTP 400 `EnvironmentContractViolation` — the environment is
-published but not runnable. Maximum length 128 characters. It must name a property that exists on
-exactly one action variant; see the action-vocabulary reference.
+**Choose one Gym contract.** In schema-driven mode,
+`[defaults.gym_openenv] model_response_field` is mandatory and must name a property on exactly one
+action variant (maximum 128 characters). In SDK MCP mode, set top-level
+`environment_protocol = "mcp_environment"` and omit `model_response_field`. Combining the two
+selectors asks RLE to apply incompatible response contracts.
 
 **`max_episode_steps` is how many `step()` calls the loop will make.** Set it to what the episode
 actually needs: `1` for a single-turn question/answer environment, higher only when the policy is
@@ -52,6 +72,6 @@ self-terminating run used 6252, which is why it sits at 8192.
 
 ### What the manifest does *not* cover
 
-There is no way to declare tools, no way to declare the reset signature, and no way to declare the
-observation shape. Tools come from the action schema (next reference); the reset signature is
-invisible to RLE entirely (server-contract reference).
+There is no manifest syntax for individual tools, the reset signature, or the observation shape.
+Schema-driven tools come from action variants. SDK MCP tools come from typed methods registered
+with `RLEnvironment.tool()`. The reset signature is invisible to RLE in both modes.

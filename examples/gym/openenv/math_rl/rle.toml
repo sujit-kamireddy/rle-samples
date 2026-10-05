@@ -13,6 +13,7 @@
 # is also what is assumed when it is omitted. Required as soon as [defaults] is
 # supplied.
 schema_version = "1.0.0"
+environment_protocol = "mcp_environment"
 
 [rle]
 # snake_case, starting with a letter.
@@ -62,9 +63,8 @@ subtype = "OpenEnv"
 # effective value is min(value, 32), so asking for more than 32 changes
 # nothing.
 #
-# math_rl is single-turn (server/math_rl_environment.py always returns
-# done=True after the first step), so one step per episode is all it uses.
-max_episode_steps = 1
+# Up to three optional equivalence checks plus the terminal GradeAction.
+max_episode_steps = 4
 
 # Output budget for a single model turn. Integer > 0, and the effective value
 # is min(value, 8192) -- so 8192 is both the cap and what an omitted setting
@@ -93,17 +93,6 @@ max_completion_tokens = 8192
 # groups_per_batch = 128           # integer > 0
 # max_steps = 150                  # integer > 0
 
-[defaults.gym_openenv]
-# Required for Gym/OpenEnv: names the action property that receives the model's
-# completion text verbatim. Must be a property the environment's own action
-# model declares, which is why it has no default. Maximum 128 characters.
-#
-# Names the MathAction property that receives the model's completion text.
-# Every other action property RLE finds in GET /schema is offered to the model
-# as a tool; math_rl declares only this one, so it has no tools.
-model_response_field = "answer_text"
-
-
 # ---------------------------------------------------------------------------
 # [train] -- how this environment is usually trained, so a run is one command.
 # Local-only: never published, free to change without republishing, and any
@@ -118,7 +107,7 @@ model_response_field = "answer_text"
 # Appended to the fine-tuned model name, to tell runs apart.
 # suffix = "math-rl"
 # Per-run override of defaults.reinforcement.max_episode_steps. Integer > 0.
-# max_episode_steps = 1
+# max_episode_steps = 4
 
 # Free-form options forwarded to the training service, which owns the
 # vocabulary and validates it per recipe -- an unsupported key is rejected by

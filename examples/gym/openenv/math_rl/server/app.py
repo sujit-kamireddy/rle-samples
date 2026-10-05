@@ -1,8 +1,4 @@
-"""FastAPI app exposing ``MathRLEnvironment`` over the OpenEnv HTTP/WS contract.
-
-Built with ``openenv``'s own ``create_fastapi_app`` -- see
-``examples/gym/openenv/code_rl/server/app.py`` for why this no longer needs a hand-rolled
-runtime.
+"""ASGI app exposing the SDK ``MathRLEnvironment`` MCP contract.
 
 Usage::
 
@@ -12,31 +8,38 @@ or, standalone inside the built container::
 
     python -m examples.gym.openenv.math_rl.server.app
 
-Serve it with a single worker. ``max_concurrent_envs=1`` below reflects
-that each container is leased to one Foundry RLE instance/episode series
-at a time; a second worker would let two connections each get "the"
-container's own session, breaking that assumption.
+Serve it with one worker so MCP calls and final grading use the same instance.
 """
 
 from __future__ import annotations
 
 import os
 
-from openenv.core.env_server.http_server import create_fastapi_app
+from fastapi import FastAPI
+from openenv.core.env_server.http_server import create_app
+from openenv.core.env_server.types import ConcurrencyConfig
 
-try:
-    from .math_rl_environment import MathRLEnvironment
-except ImportError:  # pragma: no cover - standalone container import path
-    from math_rl_environment import MathRLEnvironment
-from .schema import MathAction, MathObservation
+from azure.ai.projects.rle.environments import GradeAction
 
-app = create_fastapi_app(
-    MathRLEnvironment,
-    MathAction,
-    MathObservation,
-    max_concurrent_envs=1,
-    env_name="math_rl",
-)
+from .math_rl_environment import MathRLEnvironment
+from .models import MathObservation, MathState
+
+
+def build_app() -> FastAPI:
+    return create_app(
+        MathRLEnvironment,
+        GradeAction,
+        MathObservation,
+        state_cls=MathState,
+        env_name="math_rl",
+        concurrency_config=ConcurrencyConfig(
+            max_concurrent_envs=1,
+            session_timeout=300.0,
+        ),
+    )
+
+
+app = build_app()
 
 
 def main() -> None:

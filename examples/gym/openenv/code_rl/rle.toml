@@ -13,6 +13,7 @@
 # is also what is assumed when it is omitted. Required as soon as [defaults] is
 # supplied.
 schema_version = "1.0.0"
+environment_protocol = "mcp_environment"
 
 [rle]
 # snake_case, starting with a letter.
@@ -62,8 +63,7 @@ subtype = "OpenEnv"
 # effective value is min(value, 32), so asking for more than 32 changes
 # nothing.
 #
-# DEFAULT_MAX_TURNS check_solution calls (see server/code_rl_environment.py)
-# plus the one submit_answer step that grades them.
+# Two check_solution MCP calls plus the final GradeAction grading step.
 max_episode_steps = 3
 
 # Output budget for a single model turn: the reasoning plus the whole function
@@ -93,17 +93,6 @@ max_completion_tokens = 8192
 # group_size = 8                   # integer > 0
 # groups_per_batch = 128           # integer > 0
 # max_steps = 150                  # integer > 0
-
-[defaults.gym_openenv]
-# Required for Gym/OpenEnv: names the action property that receives the model's
-# completion text verbatim. Must be a property the environment's own action
-# model declares, which is why it has no default. Maximum 128 characters.
-#
-# Naming the CodeAction variant property makes SubmitAnswerAction the graded
-# final response, and every other variant -- here just check_solution -- a tool
-# offered to the model.
-model_response_field = "code_text"
-
 
 # ---------------------------------------------------------------------------
 # [train] -- how this environment is usually trained, so a run is one command.

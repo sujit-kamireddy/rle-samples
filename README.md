@@ -49,6 +49,17 @@ rm -rf .claude/skills && cp -R .agents/skills .claude/skills
 samples, where the caller drives the environment through `reset`/`step`.
 These are copied directly by `azd ai rle init <sample-name>`.
 
+Both Gym samples use the SDK `RLEnvironment` MCP contract:
+
+- [`code_rl`](./examples/gym/openenv/code_rl) registers the typed
+  `check_solution` tool and grades the final fenced Python submission.
+- [`math_rl`](./examples/gym/openenv/math_rl) registers the typed
+  `check_equivalence` helper and grades the final boxed answer.
+
+Each selects top-level `environment_protocol = "mcp_environment"`, omits
+`model_response_field`, and carries reset, MCP tool calls, and terminal
+`GradeAction` grading over one persistent OpenEnv session.
+
 [`examples/gym/openenv/catalog.toml`](./examples/gym/openenv/catalog.toml)
 controls which sample directories `azd ai rle init` offers. A new sample
 directory is visible automatically; add an entry with `visible = false` to

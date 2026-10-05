@@ -2,15 +2,28 @@
 
 ### Entry point
 
-`server/app.py` is the whole server:
+In schema-driven mode, `server/app.py` uses `create_fastapi_app`:
 
 ```python
 app = create_fastapi_app(
-    MathEnvironment,
-    MathAction,
-    MathObservation,
+    ExampleEnvironment,
+    ExampleAction,
+    ExampleObservation,
     max_concurrent_envs=1,
-    env_name="math_rl",
+    env_name="example_rl",
+)
+```
+
+SDK MCP mode uses `create_app`, `GradeAction`, and a state class:
+
+```python
+app = create_app(
+    CodeRLEnvironment,
+    GradeAction,
+    CodeObservation,
+    state_cls=CodeState,
+    env_name="code_rl",
+    concurrency_config=ConcurrencyConfig(max_concurrent_envs=1),
 )
 ```
 
@@ -18,9 +31,12 @@ app = create_fastapi_app(
 to one RLE instance for the life of the rollout. Extra workers do not add throughput; they add
 processes that hold a different episode's state than the one being graded.
 
-### RLE talks to you over `/ws`, not over plain HTTP
+### Session transport
 
-The Gym/OpenEnv rollout path uses the WebSocket endpoint exclusively. That has three consequences:
+Schema-driven Gym actions use the WebSocket endpoint. SDK MCP mode additionally serves registered
+tools on the session's MCP endpoint; `RLEnvironment` and `create_app` own that routing. In both
+modes, reset, tool work, and grade must resolve to the same environment instance. The WebSocket
+path has three consequences:
 
 1. **The environment instance persists for the connection.** State set in `reset()` is still there in
    `step()`. This is why actions carry no episode id.
@@ -75,7 +91,9 @@ unvisited in what is meant to be one epoch, and duplicate others. `EpisodePicker
 
 Support a `split` selector so training and validation draw from different rows.
 
-### `step()`
+### `step()` and `grade()`
+
+In schema-driven mode, implement `step()`:
 
 - Read the concrete action (`.root` for a union), apply it, grade, return an observation.
 - **Always reach `done=True` on every terminal path**, including the give-up path — an episode that
@@ -84,3 +102,8 @@ Support a `split` selector so training and validation draw from different rows.
 - Put the reward on the step that ends the episode.
 - Return only what the policy should see. For a tool step, return the tool's result text; RLE — not
   the environment — owns the tool call's id, so return text, not a synthesized tool-call envelope.
+
+In SDK MCP mode, do not override ordinary tool dispatch. `RLEnvironment` handles MCP list/call
+actions and routes terminal `GradeAction` to `grade()`. Register typed methods with `self.tool()`
+and update the environment's `State` inside those methods, so `grade()` can prove the call happened
+on that same instance. Return a terminal observation with `done=True` and reward from `grade()`.

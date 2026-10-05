@@ -16,6 +16,10 @@ identify which split it draws from:
 {"seed": 0, "split": "train"}
 ```
 
+The environment uses SDK MCP mode. These selectors still go to `reset()`;
+`check_solution` calls and the final `GradeAction.answer` are carried over the
+same persistent OpenEnv WebSocket and use that selected row's hidden tests.
+
 `train.jsonl` has one line per row in `../env_data/train.jsonl.gz` (900 lines,
 `seed` 0..899); `validation.jsonl` mirrors `../env_data/validation.jsonl.gz`
 (100 lines). Regenerate both if the baked dataset's row counts change --

@@ -1,7 +1,8 @@
 ## Sample anatomy
 
-Every sample under `examples/gym/openenv/` has the same shape. Copy it; the layout is what
-`azd ai rle init` produces and what `azd ai rle publish` expects.
+Every sample under `examples/gym/openenv/` has the same outer shape. Copy it; the layout is what
+`azd ai rle init` produces and what `azd ai rle publish` expects. Server files differ between the
+schema-driven contract and the SDK `RLEnvironment` MCP contract.
 
 ```
 <env_name>/
@@ -14,12 +15,17 @@ Every sample under `examples/gym/openenv/` has the same shape. Copy it; the layo
   job_data/                 # training-job manifests that reference the published environment
   scripts/                  # dataset build/refresh scripts (not run at rollout time)
   server/
-    app.py                  # create_fastapi_app(...) — the ASGI entry point
-    schema.py               # Action / Observation pydantic models -> GET /schema
+    app.py                  # create_fastapi_app(...) or create_app(...) entry point
+    schema.py               # schema-driven: Action / Observation models -> GET /schema
+    models.py               # SDK MCP: Observation / State models
     dataset.py              # loading, episode selection, selector validation
     grading.py              # scoring, kept separate from the environment loop
     <env_name>_environment.py  # Environment subclass: reset() / step()
 ```
+
+In SDK MCP mode, use `create_app`, subclass `RLEnvironment`, register typed bound methods through
+`self.tool()`, and implement `grade(GradeAction)`. Do not invent a response action or
+`model_response_field`; the base class owns MCP tool dispatch and final-answer routing.
 
 ### What goes where, and why it matters
 
@@ -28,10 +34,16 @@ mounted volume; a dataset fetched at `reset()` time is a rollout that fails in p
 passes locally. Keep provenance next to it (`NOTICE`, `source.json`) so the licence of the data
 travels with the image.
 
-**`schema.py` is a public contract, not an implementation detail.** It is serialized to
+**In schema-driven mode, `schema.py` is a public contract, not an implementation detail.** It is serialized to
 `GET /schema` and becomes the model's entire action vocabulary. Docstrings and `Field(description=)`
-text are sent to the model. Write them as instructions to the policy, not as notes to a maintainer —
-see `examples/gym/openenv/math_rl/server/schema.py`.
+text are sent to the model. Write them as instructions to the policy, not as notes to a maintainer.
+The shipped `code_rl` and `math_rl` samples use SDK MCP mode instead, so start a schema-driven
+environment from the generic contract in this skill rather than looking for `server/schema.py` in
+those samples.
+
+**In SDK MCP mode, typed tool signatures are the public contract.** FastMCP derives the input
+schema for each method registered with `self.tool()`. Use concrete parameter types and useful
+docstrings; keep per-episode proof of tool use on `self.state`, not in process globals.
 
 **`grading.py` is separate from the environment on purpose.** Grading is the part you will want to
 unit-test against fixtures without standing up a server, and the part a second environment may
