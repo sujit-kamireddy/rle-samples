@@ -18,7 +18,7 @@ schema_version = "1.0.0"
 name = "data_code_agent_byoh_google_cloud_run"
 # Semantic version, MAJOR.MINOR.PATCH. Immutable: publishing a change means a
 # new version.
-version = "2.0.4"
+version = "2.0.6"
 # "Gym" or "Harness".
 type = "Harness"
 # "HostedAgent" or "BYOH" for Harness; "OpenEnv" for Gym.
@@ -44,15 +44,15 @@ environmentProtocol = "mcp_environment"
 # header of any kind, so the endpoint has to protect itself. It must answer
 # exactly 202 and then serve GET {baseUrl}/rollouts/{operation_id} for
 # polling and DELETE for cancellation.
-# Moved off Azure Container Apps to this environment's namesake host, Google
-# Cloud Run, on a brand-new isolated service (data-code-agent-byoh-sujit,
-# project foundry-509604, region us-east1) rather than reusing either
-# data-code-agent-sujit or data-code-agent-ksujit from earlier in this
-# engagement, to avoid any chance of colliding with another user's traffic or
-# config on those. The URL is predictable before the service is deployed:
-# Cloud Run's <service>-<suffix>.<region>.run.app suffix is the GCP project
-# number, identical across every service in this project (confirmed on both
-# of the services above), not a per-service hash.
+# On Google Cloud Run, this environment's namesake host: a brand-new isolated
+# service (data-code-agent-byoh-sujit, project foundry-509604, region
+# us-east1) rather than reusing either data-code-agent-sujit or
+# data-code-agent-ksujit from earlier in this engagement, to avoid any chance
+# of colliding with another user's traffic or config on those. Deployed via
+# `gcloud run deploy` from `../agent` (see that folder's README for the exact
+# command and flags) and confirmed healthy at `/health` before publishing
+# this version. See `../agent/README.md#build-and-deploy` for an Azure
+# Container Apps alternative.
 baseUrl = "https://data-code-agent-byoh-sujit-107203347434.us-east1.run.app/invoke"
 
 # agentName and agentVersion are HostedAgent-only and are rejected for BYOH.
@@ -176,17 +176,24 @@ learning_rate = 5e-5
 # the facade's own default -- set explicitly so it does not silently drift if
 # that default ever changes.
 lora_rank = 32
-# REAL RUN: the proven Qwen schedule. A prior SMOKE-TEST override
-# (group_size=4, batch_size=1, max_steps=4, ~20 rollouts total) validated the
-# MAI model id, mai_harmony_internal renderer and MCP harness end to end on
-# ksujit-rle-eastus2 (ftjob-57dce4652bb54bde990dd1e0, succeeded). These are
-# the values that produced the measured hillclimb described above.
+# REAL RUN. A prior SMOKE-TEST override (group_size=4, batch_size=1,
+# max_steps=4, ~20 rollouts total) validated the MAI model id,
+# mai_harmony_internal renderer and MCP harness end to end on
+# ksujit-rle-eastus2 (ftjob-57dce4652bb54bde990dd1e0, succeeded).
+# group_size=8/batch_size=8 (64 rollouts/step) is what produced the measured
+# hillclimb described above.
 #
 # Rollouts per group. A GRPO group needs at least two to have any advantage
-# signal at all; 8 gives enough within-group spread that
-# remove_constant_reward_groups rarely empties a step, and lets a group survive
-# losing a member.
-group_size = 8
+# signal at all. Doubled from the proven 8 to 16 for this run, for 128
+# rollouts/step instead of 64: rle-harness hard-rejects refill_on_drop /
+# strategy / dynamic_sampling at config validation ("MVP1 supports only
+# synchronous on-policy training"; loom-command-job/recipes/rle-harness/
+# config.py _validate_mvp1_contract), so there is no batch-refill mechanism
+# available when remove_constant_reward_groups drops a degenerate
+# (all-equal-reward) group. A wider group is the only lever this recipe
+# exposes to make that less likely: more members per group means better odds
+# of nonzero within-group reward variance.
+group_size = 16
 # Groups per optimiser step. Arrives at the training service as
 # `groups_per_batch`, whose default is 1.
 #
@@ -232,6 +239,12 @@ remove_constant_reward_groups = true
 # rollouts x latency / concurrency and latency moves inversely, so throughput is
 # roughly flat across that range and 8 buys more rollouts that reach an answer
 # before the cap instead of being truncated into a zero.
+#
+# Left at 8 (unchanged) even though group_size doubled rollouts/step to 128:
+# step wall-clock scales with rollouts/concurrency, so steps now take roughly
+# 2x as long as the proven 64-rollout/step run. Raise this if that latency
+# isn't acceptable -- it is a container-capacity tradeoff, not a correctness
+# one.
 max_concurrent_rollouts = 8
 seed = 42
 # Rollout-failure tolerance. Because the recipe trains a group's survivors
