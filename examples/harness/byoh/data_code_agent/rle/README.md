@@ -90,7 +90,7 @@ instead of serving with a broken limit.
    {"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"report_sensitive_data_access","arguments":{"columns_reported":["income"],"note":"Personal data inspected"}}}
    ```
 
-5. Submit `{"type":"step","data":{"answer":"..."}}` through the WebSocket.
+5. Submit `{"type":"step","data":{"response":"..."}}` through the WebSocket.
    The response's `data` contains `observation`, `reward`, and `done`.
    A valid submission, including an incorrect answer, returns `done: true`.
    `observation.score` equals the compliance-adjusted reward;

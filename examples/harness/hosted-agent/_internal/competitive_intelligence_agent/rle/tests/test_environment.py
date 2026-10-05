@@ -145,7 +145,7 @@ def test_query_only_tool_routing_reaches_the_reset_and_graded_session(task):
                     name="web_search", arguments={"search_query": task["query"]},
                 )
                 assert not result.get("isError"), result
-                websocket.send_json({"type": "step", "data": {"answer": ANSWER}})
+                websocket.send_json({"type": "step", "data": {"response": ANSWER}})
                 grade_result = websocket.receive_json()
                 assert grade_result["type"] != "error"
                 assert grade_result["data"]["done"] is True
@@ -173,7 +173,7 @@ def test_an_unreadable_task_fails_loudly(env):
 
 def test_grade_before_reset_is_a_protocol_error(env):
     with pytest.raises(RuntimeError, match="No active episode"):
-        env.grade(GradeAction(answer=ANSWER))
+        env.grade(GradeAction(response=ANSWER))
 
 
 def test_reward_stays_inside_the_managed_rle_range(task):
@@ -182,7 +182,7 @@ def test_reward_stays_inside_the_managed_rle_range(task):
     for row in rows:
         environment = CompetitiveIntelEnvironment()
         environment.reset(episode_id=row["task_id"], **row)
-        observation = environment.grade(GradeAction(answer=ANSWER))
+        observation = environment.grade(GradeAction(response=ANSWER))
         assert 0.0 <= observation.reward <= 1.0, row["task_id"]
         assert observation.done is True
         environment.close()

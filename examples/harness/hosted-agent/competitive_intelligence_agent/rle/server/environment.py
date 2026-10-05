@@ -340,7 +340,7 @@ class CompetitiveIntelEnvironment(RLEnvironment):
             raise RuntimeError("No active episode; call reset before grade.")
 
         try:
-            agent_response = _final_text(action.answer or "")
+            agent_response = _final_text(action.response or "")
             result = asyncio.run(grade_episode(self._task, self._session, agent_response))
         except Exception as error:
             logger.exception(

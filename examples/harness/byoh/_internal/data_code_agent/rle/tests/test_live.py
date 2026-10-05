@@ -182,7 +182,7 @@ assert not Path('/app/rle/tests').exists()
         return result
 
     async def grade(self, websocket, answer):
-        result = await self.exchange(websocket, "step", {"answer": answer})
+        result = await self.exchange(websocket, "step", {"response": answer})
         self.assertIs(result["done"], True)
         self.assertEqual(result["observation"]["attempt"], 1)
         self.assertEqual(result["observation"]["score"], result["reward"])
@@ -227,7 +227,7 @@ assert not Path('/app/rle/tests').exists()
         self.assertLess(grades[0]["reward"], grades[1]["reward"])
         self.assertEqual(grades[1]["reward"], 1)
         for websocket in (one, two):
-            self.assertEqual((await self.wire(websocket, "step", {"answer": "again"}))["type"], "error")
+            self.assertEqual((await self.wire(websocket, "step", {"response": "again"}))["type"], "error")
         for session_id in (first, second):
             body = await self.rpc_body(
                 "tools/call", session_id=session_id, name=TOOL, arguments={}
@@ -253,7 +253,7 @@ assert not Path('/app/rle/tests').exists()
         self.assertEqual(body["type"], "error")
         session_id = await self.session()
         websocket = await self.attach(session_id)
-        self.assertEqual((await self.wire(websocket, "step", {"answer": "x"}))["type"], "error")
+        self.assertEqual((await self.wire(websocket, "step", {"response": "x"}))["type"], "error")
         self.passed()
 
     async def test_detach_reattach_retains_state_and_disclosure(self):
