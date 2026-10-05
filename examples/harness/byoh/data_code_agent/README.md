@@ -153,7 +153,7 @@ Registered versions are immutable, so bump `version` before republishing.
 
 ```bash
 cd rle
-azd ai rle rollout --model mai/mai-code-1.1-flash \
+azd ai rle rollout --model MAI/MAI-Code-1.1-Flash \
   --task '{"task_index": 0, "split": "FineEnvs/data-agent-harbor-train"}'
 ```
 
