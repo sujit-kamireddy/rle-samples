@@ -235,9 +235,116 @@ docker run --rm -p 8080:8080 \
   data-code-agent:local
 ```
 
-Push this image anywhere RLE can reach over HTTPS (Azure Container Apps, your own
-cluster, a VM) and register that base URL as your BYOH harness. RLE appends
-`/invoke` to it, so register the root.
+Push this image anywhere RLE can reach over HTTPS (Azure Container Apps, Google
+Cloud Run, your own cluster, a VM) and register that base URL as your BYOH
+harness. RLE appends `/invoke` to it, so register the root.
 
-Size the container for concurrency: each rollout holds its own copy of the task's
-input files on local disk and runs its own `opencode` process.
+Size the container for concurrency: each rollout holds its own copy of the
+task's input files on local disk and runs its own `opencode` process -- a
+16 GiB instance comfortably ran four concurrent rollouts where 4 GiB hit
+out-of-memory restarts. Whichever platform you use, keep it to a single
+instance/replica: rollout state lives in this process's memory (see "Rollout
+isolation" above), so a second instance 404s half the polls and a restart
+loses every rollout in flight.
+
+### Google Cloud Run
+
+Builds via Cloud Build, so no local Docker is needed. Run from this directory
+(`agent/`):
+
+```bash
+gcloud run deploy data-code-agent-byoh \
+  --source=. \
+  --region=<region> \
+  --project=<project> \
+  --cpu=8 --memory=32Gi \
+  --min-instances=1 --max-instances=1 \
+  --concurrency=100 \
+  --timeout=3600 \
+  --no-cpu-throttling \
+  --execution-environment=gen2 \
+  --cpu-boost \
+  --allow-unauthenticated \
+  --port=8080
+```
+
+- `--min-instances=1 --max-instances=1`: the single-instance requirement above.
+- `--allow-unauthenticated`: required. RLE attaches no caller/auth header to
+  `/invoke` by design, so the service has to accept anonymous HTTPS and
+  protect itself instead, if at all (see "Put it behind HTTPS and protect it
+  yourself" in the top-level README).
+- `--no-cpu-throttling`: a rollout answers `202` immediately and keeps running
+  as a background task between polls. Default Cloud Run billing only
+  allocates CPU while a request is actually in flight, which would stall that
+  background work between polls; this flag keeps CPU available the whole
+  time the instance is up.
+- `--execution-environment=gen2`: `opencode` runs as a real subprocess
+  (`asyncio.create_subprocess_exec` in `opencode_direct.py`); gen2's fuller
+  Linux syscall/networking surface is what that needs over gen1's stricter
+  sandbox.
+- `--cpu=8 --memory=32Gi`: sized for `rle.toml`'s default
+  `max_concurrent_rollouts = 8`; scale with that setting per the memory note
+  above.
+- `--concurrency=100`: just needs to clear the number of concurrent rollouts
+  you expect; one request occupies one in-flight rollout for its whole
+  (possibly long) duration.
+
+The URL is predictable before the deploy even finishes:
+`https://<service>-<project-number>.<region>.run.app` -- the project
+*number*, not its ID (`gcloud projects describe <project>
+--format='value(projectNumber)'`). Confirm it once deployed:
+
+```bash
+curl -s https://<service>-<project-number>.<region>.run.app/health
+```
+
+### Azure Container Apps
+
+Build in the registry, so no local Docker is needed here either. Run from
+this directory (`agent/`):
+
+```bash
+az acr build --registry <registry> --image data-code-agent:<tag> .
+```
+
+First deploy, creating the app with a system-assigned identity granted
+`AcrPull` on the registry automatically:
+
+```bash
+az containerapp create \
+  --name <app-name> --resource-group <resource-group> \
+  --environment <containerapp-environment> \
+  --image <registry>.azurecr.io/data-code-agent:<tag> \
+  --registry-server <registry>.azurecr.io \
+  --registry-identity system \
+  --target-port 8080 --ingress external \
+  --cpu 4 --memory 8Gi \
+  --min-replicas 1 --max-replicas 1
+```
+
+`--cpu 4 --memory 8Gi` is the Consumption plan's per-replica ceiling; a
+Dedicated workload profile allows more if `max_concurrent_rollouts` needs it.
+`--ingress external --target-port 8080` gives it a public HTTPS endpoint with
+no extra auth in front of it by default -- the same anonymous-access
+requirement as Cloud Run above.
+
+Redeploy after a code change by rebuilding and pointing the app at the new
+tag (updating `--image` is what actually creates a revision and cuts traffic
+over; `az acr build` alone does not):
+
+```bash
+az acr build --registry <registry> --image data-code-agent:<new-tag> .
+az containerapp update --name <app-name> --resource-group <resource-group> \
+  --image <registry>.azurecr.io/data-code-agent:<new-tag>
+```
+
+A revision update briefly runs the old and new revisions side by side while
+the new one activates, so a test run immediately after can still hit the old
+one. Poll `az containerapp revision show --query properties.runningState`
+until it reports `RunningAtMaxScale` before trusting the result, and avoid
+updating while a job has rollouts in flight -- the old revision's in-memory
+rollout state goes with it the moment traffic cuts over.
+
+```bash
+curl -s https://<app-name>.<unique-suffix>.<region>.azurecontainerapps.io/health
+```

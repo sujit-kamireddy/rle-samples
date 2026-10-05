@@ -95,7 +95,7 @@ import sys
 from typing import Any
 
 import httpx
-from fastapi import Body, FastAPI, Header, Response
+from fastapi import Body, FastAPI, Header, Request, Response
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict
 
@@ -163,6 +163,36 @@ def _configure_logging() -> None:
 
 _configure_logging()
 
+
+@app.exception_handler(Exception)
+async def _log_unhandled_exception(request: Request, exc: Exception) -> JSONResponse:
+    """Logs what FastAPI's default handler would otherwise only send to stderr unformatted.
+
+    An unhandled exception in a route becomes a bare, generic 500: without this, the only
+    server-side trace is uvicorn's one-line access log, and the body and traceback needed to
+    diagnose it are gone by the time anyone looks. Explicit ``HTTPException`` raises keep using
+    FastAPI's own handler -- Starlette resolves by the most specific registered type first.
+    """
+    logger.error("Unhandled error on %s %s", request.method, request.url.path, exc_info=exc)
+    return JSONResponse({"error": "internal_error"}, status_code=500)
+
+
+def _describe_http_error(exc: Exception, *, limit: int = 500) -> str:
+    """Formats an HTTP failure with its response body, when there is one.
+
+    ``str(exc)`` on ``httpx.HTTPStatusError`` is only the status line and URL -- the body is
+    where the actual reason lives (the capture proxy reports a stale or revoked session key as
+    a short JSON error, for example) and is otherwise lost once the exception propagates past
+    ``raise_for_status()``. Bounded so a large or non-text body cannot flood the log.
+    """
+    if isinstance(exc, httpx.HTTPStatusError):
+        body = exc.response.text
+        if len(body) > limit:
+            body = body[:limit] + "...(truncated)"
+        return f"HTTP {exc.response.status_code} from {exc.request.url}: {body!r}"
+    return f"{type(exc).__name__}: {exc}"
+
+
 DEFAULT_SPLIT = os.environ.get("HARNESS_SPLIT", "FineEnvs/data-agent-harbor-train")
 
 # The default model endpoint, and the only reason this service needs one at all.
@@ -202,7 +232,7 @@ if _LLM_URL and not _MODEL:
                 "%s serves %d models and MODEL_ID is unset; set it explicitly.", _LLM_URL, len(_served)
             )
     except Exception as exc:  # noqa: BLE001 - startup must survive an unreachable default endpoint
-        logger.warning("could not list models at %s: %s: %s", _LLM_URL, type(exc).__name__, exc)
+        logger.warning("could not list models at %s: %s", _LLM_URL, _describe_http_error(exc))
 
 
 class RolloutContext(BaseModel):
@@ -351,8 +381,8 @@ async def _rollout_model(rollout_context: RolloutContext) -> str:
             )
         except Exception as exc:  # noqa: BLE001 - an unreachable /models must not end the rollout
             logger.warning(
-                "could not list models at %s: %s: %s; falling back to MODEL_ID=%r",
-                rollout_context.model_endpoint, type(exc).__name__, exc, _MODEL,
+                "could not list models at %s: %s; falling back to MODEL_ID=%r",
+                rollout_context.model_endpoint, _describe_http_error(exc), _MODEL,
             )
         else:
             if resolved:
@@ -436,7 +466,7 @@ async def local_tool(
     except httpx.HTTPError as error:
         logger.warning(
             "Tool %s for %s could not reach the environment: %s",
-            tool_name, operation_id, type(error).__name__,
+            tool_name, operation_id, _describe_http_error(error),
         )
         return JSONResponse({"error": "tool_unavailable"}, status_code=502)
 
