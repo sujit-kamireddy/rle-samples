@@ -11,9 +11,11 @@ from __future__ import annotations
 import json
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlencode
 
 import pytest
 from azure.ai.projects.rle.environments import GradeAction
+from fastapi.testclient import TestClient
 from openenv.core.env_server.mcp_environment import CallToolAction, ListToolsAction
 
 from rle.server.environment import TOOL_SURFACE, CompetitiveIntelEnvironment
@@ -111,6 +113,46 @@ def test_tool_calls_reach_the_session_the_rubric_reads(env, task):
     # The rubric scores tool discipline from the session, so a call that does
     # not land here is a call that did not happen as far as the reward knows.
     assert [call.name for call in env._session.calls] == ["web_search"]
+
+
+def test_query_only_tool_routing_reaches_the_reset_and_graded_session(task):
+    from rle.server.app import build_app
+
+    with TestClient(build_app()) as client:
+        def rpc(method, endpoint="/mcp", **params):
+            response = client.post(
+                endpoint,
+                json={"jsonrpc": "2.0", "id": 1, "method": method, "params": params},
+            )
+            assert response.status_code == 200
+            body = response.json()
+            assert "error" not in body, body
+            return body["result"]
+
+        session_id = rpc("openenv/session/create")["session_id"]
+        endpoint = "/mcp?" + urlencode({"rle_session_id": session_id, "other": "keep"})
+        try:
+            with client.websocket_connect(
+                "/ws?" + urlencode({"session_id": session_id})
+            ) as websocket:
+                websocket.send_json({
+                    "type": "reset", "data": {"episode_id": "ep-query", **task},
+                })
+                assert websocket.receive_json()["type"] != "error"
+                assert len(rpc("tools/list", endpoint)["tools"]) == 9
+                result = rpc(
+                    "tools/call", endpoint,
+                    name="web_search", arguments={"search_query": task["query"]},
+                )
+                assert not result.get("isError"), result
+                websocket.send_json({"type": "step", "data": {"answer": ANSWER}})
+                grade_result = websocket.receive_json()
+                assert grade_result["type"] != "error"
+                assert grade_result["data"]["done"] is True
+                assert grade_result["data"]["observation"]["info"]["n_tool_calls"] == 1
+        finally:
+            closed = rpc("openenv/session/close", session_id=session_id)
+            assert closed.get("closed") or closed.get("closing")
 
 
 def test_a_tool_call_before_reset_is_a_protocol_error(env, task):

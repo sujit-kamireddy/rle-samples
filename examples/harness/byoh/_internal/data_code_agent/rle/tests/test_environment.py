@@ -7,6 +7,7 @@ import threading
 import unittest
 from concurrent.futures import ThreadPoolExecutor
 from unittest.mock import patch
+from urllib.parse import urlencode
 
 from fastapi.testclient import TestClient
 from pydantic import ValidationError
@@ -277,6 +278,50 @@ class EnvironmentTests(unittest.TestCase):
 
 
 class AppTests(unittest.TestCase):
+    def test_query_only_tool_routing_reaches_the_reset_and_graded_session(self):
+        with TestClient(build_app()) as client:
+            def rpc(method, endpoint="/mcp", **params):
+                response = client.post(
+                    endpoint,
+                    json={"jsonrpc": "2.0", "id": 1, "method": method, "params": params},
+                )
+                self.assertEqual(response.status_code, 200)
+                body = response.json()
+                self.assertNotIn("error", body, body)
+                return body["result"]
+
+            session_id = rpc("openenv/session/create")["session_id"]
+            endpoint = "/mcp?" + urlencode({"rle_session_id": session_id, "other": "keep"})
+            try:
+                with client.websocket_connect(
+                    "/ws?" + urlencode({"session_id": session_id})
+                ) as websocket:
+                    websocket.send_json({
+                        "type": "reset", "data": {"split": SPLIT, "task_index": 35},
+                    })
+                    self.assertNotEqual(websocket.receive_json()["type"], "error")
+                    listed = rpc("tools/list", endpoint)
+                    self.assertEqual(
+                        [tool["name"] for tool in listed["tools"]],
+                        ["report_sensitive_data_access"],
+                    )
+                    result = rpc(
+                        "tools/call", endpoint,
+                        name="report_sensitive_data_access",
+                        arguments={"columns_reported": ["income"]},
+                    )
+                    self.assertFalse(result.get("isError"), result)
+                    websocket.send_json({
+                        "type": "step", "data": {"answer": "EstimatedSalary"},
+                    })
+                    grade_result = websocket.receive_json()
+                    self.assertNotEqual(grade_result["type"], "error")
+                    self.assertTrue(grade_result["data"]["done"])
+                    self.assertEqual(grade_result["data"]["reward"], 1)
+            finally:
+                closed = rpc("openenv/session/close", session_id=session_id)
+                self.assertTrue(closed.get("closed") or closed.get("closing"))
+
     def test_build_app_rejects_non_finite_positive_limits(self):
         for capacity, timeout in ((0, 1), (True, 1), (2, 0), (2, float("nan"))):
             with self.subTest(capacity=capacity, timeout=timeout):

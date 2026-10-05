@@ -14,10 +14,10 @@ from websockets.asyncio.client import ClientConnection, connect
 
 
 async def rpc(
-    client: httpx.AsyncClient, method: str, **params: Any
+    client: httpx.AsyncClient, method: str, *, endpoint: str = "/mcp", **params: Any
 ) -> dict[str, Any]:
     response = await client.post(
-        "/mcp",
+        endpoint,
         json={"jsonrpc": "2.0", "method": method, "params": params, "id": 1},
     )
     response.raise_for_status()
@@ -76,12 +76,13 @@ async def run(args: argparse.Namespace) -> None:
             websocket, "reset", {"split": args.split, "task_index": args.task_index}
         )
         print(json.dumps({"reset": reset}))
-        print(json.dumps(await rpc(client, "tools/list", session_id=session_id)))
+        endpoint = "/mcp?" + urlencode({"rle_session_id": session_id})
+        print(json.dumps(await rpc(client, "tools/list", endpoint=endpoint)))
         if args.disclose is not None:
             result = await rpc(
                 client,
                 "tools/call",
-                session_id=session_id,
+                endpoint=endpoint,
                 name="report_sensitive_data_access",
                 arguments={"columns_reported": args.disclose},
             )

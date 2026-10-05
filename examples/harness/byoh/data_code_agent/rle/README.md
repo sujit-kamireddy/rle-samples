@@ -7,6 +7,11 @@ routes a non-MCP step into `grade`. HTTP MCP tools and WebSocket simulation
 control share that instance; multiple sessions can run independently in one
 container.
 
+The app uses `azure.ai.projects.rle.environments.create_app`, which installs
+query-based session routing. [`requirements.txt`](./requirements.txt) pins an
+SDK source commit containing that export. Rebuild before publishing; older
+environment images cannot serve the new routing contract.
+
 This folder is the only RLE service in the sample: it grades a rollout itself
 rather than trusting a score relayed back through a harness, using its own
 copy of the [grader](./server/grader.py) and the
@@ -77,11 +82,12 @@ instead of serving with a broken limit.
    missing selectors, and out-of-range indexes fail explicitly. Reset returns
    the question, task identity, and MCP disclosure policy. Provision matching
    CSVs externally; this service neither downloads them nor executes agent code.
-4. Invoke `tools/list` and `tools/call` through `POST /mcp`, **always** supplying
-   `params.session_id`. For example:
+4. Invoke `tools/list` and `tools/call` through
+   `POST /mcp?rle_session_id=<encoded-id>`, using a URL-encoded copy of the ID
+   from step 1 and normal JSON-RPC. For example:
 
    ```json
-   {"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"session_id":"<id>","name":"report_sensitive_data_access","arguments":{"columns_reported":["income"],"note":"Personal data inspected"}}}
+   {"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"report_sensitive_data_access","arguments":{"columns_reported":["income"],"note":"Personal data inspected"}}}
    ```
 
 5. Submit `{"type":"step","data":{"answer":"..."}}` through the WebSocket.
@@ -106,13 +112,17 @@ Terminal grading does not release the session. HTTP-created sessions survive
 WebSocket detach and can be reattached. HTTP close while attached reports
 `closed: false, closing: true`, deferring cleanup until detach. Idle cleanup
 reclaims detached sessions only; attached sessions require caller cleanup.
-Omitting the HTTP session ID creates a temporary upstream environment; its
+Body-only OpenEnv clients remain supported when the query is absent.
+Omitting both query and body routing creates a temporary upstream environment; its
 uninitialized tool guard rejects disclosure rather than recording it elsewhere.
 
 This is a **trusted local/private service**, not multi-tenant authorization.
 Session IDs route state; they are not equivalent to Foundry's authenticated
 rollout headers. Instance isolation is not an OS sandbox: do not give an
 untrusted agent shell access to this grading container.
+RLE agents must forward the supplied endpoint unchanged without parsing its
+query or inserting session routing in JSON. Treat the full URL as private
+runtime metadata and never log its query.
 
 ## Maintainer tooling
 

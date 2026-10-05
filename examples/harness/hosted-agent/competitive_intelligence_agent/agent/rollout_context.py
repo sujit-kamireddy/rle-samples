@@ -9,7 +9,6 @@ headers::
     x-client-rle-model-api-key       # its session key
     x-client-rle-mcp-endpoint        # this rollout's tool routes
     x-client-rle-mcp-bearer-token    # bearer for them
-    x-client-rle-mcp-session-id      # the MCPEnvironment session, if any
 
 They are strictly per-request. At process start they do not exist -- the
 container is warm long before any rollout arrives -- and two rollouts served
@@ -19,8 +18,8 @@ them therefore has to be built per request and passed down the call chain.
 RLE has already opened one private OpenEnv session, reset it with this
 rollout's task, and will grade the final answer on that same session. The
 agent's tool calls have to land on that session or the grader scores an
-episode in which the agent did nothing, so the session id is threaded
-straight into ``RolloutTools``.
+episode in which the agent did nothing. RLE supplies a session-scoped endpoint;
+``RolloutTools`` forwards it unchanged and leaves routing to the environment SDK.
 
 ``RolloutContext.absent()`` is the production path: no headers, so the agent
 talks to its configured Foundry model and its real toolbox. One build serves
@@ -43,7 +42,6 @@ MODEL_ENDPOINT_HEADER = "x-client-rle-model-endpoint"
 MODEL_API_KEY_HEADER = "x-client-rle-model-api-key"
 MCP_ENDPOINT_HEADER = "x-client-rle-mcp-endpoint"
 MCP_BEARER_TOKEN_HEADER = "x-client-rle-mcp-bearer-token"
-MCP_SESSION_ID_HEADER = "x-client-rle-mcp-session-id"
 
 
 @dataclass(frozen=True)
@@ -55,7 +53,6 @@ class RolloutContext:
     model_api_key: Optional[str] = None
     mcp_endpoint: Optional[str] = None
     mcp_bearer_token: Optional[str] = None
-    mcp_session_id: Optional[str] = None
 
     @property
     def in_rollout(self) -> bool:
@@ -82,19 +79,15 @@ class RolloutContext:
         value: a missing header is the failure this catches, and its contents
         would not help.
 
-        The session id gets the same treatment. It is not a credential, but
-        RLE redacts it from the rollout graph, and paired with the tool token
-        it addresses the one live session the tool calls below must land on,
-        so a missing session id is the same class of failure as a missing
-        token: reported as a presence, never a value.
+        The tool endpoint's query contains private session routing metadata.
+        It is opaque to this agent and is never shown in diagnostics.
 
         Returned as two lines because one was 118 columns and wrapped.
         """
         return (
             f"model {brief(self.model_endpoint)}  key {_presence(self.model_api_key)}",
             f"tools {brief(self.mcp_endpoint)}"
-            f"  token {_presence(self.mcp_bearer_token)}"
-            f"  session {_presence(self.mcp_session_id)}",
+            f"  token {_presence(self.mcp_bearer_token)}",
         )
 
     @classmethod
@@ -114,7 +107,6 @@ class RolloutContext:
             model_api_key=lowered.get(MODEL_API_KEY_HEADER),
             mcp_endpoint=lowered.get(MCP_ENDPOINT_HEADER),
             mcp_bearer_token=lowered.get(MCP_BEARER_TOKEN_HEADER),
-            mcp_session_id=lowered.get(MCP_SESSION_ID_HEADER),
         )
 
 
@@ -133,16 +125,16 @@ class RolloutTools:
     only; it is not a workspace credential and it expires with the rollout.
 
     Each call is one JSON-RPC ``tools/call``, posted to the rollout's ``/mcp``
-    route and carrying the session id RLE opened and will grade on -- see
-    ``rle/server/environment.py``. The result unwraps to the tool's output as
-    a JSON string, which is the one thing the agent loop above ever sees.
+    route, forwarding the supplied endpoint unchanged. The SDK routes the
+    request to the session RLE opened and will grade on. The result unwraps
+    to the tool's output as a JSON string, which is the one thing the agent
+    loop above ever sees.
     """
 
     def __init__(self, context: RolloutContext, timeout_s: float = 30.0) -> None:
-        if not context.mcp_endpoint or not context.mcp_session_id:
-            raise ValueError("RolloutTools requires a rollout with an MCP session.")
-        self._url = context.mcp_endpoint.rstrip("/")
-        self._session_id = context.mcp_session_id
+        if not context.mcp_endpoint:
+            raise ValueError("RolloutTools requires a rollout with an MCP endpoint.")
+        self._url = context.mcp_endpoint
         self._headers = (
             {"Authorization": f"Bearer {context.mcp_bearer_token}"}
             if context.mcp_bearer_token
@@ -159,16 +151,21 @@ class RolloutTools:
             "params": {
                 "name": tool_name,
                 "arguments": arguments,
-                "session_id": self._session_id,
             },
             "id": next(self._request_ids),
         }
-        async with httpx.AsyncClient(timeout=self._timeout_s) as client:
-            response = await client.post(
-                self._url, json=request, headers=self._headers
-            )
-            response.raise_for_status()
-            body = response.json()
+        try:
+            async with httpx.AsyncClient(timeout=self._timeout_s) as client:
+                response = await client.post(
+                    self._url, json=request, headers=self._headers
+                )
+                response.raise_for_status()
+                body = response.json()
+        except httpx.HTTPError as error:
+            # HTTP error strings include the full private routing URL.
+            raise RuntimeError(
+                f"MCP tools/call for {tool_name!r} failed: {type(error).__name__}"
+            ) from None
         error = body.get("error")
         if error:
             # A JSON-RPC error here is a protocol fault: an unknown tool, a

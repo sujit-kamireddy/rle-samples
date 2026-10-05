@@ -267,10 +267,15 @@ model directly: it points `opencode` at `model_endpoint`/`model_api_key` and
 lets the agent loop make the calls, so the trajectory RLE records is the
 agent's own.
 
-`mcp_endpoint`/`mcp_bearer_token` (and, under
-`environmentProtocol = "mcp_environment"`, `mcp_session_id`) arrive on the
+`mcp_endpoint`/`mcp_bearer_token` arrive on the
 same request but are not rollout parameters -- they are lifted out of the
 rollout context into environment variables on that rollout's `opencode`
 process, so the agent can file a compliance disclosure back to `rle/` (see
-"Compliance disclosure" above). The agent itself never sees the session id;
-`agent/app.py` uses it server-side to address the right session.
+"Compliance disclosure" above). Under `environmentProtocol = "mcp_environment"`,
+the endpoint already includes opaque `rle_session_id` routing metadata.
+`agent/app.py` forwards the entire URL unchanged with the bearer token, sending
+normal `tools/call` JSON-RPC without a body session ID. There is no separate
+session field in the invocation contract. The environment SDK's
+`azure.ai.projects.rle.environments.create_app` handles session routing.
+Do not parse or log the endpoint's query; full URLs are private runtime
+metadata, not a substitute for bearer authorization.
