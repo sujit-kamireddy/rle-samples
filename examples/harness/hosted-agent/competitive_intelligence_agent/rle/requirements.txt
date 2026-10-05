@@ -6,8 +6,9 @@
 # by name would silently give an SDK without the base class and fail at import.
 # The fork that introduced it is pinned until then. The extra it declares is
 # `openenv>=0.6.0,<0.7.0` and `fastmcp>=3.0.0,<4.0.0`, both satisfied below.
-# This source revision includes the query-routing `create_app` used by this image.
-azure-ai-projects[rle] @ git+https://github.com/sujit-kamireddy/azure-sdk-for-python@d1837f841bcc837951f4e8748f5e4b8b7eac2fd8#subdirectory=sdk/ai/azure-ai-projects
+# This source revision includes the query-routing `create_app` used by this image,
+# and `GradeAction.answer`/`rollout` renamed to `response`/`rollout_graph`.
+azure-ai-projects[rle] @ git+https://github.com/sujit-kamireddy/azure-sdk-for-python@2520ed7b6606f0e6eaff24affa49e888dbb7732e#subdirectory=sdk/ai/azure-ai-projects
 
 # The underlying serving protocol, session manager, and the MCP
 # environment `RLEnvironment` extends. Pinned rather than ranged, matching the

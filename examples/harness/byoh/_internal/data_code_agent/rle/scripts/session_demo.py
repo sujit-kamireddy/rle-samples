@@ -89,7 +89,7 @@ async def run(args: argparse.Namespace) -> None:
             if result.get("isError"):
                 raise RuntimeError("Disclosure tool failed")
             print(json.dumps({"disclosure": result}))
-        result = await exchange(websocket, "step", {"answer": args.answer})
+        result = await exchange(websocket, "step", {"response": args.answer})
         if result.get("done") is not True:
             raise RuntimeError("Grading did not terminate the episode")
         print(json.dumps({"grade": result}))

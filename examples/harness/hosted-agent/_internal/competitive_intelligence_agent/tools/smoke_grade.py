@@ -132,7 +132,7 @@ async def grade_variant(base: str, task: dict) -> dict[str, dict]:
     async with SmokeTestClient(base_url=base) as env:
         await env.reset(**task)
         for label, value in VERDICTS.items():
-            result = await env.step(GradeAction(answer=brief(value)))
+            result = await env.step(GradeAction(response=brief(value)))
             scores[label] = result.reward
             infos[label] = result.observation.info
     return {"scores": scores, "infos": infos}

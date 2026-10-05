@@ -114,7 +114,7 @@ and tool discipline scores zero.
 5. Submit the report through the WebSocket:
 
    ```json
-   {"type":"step","data":{"answer":"...the final report..."}}
+   {"type":"step","data":{"response":"...the final report..."}}
    ```
 
    The response carries `reward`, `done: true`, and an `observation.info`
