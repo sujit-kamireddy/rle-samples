@@ -15,10 +15,10 @@ schema_version = "1.0.0"
 
 [rle]
 # snake_case, starting with a letter.
-name = "data_code_agent_byoh_google_cloud_run"
+name = "data_code_agent"
 # Semantic version, MAJOR.MINOR.PATCH. Immutable: publishing a change means a
 # new version.
-version = "2.0.6"
+version = "1.0.0"
 # "Gym" or "Harness".
 type = "Harness"
 # "HostedAgent" or "BYOH" for Harness; "OpenEnv" for Gym.
@@ -44,16 +44,11 @@ environmentProtocol = "mcp_environment"
 # header of any kind, so the endpoint has to protect itself. It must answer
 # exactly 202 and then serve GET {baseUrl}/rollouts/{operation_id} for
 # polling and DELETE for cancellation.
-# On Google Cloud Run, this environment's namesake host: a brand-new isolated
-# service (data-code-agent-byoh-sujit, project foundry-509604, region
-# us-east1) rather than reusing either data-code-agent-sujit or
-# data-code-agent-ksujit from earlier in this engagement, to avoid any chance
-# of colliding with another user's traffic or config on those. Deployed via
-# `gcloud run deploy` from `../agent` (see that folder's README for the exact
-# command and flags) and confirmed healthy at `/health` before publishing
-# this version. See `../agent/README.md#build-and-deploy` for an Azure
-# Container Apps alternative.
-baseUrl = "https://data-code-agent-byoh-sujit-107203347434.us-east1.run.app/invoke"
+# Replace with your own deployed harness's URL -- see
+# `../agent/README.md#build-and-deploy` for verified Google Cloud Run and
+# Azure Container Apps deployment commands. `publish` hard-fails without this
+# set, by design: there is no shared default harness, bring your own.
+# baseUrl = "https://your-harness.example.com/invoke"
 
 # agentName and agentVersion are HostedAgent-only and are rejected for BYOH.
 # agentName = "data-code-agent"
@@ -176,20 +171,13 @@ learning_rate = 5e-5
 # the facade's own default -- set explicitly so it does not silently drift if
 # that default ever changes.
 lora_rank = 32
-# REAL RUN. A prior SMOKE-TEST override (group_size=4, batch_size=1,
-# max_steps=4, ~20 rollouts total) validated the MAI model id,
-# mai_harmony_internal renderer and MCP harness end to end on
-# ksujit-rle-eastus2 (ftjob-57dce4652bb54bde990dd1e0, succeeded).
-# group_size=8/batch_size=8 (64 rollouts/step) is what produced the measured
-# hillclimb described above.
-#
 # Rollouts per group. A GRPO group needs at least two to have any advantage
-# signal at all. Doubled from the proven 8 to 16 for this run, for 128
-# rollouts/step instead of 64: rle-harness hard-rejects refill_on_drop /
-# strategy / dynamic_sampling at config validation ("MVP1 supports only
-# synchronous on-policy training"; loom-command-job/recipes/rle-harness/
-# config.py _validate_mvp1_contract), so there is no batch-refill mechanism
-# available when remove_constant_reward_groups drops a degenerate
+# signal at all. The proven value for this hillclimb was 8 (64 rollouts/step);
+# doubled to 16 here (128 rollouts/step) because rle-harness hard-rejects
+# refill_on_drop / strategy / dynamic_sampling at config validation ("MVP1
+# supports only synchronous on-policy training"; loom-command-job/recipes/
+# rle-harness/config.py _validate_mvp1_contract), so there is no batch-refill
+# mechanism available when remove_constant_reward_groups drops a degenerate
 # (all-equal-reward) group. A wider group is the only lever this recipe
 # exposes to make that less likely: more members per group means better odds
 # of nonzero within-group reward variance.
