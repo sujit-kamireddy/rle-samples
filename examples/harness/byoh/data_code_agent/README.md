@@ -154,7 +154,7 @@ Registered versions are immutable, so bump `version` before republishing.
 ```bash
 cd rle
 azd ai rle rollout --model MAI/MAI-Code-1.1-Flash \
-  --task '{"task_index": 0, "split": "FineEnvs/data-agent-harbor-train"}'
+  --task '{"task_index": 30, "split": "FineEnvs/data-agent-harbor-train"}'
 ```
 
 Or with Qwen instead of MAI-Code instead:
@@ -162,7 +162,7 @@ Or with Qwen instead of MAI-Code instead:
 ```bash
 cd rle
 azd ai rle rollout --model Qwen/Qwen3-32B \
-  --task '{"task_index": 0, "split": "FineEnvs/data-agent-harbor-train"}'
+  --task '{"task_index": 30, "split": "FineEnvs/data-agent-harbor-train"}'
 ```
 
 `--task` is required: `rle/`'s `reset` rejects anything without a concrete
