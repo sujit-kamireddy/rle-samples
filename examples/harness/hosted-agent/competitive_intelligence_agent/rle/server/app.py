@@ -14,7 +14,7 @@ from __future__ import annotations
 import os
 
 from fastapi import FastAPI
-from openenv.core.env_server.http_server import create_app
+from azure.ai.projects.rle.environments import create_app
 from openenv.core.env_server.types import ConcurrencyConfig
 
 from .environment import (

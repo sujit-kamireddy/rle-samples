@@ -15,5 +15,8 @@ COPY __init__.py ./rle/__init__.py
 # relative to here, not the sample root.
 COPY server/ ./rle/server/
 
+# Fail the build if the SDK lacks the query-routing app factory.
+RUN python -c "import uvicorn, rle.server.app as m; m.build_app()"
+
 EXPOSE 8000
 CMD ["uvicorn", "rle.server.app:app", "--factory", "--host", "0.0.0.0", "--port", "8000", "--workers", "1"]

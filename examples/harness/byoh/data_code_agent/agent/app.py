@@ -47,7 +47,7 @@ projects can legitimately send the same one to a shared harness.
          "rollout_context": {
            "model_endpoint": "https://.../rle/v1.0/capture-proxy/v1",
            "model_api_key": "...",
-           "mcp_endpoint": "https://.../rollouts/<rollout-id>/mcp",
+           "mcp_endpoint": "https://.../rollouts/<rollout-id>/mcp?rle_session_id=<encoded-id>",
            "mcp_bearer_token": "..."
          }
        }
@@ -217,15 +217,10 @@ class RolloutContext(BaseModel):
     model_api_key: str
     mcp_endpoint: str
     mcp_bearer_token: str
-    # `../rle/rle.toml` publishes with `environmentProtocol = "mcp_environment"`,
-    # so RLE always opens one environment session for the rollout and names it
-    # here. The tools live on that session's `/mcp` route, not on `/tools/<name>`.
-    mcp_session_id: str
-
     @property
     def mcp_url(self) -> str:
-        """This rollout's `/mcp` route, with any trailing slash stripped."""
-        return self.mcp_endpoint.rstrip("/")
+        """The opaque, session-scoped MCP endpoint supplied by RLE, unchanged."""
+        return self.mcp_endpoint
 
 
 class InvocationRequest(BaseModel):
@@ -425,7 +420,6 @@ async def local_tool(
         "params": {
             "name": tool_name,
             "arguments": payload,
-            "session_id": context.mcp_session_id,
         },
         "id": 1,
     }
@@ -440,7 +434,10 @@ async def local_tool(
             response.raise_for_status()
             body = response.json()
     except httpx.HTTPError as error:
-        logger.warning("Tool %s for %s could not reach the environment: %s", tool_name, operation_id, error)
+        logger.warning(
+            "Tool %s for %s could not reach the environment: %s",
+            tool_name, operation_id, type(error).__name__,
+        )
         return JSONResponse({"error": "tool_unavailable"}, status_code=502)
 
     rpc_error = body.get("error")

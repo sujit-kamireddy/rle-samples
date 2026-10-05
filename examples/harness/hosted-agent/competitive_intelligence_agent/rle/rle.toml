@@ -27,9 +27,9 @@ subtype = "HostedAgent"
 #
 # RLE decides whether to open an MCP sandbox session for a rollout from this
 # field, recorded at publish time and immutable for the version. Reading
-# `mcp_environment`, RLE opens that session per rollout and passes its id to
-# the agent in the `x-client-rle-mcp-session-id` header, which `../agent`
-# requires in order to call tools at all.
+# `mcp_environment`, RLE opens that session per rollout and supplies an opaque
+# session-scoped MCP endpoint. `../agent` forwards it unchanged; the SDK app
+# factory handles session routing without agent-side JSON-RPC injection.
 #
 # `mcp_environment` is the only value this manifest sets, and the only
 # protocol `../agent` speaks.

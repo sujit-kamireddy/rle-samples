@@ -7,8 +7,8 @@ app whose only tool surface is JSON-RPC on a session -- so the agent is
 pointed at a loopback route here that translates for it.
 
 What is worth testing is exactly the part a live rollout would not tell us
-about until the reward came back wrong: that the translation carries *this*
-rollout's session id, that it refuses another rollout's token, and that the
+about until the reward came back wrong: that the translation preserves *this*
+rollout's opaque endpoint, that it refuses another rollout's token, and that the
 body the agent sees is the tool's own result verbatim. A disclosure filed
 against the wrong session, or silently dropped, grades as "did not disclose"
 with no error anywhere.
@@ -27,11 +27,9 @@ from app import ROLLOUTS, RolloutContext, _compliance_endpoint, app
 MCP_CONTEXT = {
     "model_endpoint": "https://proxy.invalid/v1",
     "model_api_key": "session-key",
-    "mcp_endpoint": "https://tools.invalid/rollouts/r1/mcp",
+    "mcp_endpoint": "https://tools.invalid/rollouts/r1/mcp?other=keep&rle_session_id=opaque%2Fvalue/",
     "mcp_bearer_token": "tools-token",
-    "mcp_session_id": "session-abc",
 }
-CONTEXT_WITHOUT_SESSION_ID = {k: v for k, v in MCP_CONTEXT.items() if k != "mcp_session_id"}
 
 RECORDED = {
     "status": "recorded",
@@ -102,24 +100,27 @@ def rollout(request):
     ROLLOUTS._contexts.pop("operation-1", None)
 
 
-def test_the_session_id_is_required():
-    """`../rle` publishes with `environmentProtocol = "mcp_environment"`, so RLE always sends one."""
-    assert RolloutContext.model_validate(MCP_CONTEXT).mcp_session_id == "session-abc"
-    with pytest.raises(Exception):
-        RolloutContext.model_validate(CONTEXT_WITHOUT_SESSION_ID)
+def test_no_separate_session_id_is_required():
+    assert RolloutContext.model_validate(MCP_CONTEXT).mcp_endpoint == MCP_CONTEXT["mcp_endpoint"]
 
 
-def test_the_mcp_route_is_the_mcp_endpoint_verbatim():
+@pytest.mark.parametrize("endpoint", [
+    "https://tools.invalid/rollouts/r1/mcp",
+    "https://tools.invalid/rollouts/r1/mcp/",
+    MCP_CONTEXT["mcp_endpoint"],
+    "https://tools.invalid/rollouts/r1/mcp/?rle_session_id=opaque%2Bvalue&other=keep/",
+])
+def test_the_mcp_route_is_the_mcp_endpoint_verbatim(endpoint):
     """`environmentProtocol = "mcp_environment"` means RLE hands this over already as `/mcp`."""
-    context = RolloutContext.model_validate(MCP_CONTEXT)
-    assert context.mcp_url == "https://tools.invalid/rollouts/r1/mcp"
+    context = RolloutContext.model_validate({**MCP_CONTEXT, "mcp_endpoint": endpoint})
+    assert context.mcp_url == endpoint
 
 
-def test_the_mcp_route_strips_a_trailing_slash():
+def test_the_mcp_route_preserves_a_trailing_slash():
     context = RolloutContext.model_validate(
         {**MCP_CONTEXT, "mcp_endpoint": "https://tools.invalid/rollouts/r1/mcp/"}
     )
-    assert context.mcp_url == "https://tools.invalid/rollouts/r1/mcp"
+    assert context.mcp_url == "https://tools.invalid/rollouts/r1/mcp/"
 
 
 def test_a_rollout_is_pointed_at_this_services_loopback_route():
@@ -144,14 +145,12 @@ def test_a_disclosure_is_translated_onto_this_rollouts_own_session(monkeypatch, 
     # does not have to know this is JSON-RPC underneath.
     assert response.json() == RECORDED
 
-    assert fake.urls == ["https://tools.invalid/rollouts/r1/mcp"]
+    assert fake.urls == [MCP_CONTEXT["mcp_endpoint"]]
     sent = fake.requests[0]
     assert sent["method"] == "tools/call"
     assert sent["jsonrpc"] == "2.0"
     assert sent["params"]["name"] == "report_sensitive_data_access"
-    # The session id is the whole point: without it the service has no episode
-    # to record against, and the grader would see a task that never disclosed.
-    assert sent["params"]["session_id"] == "session-abc"
+    assert set(sent["params"]) == {"name", "arguments"}
     assert sent["params"]["arguments"] == {
         "columns_reported": ["salary"],
         "note": "payroll",

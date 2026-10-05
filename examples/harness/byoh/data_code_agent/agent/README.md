@@ -84,6 +84,10 @@ tools needs a JSON-RPC `tools/call` on `/mcp`, not a flat route. Rather than
 teach the baked instruction a second wire format, the rollout is pointed at a
 loopback route on this service (`/local-tools/{operation_id}/...` in
 `app.py`) that translates the flat POST into that `tools/call`.
+The harness forwards RLE's opaque, query-bearing `mcp_endpoint` unchanged
+with the bearer token. It neither receives a separate session ID field nor
+inserts session routing into JSON-RPC. The SDK environment app handles that
+routing; do not log full endpoint queries.
 
 ## Task inputs
 
@@ -156,13 +160,21 @@ curl -s -X POST localhost:8080/invoke \
         ],
         "rollout_context": {
           "model_endpoint": "https://api.openai.com/v1",
-          "model_api_key": "'"$OPENAI_API_KEY"'"
+          "model_api_key": "'"$OPENAI_API_KEY"'",
+          "mcp_endpoint": "'"$MCP_ENDPOINT"'",
+          "mcp_bearer_token": "'"$MCP_BEARER_TOKEN"'"
         }
       }'
 
 # Poll under the operation_id until it stops answering 202.
 curl -s localhost:8080/invoke/rollouts/op-local-1 | jq .
 ```
+
+For this local fixture, `MCP_ENDPOINT` must address a standalone environment
+session that has already been created and reset (see
+[`../rle/README.md`](../rle/README.md#session-and-grading-contract)), including
+its routing query. Use an empty `MCP_BEARER_TOKEN` only for a trusted local
+environment without authorization. RLE supplies both values in a real rollout.
 
 Locally you supply `operation_id` yourself; under RLE it is generated for you and
 must be echoed back exactly as received. `model_endpoint` is RLE's capture proxy
@@ -174,8 +186,8 @@ one model.
 ## Tests
 
 ```bash
-cd agent
-python -m pytest tests -q
+cd ../../_internal/data_code_agent
+python -m pytest agent/tests -q
 ```
 
 No extra dependencies beyond `requirements.txt` and `pytest`; the tests drive

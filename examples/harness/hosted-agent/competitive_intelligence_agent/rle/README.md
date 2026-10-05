@@ -18,9 +18,10 @@ a reward and what an RLE training run sees are the same code.
 1. **Local phase:** run and smoke-test this environment standalone, with no
    RLE or Foundry dependency at all -- see "Build and run locally" below.
 2. **Foundry phase using RLE:** the agent in [`../agent`](../agent) calls tools
-   over this folder's `/mcp` JSON-RPC surface. RLE hands it the session to call
-   them on in the `x-client-rle-mcp-session-id` header, which it only sends
-   when the published version's protocol is `mcp_environment`.
+   over this folder's `/mcp` JSON-RPC surface. With `mcp_environment`, RLE
+   supplies a session-scoped endpoint with an opaque `rle_session_id` query.
+   The agent forwards the endpoint unchanged; this app uses the SDK
+   `create_app` wrapper to route tool requests without a body session ID.
 
    RLE picks that path from the `environmentProtocol` field in
    [`rle.toml`](./rle.toml), which this folder sets to `mcp_environment`. The
@@ -101,10 +102,11 @@ and tool discipline scores zero.
    A row the environment cannot parse raises rather than grading a task nobody
    asked for. Reset returns the task identity and the tool names for the
    configured surface.
-4. Call tools through `POST /mcp`, **always** supplying `params.session_id`:
+4. Call tools through `POST /mcp?rle_session_id=<encoded-id>`, using a
+   URL-encoded copy of the ID from step 1 and normal JSON-RPC:
 
    ```json
-   {"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"session_id":"<id>","name":"web_search","arguments":{"search_query":"..."}}}
+   {"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"web_search","arguments":{"search_query":"..."}}}
    ```
 
    Every call is recorded on the session the grader reads, which is how tool
@@ -126,7 +128,9 @@ The reward is clamped to `[0, 1]` as a backstop only. `grade_episode` already
 rescales, and that rescale must not be removed.
 
 This is a **trusted local service**, not a multi-tenant one. Session ids route
-state; they are not authorization.
+state; they are not authorization. Body-only OpenEnv clients remain supported
+when the routing query is absent. RLE agents must treat the supplied URL as
+opaque and private, never construct routing JSON or log its query.
 
 ## Tests
 
@@ -151,6 +155,9 @@ always lands inside the `[0, 1]` range RLE requires.
 ## Dependency note
 
 [`requirements.txt`](./requirements.txt) installs `azure-ai-projects[rle]` from
-a GitHub fork. The `rle` subpackage that provides `RLEnvironment` is not in any
-released `azure-ai-projects` wheel yet. Swap that line for a normal version pin
-once it ships to PyPI; the `TODO` in the file says the same.
+a pinned GitHub fork commit providing both `RLEnvironment` and the
+query-routing `create_app` export; an older wheel or image without that factory
+cannot serve this contract. Rebuild using the pinned source (or install a
+locally built updated SDK wheel). Swap the source line
+for a normal version pin once that API ships to PyPI; do not assume a released
+wheel or a different fork revision already contains it.

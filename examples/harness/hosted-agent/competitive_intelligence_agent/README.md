@@ -498,9 +498,8 @@ POST {project}/agents/{agentName}/endpoint/protocols/openai/responses?api-versio
 x-client-rle-rollout-id: ...
 x-client-rle-model-endpoint: https://.../rle/v1.0/capture-proxy/v1
 x-client-rle-model-api-key: ...
-x-client-rle-mcp-endpoint: https://.../rollouts/<rollout-id>/mcp
+x-client-rle-mcp-endpoint: https://.../rollouts/<rollout-id>/mcp?rle_session_id=<encoded-id>
 x-client-rle-mcp-bearer-token: ...
-x-client-rle-mcp-session-id: ...
 
 {"agent_session_id": "<rollout id>",
  "input": [{"type": "message", "role": "user",
@@ -519,6 +518,13 @@ Every other field `reset` returns -- the task id, the variant, the answer key
 There is no acknowledgement, no poll and no withdraw. The response *is* the
 result, and the final assistant message text becomes the rollout's
 `output_text`, which RLE forwards to `grade` verbatim.
+
+The MCP endpoint is opaque runtime metadata: forward it exactly, including its
+query, together with the bearer token. There is no separate session header and
+the agent must not insert `params.session_id` into tool requests. The SDK's
+`azure.ai.projects.rle.environments.create_app` consumes the routing query at
+the environment boundary. Treat full URLs as private and omit their queries
+from diagnostics; session routing is not a replacement for bearer authorization.
 
 Two consequences matter before changing `agent/main.py`.
 

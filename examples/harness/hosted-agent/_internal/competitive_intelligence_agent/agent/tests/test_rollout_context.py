@@ -12,6 +12,7 @@ not have caught that; asserting the header's actual value does.
 from __future__ import annotations
 
 import asyncio
+import json
 from typing import Any
 
 import httpx
@@ -31,9 +32,8 @@ def _context(**overrides: Any) -> RolloutContext:
         rollout_id="rollout-1",
         model_endpoint="https://proxy.example/v1",
         model_api_key="model-key",
-        mcp_endpoint="https://harness.example/mcp",
+        mcp_endpoint="https://harness.example/mcp?other=keep&rle_session_id=opaque%2Fvalue/",
         mcp_bearer_token="secret-token-123",
-        mcp_session_id="session-1",
     )
     base.update(overrides)
     return RolloutContext(**base)
@@ -85,6 +85,55 @@ def test_call_omits_the_header_without_a_bearer_token():
         lambda request: httpx.Response(200, json=_OK_RESULT),
     )
     assert "authorization" not in request.headers
+
+
+@pytest.mark.parametrize("endpoint", [
+    "https://harness.example/mcp",
+    "https://harness.example/mcp/",
+    "https://harness.example/mcp?other=keep&rle_session_id=opaque%2Fvalue/",
+    "https://harness.example/mcp/?rle_session_id=opaque%2Bvalue&other=keep/",
+])
+def test_call_forwards_the_complete_endpoint_without_body_session_routing(endpoint):
+    context = _context(mcp_endpoint=endpoint)
+    _, request = _call_against_mock_transport(
+        context, lambda request: httpx.Response(200, json=_OK_RESULT),
+    )
+    assert str(request.url) == context.mcp_endpoint
+    assert json.loads(request.content)["params"] == {
+        "name": "lookup", "arguments": {"q": "x"},
+    }
+
+
+def test_headers_need_only_the_endpoint_and_token_for_tools():
+    context = RolloutContext.from_headers({
+        "X-Client-Rle-Mcp-Endpoint": _context().mcp_endpoint,
+        "X-Client-Rle-Mcp-Bearer-Token": "tools-token",
+    })
+    assert context.mcp_endpoint == _context().mcp_endpoint
+    RolloutTools(context)
+
+
+def test_diagnostics_do_not_expose_the_endpoint_query():
+    assert "rle_session_id" not in " ".join(_context().describe())
+    assert "opaque" not in " ".join(_context().describe())
+
+
+def test_absent_context_preserves_production_mode():
+    context = RolloutContext.from_headers({})
+    assert context == RolloutContext.absent()
+    assert not context.in_rollout
+    with pytest.raises(ValueError, match="MCP endpoint"):
+        RolloutTools(context)
+
+
+def test_http_failure_does_not_expose_private_endpoint_queries():
+    with pytest.raises(RuntimeError, match="HTTPStatusError") as error:
+        _call_against_mock_transport(
+            _context(), lambda request: httpx.Response(403),
+        )
+    assert "rle_session_id" not in str(error.value)
+    assert "opaque" not in str(error.value)
+    assert error.value.__suppress_context__
 
 
 def test_call_surfaces_a_json_rpc_error_as_a_runtime_error():

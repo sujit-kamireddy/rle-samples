@@ -26,9 +26,8 @@ from app import (
 ROLLOUT_CONTEXT = {
     "model_endpoint": "https://proxy.invalid/v1",
     "model_api_key": "session-key",
-    "mcp_endpoint": "https://tools.invalid/tools",
+    "mcp_endpoint": "https://tools.invalid/mcp?other=keep&rle_session_id=opaque%2Fvalue/",
     "mcp_bearer_token": "tools-token",
-    "mcp_session_id": "session-abc",
 }
 
 
@@ -51,7 +50,7 @@ def test_rollout_context_accepts_rles_current_wire_contract():
     parsed = RolloutContext.model_validate(ROLLOUT_CONTEXT)
     assert parsed.model_endpoint == "https://proxy.invalid/v1"
     assert parsed.model_api_key == "session-key"
-    assert parsed.mcp_endpoint == "https://tools.invalid/tools"
+    assert parsed.mcp_endpoint == ROLLOUT_CONTEXT["mcp_endpoint"]
     assert parsed.mcp_bearer_token == "tools-token"
 
 
