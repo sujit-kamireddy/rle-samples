@@ -1,0 +1,5 @@
+**
+!__init__.py
+!server/
+!server/*.py
+**/__pycache__

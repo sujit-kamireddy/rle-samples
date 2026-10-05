@@ -16,3 +16,7 @@ visible = true
 [[sample]]
 name = "math_rl"
 visible = true
+
+[[sample]]
+name = "mcp_rl"
+visible = true

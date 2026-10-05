@@ -49,6 +49,20 @@ rm -rf .claude/skills && cp -R .agents/skills .claude/skills
 samples, where the caller drives the environment through `reset`/`step`.
 These are copied directly by `azd ai rle init <sample-name>`.
 
+The Gym samples demonstrate both supported authoring contracts:
+
+- [`math_rl`](./examples/gym/openenv/math_rl) and
+  [`code_rl`](./examples/gym/openenv/code_rl) are schema-driven OpenEnv
+  environments. Their action schema plus `model_response_field` defines the
+  response and tool variants.
+- [`mcp_rl`](./examples/gym/openenv/mcp_rl) uses the additive SDK
+  `RLEnvironment` contract. It registers typed MCP tools, grades a
+  `GradeAction`, and selects top-level
+  `environment_protocol = "mcp_environment"` without a
+  `model_response_field`. Its deterministic fixture passes
+  `{"left":2,"right":3}` to `reset()`, calls the typed `add` tool, and
+  rewards only the final answer `5` after that same instance recorded the call.
+
 [`examples/gym/openenv/catalog.toml`](./examples/gym/openenv/catalog.toml)
 controls which sample directories `azd ai rle init` offers. A new sample
 directory is visible automatically; add an entry with `visible = false` to

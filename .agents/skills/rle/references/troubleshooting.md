@@ -2,7 +2,11 @@
 
 | Symptom | Cause | Fix |
 | --- | --- | --- |
-| HTTP 400 `EnvironmentContractViolation` on rollout | the published version has no `[defaults.gym_openenv] model_response_field`; the Gym/OpenEnv path refuses to start | add it to `rle.toml` and publish a new version — it cannot be patched onto an existing one |
+| HTTP 400 `EnvironmentContractViolation` on a schema-driven rollout | the published version has no `[defaults.gym_openenv] model_response_field` | add it and publish a new version |
+| SDK MCP environment is treated as schema-driven | top-level `environment_protocol` is absent or not `mcp_environment` | set `environment_protocol = "mcp_environment"`, remove `model_response_field`, and republish |
+| `azure.ai.projects.rle` cannot be imported | the installed public SDK build does not contain the additive RLE package | install the pinned RLE-enabled artifact documented by the sample; equal public package versions may not have the same modules |
+| MCP tool is missing or has an untyped schema | it was registered before `RLEnvironment.__init__`, not registered, or uses untyped parameters | call `super().__init__()` first, then `self.tool()(self.method)`, with concrete annotations |
+| Correct SDK MCP answer gets reward 0 | tool evidence was stored globally or on another instance | update `self.state` inside the tool and read that same state in `grade(GradeAction)` |
 | Conformance error: "does not declare the configured model_response_field" | the field name in `rle.toml` does not match any action property | read the error — it lists every property it found; usually a typo or a renamed field |
 | Conformance error: declared "on more than one action variant" | two union members share the response property | rename one, or make the non-response variant carry a differently-named field |
 | Conformance error: variant "with no discriminator" | a union member has no `Literal` discriminator field | add `type: Literal["…"]` and declare the discriminator on the `RootModel` |

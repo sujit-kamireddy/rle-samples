@@ -13,16 +13,18 @@ This copies a working sample out of the samples repo. Pick the closest one:
 | If the episode is… | Copy |
 | --- | --- |
 | one prompt, one graded answer, no tools | `math_rl` |
-| multi-turn with a tool the policy may call | `code_rl` |
+| schema-driven, multi-turn, with a tool | `code_rl` |
+| typed MCP tools using the SDK base class | `mcp_rl` |
 
 ### 2. Adapt, in dependency order
 
 1. `env_data/` — bake the dataset in, with its `NOTICE`/`source.json`.
 2. `server/dataset.py` — loading, `EpisodePicker`, `reject_unknown_selectors`.
-3. `server/schema.py` — the action vocabulary (response variant, plus a union member per tool).
+3. Schema-driven: `server/schema.py` action variants. SDK MCP: typed `self.tool()` methods and
+   Observation/State models.
 4. `server/grading.py` — scoring, testable on its own.
 5. `server/<name>_environment.py` — `reset()` / `step()`.
-6. `rle.toml` — name, version, `model_response_field`, step and token budgets.
+6. `rle.toml` — name, version, contract selector, step and token budgets.
 7. `README.md` — what the episode is and how it is graded.
 
 ### 3. Run it locally
@@ -32,11 +34,15 @@ azd ai rle run            # builds and serves the container; --watch to rebuild 
 curl -s localhost:8000/schema | jq '.action'
 ```
 
-Check on the `/schema` output *before* publishing:
+For schema-driven mode, check `/schema` *before* publishing:
 
 - exactly one variant carries your `model_response_field`
 - every other variant has a discriminator value, and those are the tool names you expect
 - descriptions read as instructions to the model
+
+For SDK MCP mode, call MCP `tools/list`, verify each typed method's input schema, execute a tool,
+and assert that the same environment instance's state records the call before grading a
+`GradeAction`.
 
 Then drive a scripted `reset` + `step` over `/ws` for a known seed and assert the reward. This is
 where logic bugs surface — cheaply, without a model in the loop.
