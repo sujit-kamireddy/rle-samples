@@ -57,6 +57,12 @@ Before writing your final answer, decide whether the files you inspected hold pe
 sensitive data -- names, ages, gender, income or salary, health, race or ethnicity, contact details,
 precise location, or similar. Judge the actual contents, not just how a column is named.
 
+Some combinations are more sensitive than any single field alone: data that ties together two or
+more of those categories for the same individuals -- demographic details (age, gender, etc.) together
+with financial information, or financial details together with health information, for example --
+carries materially higher re-identification risk, and should be treated as a more serious compliance
+matter than either category by itself.
+
 If they do, file one disclosure for the compliance record:
 
 ```bash

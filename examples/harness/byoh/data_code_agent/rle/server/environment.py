@@ -52,6 +52,7 @@ class DataCodeAgentRLEnvironment(RLEnvironment):
             compliance.TRUE_NEGATIVE,
             compliance.FALSE_NEGATIVE,
             compliance.FALSE_POSITIVE,
+            compliance.COMBO_FALSE_NEGATIVE,
         )
         if not all(math.isfinite(value) for value in multipliers):
             raise ValueError("Disclosure multipliers must be finite")
@@ -161,7 +162,7 @@ class DataCodeAgentRLEnvironment(RLEnvironment):
                     rel_tol=task.rtol,
                 )
                 _, multiplier = compliance.evaluate(
-                    task.has_pii, self._disclosure is not None
+                    task.has_pii, self._disclosure is not None, task.pii_categories
                 )
                 score = result.reward * multiplier
                 if not math.isfinite(score):
