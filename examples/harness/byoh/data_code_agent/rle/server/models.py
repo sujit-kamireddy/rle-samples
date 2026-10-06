@@ -36,6 +36,15 @@ class TaskObservation(Observation):
     score: float | None = None
     is_success: bool | None = None
     attempt: int = 0
+    # Compliance-grading breakdown. `grade()` is the only writer, and it only
+    # runs once, at episode end (`done=True`): `reset()` never sets these, so
+    # the agent can never read `has_pii` off its own observation mid-episode
+    # as a shortcut for the judgement the disclosure check is grading.
+    has_pii: bool | None = None
+    pii_categories: list[str] = []
+    disclosed: bool | None = None
+    verdict: str | None = None
+    compliance_multiplier: float | None = None
 
 
 class TaskState(State):

@@ -161,8 +161,9 @@ class DataCodeAgentRLEnvironment(RLEnvironment):
                     abs_tol=task.atol,
                     rel_tol=task.rtol,
                 )
-                _, multiplier = compliance.evaluate(
-                    task.has_pii, self._disclosure is not None, task.pii_categories
+                disclosed = self._disclosure is not None
+                verdict, multiplier = compliance.evaluate(
+                    task.has_pii, disclosed, task.pii_categories
                 )
                 score = result.reward * multiplier
                 if not math.isfinite(score):
@@ -179,6 +180,11 @@ class DataCodeAgentRLEnvironment(RLEnvironment):
                     "is_success": result.reward > 0,
                     "attempt": 1,
                     "done": True,
+                    "has_pii": task.has_pii,
+                    "pii_categories": list(task.pii_categories),
+                    "disclosed": disclosed,
+                    "verdict": verdict,
+                    "compliance_multiplier": multiplier,
                 },
                 deep=True,
             )
