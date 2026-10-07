@@ -99,7 +99,7 @@ def test_correct_final_answer_does_not_require_prior_tool_call(env, passing_grad
     env.reset(seed=0)
 
     result = asyncio.run(
-        env.step_async(GradeAction(answer="Explanation\n```python\nprint(42)\n```"))
+        env.step_async(GradeAction(response="Explanation\n```python\nprint(42)\n```"))
     )
 
     assert result.done is True
@@ -113,7 +113,7 @@ def test_correct_final_answer_does_not_require_prior_tool_call(env, passing_grad
 def test_unfenced_final_answer_keeps_format_penalty_without_execution(env, passing_grader):
     env.reset(seed=0)
 
-    result = env.grade(GradeAction(answer="print(42)"))
+    result = env.grade(GradeAction(response="print(42)"))
 
     assert result.done is True
     assert result.reward == -0.1
@@ -127,7 +127,7 @@ def test_missing_tests_terminal_error_deactivates_episode(env):
     env.reset(seed=0)
     env._current_row = {"messages": []}
 
-    result = env.grade(GradeAction(answer="```python\nprint(42)\n```"))
+    result = env.grade(GradeAction(response="```python\nprint(42)\n```"))
 
     assert result.done is True
     assert result.reward == 0.0
@@ -143,7 +143,7 @@ def test_grader_terminal_error_deactivates_episode(env, monkeypatch):
     monkeypatch.setattr(environment_module, "check_correctness", failing_check)
     env.reset(seed=0)
 
-    result = env.grade(GradeAction(answer="```python\nprint(42)\n```"))
+    result = env.grade(GradeAction(response="```python\nprint(42)\n```"))
 
     assert result.done is True
     assert result.reward == 0.0
@@ -157,7 +157,7 @@ def test_last_fenced_block_is_submitted(env, passing_grader):
 
     env.grade(
         GradeAction(
-            answer="```python\nprint('draft')\n```\n```python\nprint('final')\n```"
+            response="```python\nprint('draft')\n```\n```python\nprint('final')\n```"
         )
     )
 
