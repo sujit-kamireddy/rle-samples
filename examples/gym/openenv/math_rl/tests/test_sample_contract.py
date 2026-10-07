@@ -55,7 +55,7 @@ def test_app_uses_sdk_grade_action_and_explicit_state_model():
 def test_dockerfile_matches_sibling_mcp_sdk_and_openenv_pins():
     dockerfile = (ROOT / "Dockerfile").read_text()
 
-    assert "2520ed7b6606f0e6eaff24affa49e888dbb7732e" in dockerfile
+    assert "05ba0ba72d3de0cfe0c742653da9eb87e9e02730" in dockerfile
     assert "azure-ai-projects[rle] @ git+" in dockerfile
     assert "openenv==0.6.0" in dockerfile
 
@@ -64,6 +64,6 @@ def test_readme_documents_optional_helper_and_preserved_rewards():
     readme = (ROOT / "README.md").read_text()
 
     assert "helper is optional" in readme
-    assert "GradeAction.response" in readme
+    assert "GradeAction.answer" in readme
     assert "correct boxed answer earns `1.0`" in readme
     assert "unboxed answer earns `-0.1`" in readme

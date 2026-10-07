@@ -10,7 +10,7 @@ problems and grades Python submissions against hidden tests. It uses the SDK
   `azure.ai.projects.rle.environments.RLEnvironment`.
 - `check_solution(code: str)` is a typed MCP tool registered with
   `self.tool()`. It runs the same hidden-test grader as final submission.
-- The model's final response arrives as `GradeAction.response`.
+- The model's final response arrives as `GradeAction.answer`.
 - Top-level `environment_protocol = "mcp_environment"` selects this protocol;
   there is no `model_response_field`.
 - `max_episode_steps = 3` budgets up to two tool calls and one final grade.
@@ -64,7 +64,7 @@ not problem content:
 ## Build and run
 
 The Dockerfile pins `openenv==0.6.0` and the immutable SDK source revision
-`2520ed7b6606f0e6eaff24affa49e888dbb7732e`; the public SDK wheel at that
+`05ba0ba72d3de0cfe0c742653da9eb87e9e02730`; the public SDK wheel at that
 version does not yet contain `RLEnvironment`.
 
 ```bash
