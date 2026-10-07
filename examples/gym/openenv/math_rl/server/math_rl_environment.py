@@ -2,7 +2,7 @@
 
 ``reset()`` selects a problem, the optional ``check_equivalence`` MCP tool
 checks two model-supplied expressions, and ``grade()`` grades the final
-``GradeAction.answer``. Grading runs in this container using ``safe_grade``.
+``GradeAction.response``. Grading runs in this container using ``safe_grade``.
 
 A submission without ``\\boxed{}`` scores ``-FORMAT_COEF`` (below) without
 attempting to grade the raw text: this rewards "submitted a correctly
@@ -162,7 +162,7 @@ class MathRLEnvironment(RLEnvironment):
         row = self._current_row
 
         try:
-            given = extract_boxed(action.answer or "")
+            given = extract_boxed(action.response or "")
             has_format = True
         except ValueError:
             given = None
