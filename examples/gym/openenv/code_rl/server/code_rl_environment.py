@@ -112,7 +112,7 @@ class CodeRLEnvironment(RLEnvironment):
         timeout_s: Optional[float] = None,
         **kwargs: Any,
     ) -> CodeObservation:
-        """Grade ``GradeAction.answer``; prior tool use is not required."""
+        """Grade ``GradeAction.response``; prior tool use is not required."""
         return asyncio.run(self._grade_async(action, timeout_s=timeout_s, **kwargs))
 
     async def step_async(
@@ -151,7 +151,7 @@ class CodeRLEnvironment(RLEnvironment):
                 last_check_passed=state.last_check_passed,
             )
 
-        code = extract_code_from_model(action.answer or "")
+        code = extract_code_from_model(action.response or "")
         has_code_block = code is not None
         passed = False
         details = None

@@ -2,7 +2,7 @@
 
 `math_rl` serves one deterministic-by-seed Hendrycks MATH problem per episode.
 It subclasses the SDK `RLEnvironment`, exposes an optional typed MCP
-equivalence checker, and grades the terminal `GradeAction.answer` against the
+equivalence checker, and grades the terminal `GradeAction.response` against the
 boxed reference answer with the existing safe grader.
 
 ## Contract
@@ -13,7 +13,7 @@ boxed reference answer with the existing safe grader.
 - `check_equivalence(candidate_expression: str, comparison_expression: str)`
   safely checks two **model-supplied** expressions with `safe_grade`. It never
   receives or reveals the dataset reference answer.
-- Final submission is `GradeAction(answer="<reasoning and \\boxed{...}>")`.
+- Final submission is `GradeAction(response="<reasoning and \\boxed{...}>")`.
 - A correct boxed answer earns `1.0`, a formatted wrong answer earns `0.0`,
   and an unboxed answer earns `-0.1` (`FORMAT_COEF`).
 - The helper is optional. Its use is recorded but is not a reward condition.
@@ -71,7 +71,7 @@ docker run --rm -p 8000:8000 math-rl
 ```
 
 The Dockerfile pins `openenv==0.6.0` and immutable SDK source revision
-`05ba0ba72d3de0cfe0c742653da9eb87e9e02730`. That revision contains
+`2520ed7b6606f0e6eaff24affa49e888dbb7732e`. That revision contains
 `azure.ai.projects.rle.environments.RLEnvironment`; the released public 2.7.0
 wheel does not, so it is not currently an equivalent dependency.
 
