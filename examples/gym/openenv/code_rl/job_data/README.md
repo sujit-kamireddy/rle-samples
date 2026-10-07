@@ -17,7 +17,7 @@ identify which split it draws from:
 ```
 
 The environment uses SDK MCP mode. These selectors still go to `reset()`;
-`check_solution` calls and the final `GradeAction.response` are carried over the
+`check_solution` calls and the final `GradeAction.answer` are carried over the
 same persistent OpenEnv WebSocket and use that selected row's hidden tests.
 
 `train.jsonl` has one line per row in `../env_data/train.jsonl.gz` (900 lines,

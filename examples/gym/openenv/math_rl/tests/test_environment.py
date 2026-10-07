@@ -44,7 +44,7 @@ def test_seed_and_split_selection_remain_deterministic(env):
 def test_boxed_correct_answer_does_not_require_helper(env):
     env.reset(seed=0, split="train")
 
-    result = env.grade(GradeAction(response=_reference_submission(env)))
+    result = env.grade(GradeAction(answer=_reference_submission(env)))
 
     assert result.done is True
     assert result.reward == 1.0
@@ -57,7 +57,7 @@ def test_unboxed_answer_preserves_format_penalty(env):
     env.reset(seed=0, split="train")
     reference = extract_boxed(env._current_row["solution"])
 
-    result = env.grade(GradeAction(response=reference))
+    result = env.grade(GradeAction(answer=reference))
 
     assert result.reward == -FORMAT_COEF
     assert result.metadata == {
@@ -85,7 +85,7 @@ def test_typed_equivalence_helper_records_same_instance_state(env):
     assert env.state.last_comparison_expression == "\\frac{1}{2}"
     assert env.state.last_equivalent is True
 
-    result = env.grade(GradeAction(response=_reference_submission(env)))
+    result = env.grade(GradeAction(answer=_reference_submission(env)))
     assert result.reward == 1.0
     assert result.helper_called is True
     assert result.helper_call_count == 1
@@ -114,6 +114,6 @@ def test_validation_and_lifecycle_errors_are_explicit(env):
     env.reset(seed=0, split="train")
     with pytest.raises(ValueError, match="non-empty"):
         env.check_equivalence("", "1")
-    env.grade(GradeAction(response="not boxed"))
+    env.grade(GradeAction(answer="not boxed"))
     with pytest.raises(RuntimeError, match="active ungraded episode"):
-        env.grade(GradeAction(response="\\boxed{0}"))
+        env.grade(GradeAction(answer="\\boxed{0}"))

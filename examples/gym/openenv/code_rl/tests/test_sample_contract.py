@@ -50,7 +50,7 @@ def test_obsolete_schema_contract_is_removed():
 def test_dockerfile_matches_sibling_sdk_and_openenv_pins():
     dockerfile = (ROOT / "Dockerfile").read_text()
 
-    assert "2520ed7b6606f0e6eaff24affa49e888dbb7732e" in dockerfile
+    assert "05ba0ba72d3de0cfe0c742653da9eb87e9e02730" in dockerfile
     assert "azure-ai-projects[rle] @ git+" in dockerfile
     assert "openenv==0.6.0" in dockerfile
 
