@@ -64,7 +64,7 @@ not problem content:
 ## Build and run
 
 The Dockerfile pins `openenv==0.6.0` and the immutable SDK source revision
-`2520ed7b6606f0e6eaff24affa49e888dbb7732e`; the public SDK wheel at that
+`e56ac36c6b497f74cc7cb1caf1f2fa07bd0cb241`; the public SDK wheel at that
 version does not yet contain `RLEnvironment`.
 
 ```bash

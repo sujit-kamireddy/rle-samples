@@ -34,7 +34,7 @@ WORKDIR /app
 # This immutable SDK source revision
 # reports 2.7.0 and contains RLEnvironment, while the public 2.7.0 wheel does
 # not yet contain azure.ai.projects.rle.
-ARG AZURE_AI_PROJECTS_RLE_REF=2520ed7b6606f0e6eaff24affa49e888dbb7732e
+ARG AZURE_AI_PROJECTS_RLE_REF=e56ac36c6b497f74cc7cb1caf1f2fa07bd0cb241
 RUN apt-get update \
     && apt-get install -y --no-install-recommends git \
     && rm -rf /var/lib/apt/lists/* \

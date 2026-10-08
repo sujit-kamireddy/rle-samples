@@ -71,7 +71,7 @@ docker run --rm -p 8000:8000 math-rl
 ```
 
 The Dockerfile pins `openenv==0.6.0` and immutable SDK source revision
-`2520ed7b6606f0e6eaff24affa49e888dbb7732e`. That revision contains
+`e56ac36c6b497f74cc7cb1caf1f2fa07bd0cb241`. That revision contains
 `azure.ai.projects.rle.environments.RLEnvironment`; the released public 2.7.0
 wheel does not, so it is not currently an equivalent dependency.
 
