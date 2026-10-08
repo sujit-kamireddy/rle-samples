@@ -8,7 +8,7 @@
 # `openenv>=0.6.0,<0.7.0` and `fastmcp>=3.0.0,<4.0.0`, both satisfied below.
 # This source revision includes the query-routing `create_app` used by this image,
 # and `GradeAction.answer`/`rollout` renamed to `response`/`rollout_graph`.
-azure-ai-projects[rle] @ git+https://github.com/sujit-kamireddy/azure-sdk-for-python@2520ed7b6606f0e6eaff24affa49e888dbb7732e#subdirectory=sdk/ai/azure-ai-projects
+azure-ai-projects[rle] @ git+https://github.com/sujit-kamireddy/azure-sdk-for-python@e56ac36c6b497f74cc7cb1caf1f2fa07bd0cb241#subdirectory=sdk/ai/azure-ai-projects
 
 # The underlying serving protocol, session manager, and the MCP
 # environment `RLEnvironment` extends. Pinned rather than ranged, matching the
