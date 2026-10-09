@@ -215,11 +215,14 @@ max_test_examples = 150
 max_steps = 128
 # Both boundaries are what make a checkpoint durable: the recipe only writes one
 # when a step falls on eval_every or save_every, so a run configured without
-# them trains weights it cannot later recover. 8 gives 16 points across the
-# curve (steps 8/16/.../128, the final step included) without eval overhead
-# dominating step time.
-eval_every = 8
-save_every = 8
+# them trains weights it cannot later recover. 4 gives 32 points across the
+# curve (steps 4/8/.../128, the final step included), and the proving run's
+# own numbers are why that resolution matters, not just more data: its best
+# checkpoint (step 28, 0.82 validation success) sits ahead of a regression
+# (0.37 by step 40) that an 8-step cadence would have landed past instead of
+# on, missing the checkpoint this sample's results are drawn from.
+eval_every = 4
+save_every = 4
 remove_constant_reward_groups = true
 # How many rollouts run at once. Each one is a full `opencode` process in the
 # agent container, so this is bounded by that container's CPU and memory, not by
