@@ -123,7 +123,7 @@ $env:FOUNDRY_PROJECT_ENDPOINT = "https://<account>.services.ai.azure.com/api/pro
 $env:AZURE_CONTAINER_REGISTRY_ENDPOINT = "<registry>.azurecr.io"
 ```
 
-Set `base_url` in `rle/rle.toml` to your deployed agent's invocation URL:
+Set `invocation_url` in `rle/rle.toml` to your deployed agent's invocation URL:
 
 ```toml
 [rle]
@@ -134,7 +134,7 @@ subtype = "BYOH"
 environmentProtocol = "mcp_environment"
 
 [rle.harness]
-base_url = "https://<your-deployed-agent-host>/invoke"
+invocation_url = "https://<your-deployed-agent-host>/invoke"
 ```
 
 `environmentProtocol = "mcp_environment"` is what this sample's compliance

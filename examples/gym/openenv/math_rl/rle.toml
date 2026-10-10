@@ -44,7 +44,7 @@ environmentProtocol = "mcp_environment"
 # [rle.harness]
 # agent_name = "..."
 # agent_version = "..."
-# base_url = "..."
+# invocation_url = "..."
 
 
 # ---------------------------------------------------------------------------
