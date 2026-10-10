@@ -4,12 +4,16 @@
 # `azd ai rle init`, `publish` and `train` read: all three resolve `rle.toml`
 # from `<sample>/rle/`, so the sample does not work without it.
 #
-# `[rle]` and `[defaults]` describe the published version and are immutable
-# once published. `[train]` is local-only and never published. The manifest is
-# parsed in *strict* mode: an unknown key is a hard error, so uncommenting a
-# line is always safe but inventing one is not. The commented-out settings
-# below are the ones this environment leaves unset, listed with their default
-# and their validation rule so the whole surface is visible in one file.
+# `[rle]` and `[defaults]` are the only tables this file has, and both
+# describe the published version: everything here is immutable once
+# published. There is no `[train]` table any more -- `model`,
+# `training_file`, `validation_file` and `suffix` are CLI-flag-only now; see
+# `../README.md#5-start-a-training-job` for the exact command this
+# environment is trained with. The manifest is parsed in *strict* mode: an
+# unknown key is a hard error, so uncommenting a line is always safe but
+# inventing one is not. The commented-out settings below are the ones this
+# environment leaves unset, listed with their default and their validation
+# rule so the whole surface is visible in one file.
 
 schema_version = "1.0.0"
 
@@ -39,10 +43,16 @@ subtype = "BYOH"
 # manifest in strict mode and reject it outright.
 environmentProtocol = "mcp_environment"
 
+# Pins the harness container independently of `version`, for build scripts that
+# tag images. Not used by the CLI itself -- `azd ai rle publish` takes the image
+# as an argument -- but declared so a pinned tag does not fail the strict parse.
+# imageTag = "2.0.0"
+
+[rle.harness]
 # Where RLE POSTs each rollout. Required for BYOH, and the only thing RLE knows
 # about your harness: it is reached over the public internet with no auth
 # header of any kind, so the endpoint has to protect itself. It must answer
-# exactly 202 and then serve GET {baseUrl}/rollouts/{operation_id} for
+# exactly 202 and then serve GET {base_url}/rollouts/{operation_id} for
 # polling and DELETE for cancellation.
 # Replace the placeholder below with your own deployed harness's URL -- see
 # `../agent/README.md#build-and-deploy` for verified Google Cloud Run and
@@ -50,16 +60,11 @@ environmentProtocol = "mcp_environment"
 # is a well-formed absolute HTTPS URL (no DNS/reachability check), so leaving
 # the placeholder as-is will publish successfully and only fail later, when a
 # rollout can't reach this host.
-baseUrl = "https://your-harness.example.com/invoke"
+base_url = "https://your-harness.example.com/invoke"
 
-# agentName and agentVersion are HostedAgent-only and are rejected for BYOH.
-# agentName = "data-code-agent"
-# agentVersion = "1"
-
-# Pins the harness container independently of `version`, for build scripts that
-# tag images. Not used by the CLI itself -- `azd ai rle publish` takes the image
-# as an argument -- but declared so a pinned tag does not fail the strict parse.
-# imageTag = "2.0.0"
+# agent_name and agent_version are HostedAgent-only and are rejected for BYOH.
+# agent_name = "data-code-agent"
+# agent_version = "1"
 
 
 # ---------------------------------------------------------------------------
@@ -68,107 +73,57 @@ baseUrl = "https://your-harness.example.com/invoke"
 # means absent. Supplying any of them requires schema_version = "1.0.0".
 #
 # For the Harness type RLE consumes none of these: the harness owns the model
-# call, so they are carried for downstream Training Jobs. They are listed in
-# full anyway, because they are what a training job reads when it is not given
-# flags.
+# call, so they are carried for downstream training. [defaults.train.grpo] and
+# [defaults.rollout] are the only recipe settings a manifest can still carry --
+# everything else that used to live in a free-form `[train.options]` table
+# (max_train_examples, max_test_examples, max_concurrent_rollouts, seed,
+# batch_size, rollout_max_retries, renderer_name aside) now has no manifest
+# home and is passed on the `azd ai rle train` command line instead; see
+# `../README.md#5-start-a-training-job`.
 # ---------------------------------------------------------------------------
 
-# [defaults.model]
+[defaults.model]
 # Informational. Stored with the version; Execute Rollout never reads it.
-# Maximum 256 characters.
-# name = "qwen3-32b-1"
-# The transcript renderer for the policy. Persisted, but not promoted into the
-# sampler's own configuration. Maximum 256 characters. Accepted values include
-# mai_harmony, mai_harmony_internal, qwen3_instruct, qwen3, qwen3_ext,
-# qwen3_disable_thinking, qwen3_5, qwen3_5_ext, qwen3_5_disable_thinking,
-# qwen3_5_ext_disable_thinking.
-# renderer_name = "qwen3_ext"
+# name = "mai/mai-code-1.1-flash"
+# The Capture Proxy renderer. Left unset, the harness sends the model's default
+# renderer. Switched to MAI's own renderer: mai_harmony_internal is a
+# capture-only renderer for MAI-Code-1.1-Flash (no local tokenization), per
+# tools/local_finetune_facade/mai_recipe.py in loom. Qwen3-32B used qwen3_ext
+# instead (see the hillclimb note on [defaults.train.grpo] below).
+renderer_name = "mai_harmony_internal"
 
-# [defaults.reinforcement]
+# [defaults.rollout]
 # Both of these are Gym/OpenEnv controls for RLE's own policy loop. A Harness
 # drives the model itself, so they are inert here and are left unset.
 #
-# Maximum turns in one episode. Integer > 0. Required for Gym/OpenEnv, where
-# the effective value is min(value, 32).
-# max_episode_steps = 8
 # Output budget for a single model turn. Integer > 0. Effective value is
 # min(value, 8192); omitted, a Gym rollout gets the service cap of 8192.
 # max_completion_tokens = 4096
+# The default bound is 65536 tokens summed across a rollout's trainable roots --
+# an aggregate, not a per-sequence limit. This agent reads whole data files into
+# context and measured a 41,087-token mean, so the tail crossed the default and
+# 8% of validation rollouts were dropped as untrainable. Doubling it keeps them.
+# max_rollout_input_tokens = 131072
 
-# [defaults.reinforcement.hyperparameters]
-# Passed through to Training Jobs. Each is optional and has no default.
-# n_epochs = 1                     # integer > 0
-# batch_size = 8                   # integer > 0; unrelated to grpo.groups_per_batch
-# learning_rate_multiplier = 1.0   # finite float > 0
-# eval_interval = 10               # integer > 0
-# eval_samples = 32                # integer > 0
-# compute_multiplier = 1.0         # finite float > 0
-# reasoning_effort = "medium"      # exactly "low", "medium" or "high"
-
-# [defaults.grpo]
-# Recipe-level GRPO settings. Stored with the version and read by Training
-# Jobs; RLE itself never consumes them.
-# group_size = 8                   # integer > 0
-# groups_per_batch = 128           # integer > 0
-# max_steps = 150                  # integer > 0
-
-# [defaults.gym_openenv]
-# Gym/OpenEnv only, and required there: names the action property that receives
-# the model completion verbatim. Not valid for a Harness, so it is unset here
-# even though this folder serves an OpenEnv service -- the *callable interface*
+# [defaults.rollout.gym_openenv]
+# Gym/OpenEnv only: names the action property that receives the model
+# completion verbatim. Not valid for a Harness, so it is unset here even
+# though this folder serves an OpenEnv service -- the *callable interface*
 # RLE sees is still the harness.
 # model_response_field = "response"
 
-
-# ---------------------------------------------------------------------------
-# [train] -- how this environment is usually trained, so a run is one command.
-# Local-only: never published, free to change without republishing, and any
-# flag on `azd ai rle train` overrides it for a single run.
-# ---------------------------------------------------------------------------
-[train]
-# Base model to train. Only RL-enabled models are accepted.
-# Switched from "qwen3-32b-1" to MAI: redoing the proven Qwen3-32B hillclimb
-# (0.255 -> 0.632 over 64 steps, see [train.options] below) with
-# MAI-Code-1.1-Flash instead, to showcase hillclimbing and cost savings
-# against the production gpt-6-astra model using the same harness/environment.
-# This run also widens the dataset past that proving run (see
-# max_train_examples/max_steps below): a stratified, natural-frequency draw
-# over the full 5,000-task pool instead of a 512-task positional slice, to
-# give the compliance combo-PII case (2+ pii_categories) and every reward_mode
-# more room to show a gap, not just raw task count.
-model = "mai/mai-code-1.1-flash"
-# model = "qwen3-32b-1"
-# Paths are relative to this file.
-training_file = "../job_data/train.jsonl"
-validation_file = "../job_data/validation.jsonl"
-# Appended to the fine-tuned model name, to tell runs apart.
-# suffix = "data-code-agent"
-# Per-run override of defaults.reinforcement.max_episode_steps. Integer > 0.
-# max_episode_steps = 8
-
-# Free-form options forwarded to the training service, which owns the
-# vocabulary and validates it per recipe -- an unsupported key is rejected by
-# name, with the supported set. `azd ai rle train --task-count N` sets
-# max_train_examples.
+[defaults.train.grpo]
+# Recipe-level GRPO settings, read by training and carried here so a published
+# version records what it was tuned against. The values below are the ones
+# that actually produced a measured hillclimb on this environment with
+# Qwen3-32B, not a guess at a starting point: on a fixed 100-task validation
+# pool the mean reward rose from 0.255 at step 0 to a peak of 0.632 at step 60
+# (0.611 at the final step, 64).
 #
-# The values below are the ones that actually produced a measured hillclimb
-# on this environment, not a guess at a starting point: on a fixed 100-task
-# validation pool the mean reward rose from 0.255 at step 0 to a peak of 0.632
-# at step 60 (0.611 at the final step, 64). Sizing is chosen to *resolve* that
-# curve, not to show a direction quickly, so a smoke run should cut it down
-# with `--task-count` rather than by trimming these.
-#
-# If `rollout_failure_rate_abort` trips (an infra-side rollout failure rate,
-# not a sign of bad settings), it is recoverable: find the session/checkpoint
-# id logged at the last `eval_every`/`save_every` boundary, then add
-# `load_checkpoint_path = "<session_id>/<checkpoint_id>"` and
-# `resume_from_batch = <that batch>` to this block for one run, removing them
-# again afterward.
-[train.options]
-# A judgement call, not a measurement: no reference config for this environment
-# exists. 5e-6 (the smoke value) is too low to move a 32B LoRA inside a
-# reasonable budget, and 3e-4 risks the base competence this reward multiplies
-# against. 5e-5 sits between them.
+# A judgement call, not a measurement: no reference config for this
+# environment exists. 5e-6 is too low to move a 32B LoRA inside a reasonable
+# budget, and 3e-4 risks the base competence this reward multiplies against.
+# 5e-5 sits between them.
 learning_rate = 5e-5
 # Pinned to the proving run's value, which happens to match this version of
 # the facade's own default -- set explicitly so it does not silently drift if
@@ -185,33 +140,22 @@ lora_rank = 32
 # exposes to make that less likely: more members per group means better odds
 # of nonzero within-group reward variance.
 group_size = 16
-# Groups per optimiser step. Arrives at the training service as
-# `groups_per_batch`, whose default is 1.
+# Groups per optimiser step.
 #
-# max_train_examples and max_steps are coupled through this value, not
-# independent knobs: the recipe's dataset wraps its batch index at
-# ceil(max_train_examples / batch_size), so a max_steps equal to that number
-# (1024 / 8 = 128) sees every curated task exactly once with zero repeats.
-# num_epochs below never gets a chance to start a second pass because
-# max_steps truncates the run first -- raising the dataset size alone,
-# without raising max_steps to match, silently drops the untouched tail of
-# train.jsonl instead of training on it.
-batch_size = 8
+# max_train_examples (now `azd ai rle train --task-count`) and max_steps are
+# coupled through this value, not independent knobs: the recipe's dataset
+# wraps its batch index at ceil(max_train_examples / groups_per_batch), so a
+# max_steps equal to that number sees every curated task exactly once with
+# zero repeats. num_epochs below never gets a chance to start a second pass
+# because max_steps truncates the run first -- resizing the dataset (see
+# `../README.md#5-start-a-training-job`) without raising max_steps to match
+# silently drops the untouched tail of train.jsonl instead of training on it.
+groups_per_batch = 8
 num_epochs = 2
-# Built by tools/build_training_set.py (stratified by reward_mode x
-# pii_categories-count, natural frequency, disjoint from validation_file) --
-# not a positional slice of the task pool. Re-run that script with
-# --train-size/--eval-size to resize, then update max_steps/max_test_examples
-# here to match.
-max_train_examples = 1024
-# 150 eval tasks, chosen so a real gain clears the noise floor: at 8 tasks a
-# single flipped rollout moves the score 12.5 points and a 10-point gain is
-# invisible.
-max_test_examples = 150
 # Loom has no LR schedule and a finished job cannot be extended, so max_steps is
-# set past the expected stopping point and the run is judged on its curve.
-# See the batch_size comment above for why this must equal
-# max_train_examples / batch_size.
+# set past the expected stopping point and the run is judged on its curve. See
+# the groups_per_batch comment above for why this must equal
+# max_train_examples / groups_per_batch (1024 / 8 = 128).
 max_steps = 128
 # Both boundaries are what make a checkpoint durable: the recipe only writes one
 # when a step falls on eval_every or save_every, so a run configured without
@@ -221,48 +165,10 @@ max_steps = 128
 eval_every = 8
 save_every = 8
 remove_constant_reward_groups = true
-# How many rollouts run at once. Each one is a full `opencode` process in the
-# agent container, so this is bounded by that container's CPU and memory, not by
-# the model endpoint. Concurrency here buys answer quality rather than
-# throughput: the Loom engine is the bottleneck and per-rollout latency scales
-# with how many rollouts share it, with the same six-turn episode measured at
-# 21s/turn solo and ~98s/turn at 24 concurrent. Step time is
-# rollouts x latency / concurrency and latency moves inversely, so throughput is
-# roughly flat across that range and 8 buys more rollouts that reach an answer
-# before the cap instead of being truncated into a zero.
-#
-# Left at 8 (unchanged) even though group_size doubled rollouts/step to 128:
-# step wall-clock scales with rollouts/concurrency, so steps now take roughly
-# 2x as long as the proven 64-rollout/step run. Raise this if that latency
-# isn't acceptable -- it is a container-capacity tradeoff, not a correctness
-# one.
-max_concurrent_rollouts = 8
-seed = 42
+sampling_seed = 42
 # Rollout-failure tolerance. Because the recipe trains a group's survivors
-# rather than discarding all eight when one member fails, a failure costs one
+# rather than discarding all sixteen when one member fails, a failure costs one
 # rollout rather than a whole group. The abort rate ends the run outright when
 # tripped, so it is set well above the ~32% a first attempt reached.
-# (rollout_max_retries is omitted: it depends on vienna PR 2329025, which was
-# reverted, and the rle-harness recipe's job_metadata.py now hard-rejects it
-# for every model.)
 rollout_failure_rate_abort = 0.45
 min_trainable_group_members = 2
-# The default bound is 65536 tokens summed across a rollout's trainable roots --
-# an aggregate, not a per-sequence limit. This agent reads whole data files into
-# context and measured a 41,087-token mean, so the tail crossed the default and
-# 8% of validation rollouts were dropped as untrainable. Doubling it keeps them.
-max_rollout_input_tokens = 131072
-# The Capture Proxy renderer. Left unset, the harness sends Qwen3's recommended
-# renderer, `qwen3`, which reproduces the official chat template faithfully --
-# and that template drops <think> blocks from every assistant message but the
-# last. Replayed history then no longer matches the tokens that were actually
-# sampled, so each turn's prompt stops extending the previous turn's and the
-# capture comes back as one root per turn. `qwen3_ext` keeps reasoning in
-# history. Measured on a single rollout of this environment: `qwen3` gave
-# 3 turns / 3 roots, `qwen3_ext` gave 3 turns / 1 root with no validation
-# findings.
-# Switched to MAI's own renderer: mai_harmony_internal is a capture-only
-# renderer for MAI-Code-1.1-Flash (no local tokenization), per
-# tools/local_finetune_facade/mai_recipe.py in loom.
-renderer_name = 'mai_harmony_internal'
-# renderer_name = "qwen3_ext"

@@ -42,9 +42,10 @@ The practical consequence for you:
 
 So:
 
-- Set `max_episode_steps` to what the episode actually needs. A single-turn environment declaring
-  `max_episode_steps = 1` and returning `done=True` on its first `step()` is the correct design, not
-  a workaround.
+- Design the environment to terminate with a grade well inside RLE's fixed 32-step server ceiling.
+  A single-turn environment that returns `done=True` on its first `step()` is the correct design,
+  not a workaround — there is no manifest field to declare that any more, it is just what the
+  environment does.
 - Never let the loop end by exhausting the step budget. If the policy has not submitted by the last
   step, grade it as a failure and set `done=True` yourself.
 - Never return from `step()` on an error path without a reward and `done=True`.

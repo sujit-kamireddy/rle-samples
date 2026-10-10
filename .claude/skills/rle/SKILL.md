@@ -15,9 +15,9 @@ description: >-
 
   USE FOR: writing any Foundry RLE environment; deciding Gym vs Harness and, for Harness, BYOH vs
   HostedAgent; rle.toml, schema-driven model_response_field, SDK RLEnvironment/GradeAction,
-  environment_protocol, max_episode_steps, max_completion_tokens, GET /schema action vocabulary,
+  environmentProtocol, max_completion_tokens, GET /schema action vocabulary,
   reward shaping, reset selectors, a Harness's /invoke or Responses wire contract,
-  agentName/agentVersion vs baseUrl, and debugging EnvironmentContractViolation,
+  agent_name/agent_version vs base_url, and debugging EnvironmentContractViolation,
   RolloutDependencyFailed, degenerate_rollout, a wrong episode being graded, or a truncated answer.
 
   DO NOT USE FOR: training-job hyperparameter tuning, Foundry model deployment, or changes to the
@@ -69,8 +69,8 @@ reset(task)  ->  observation  ->  model completion  ->  action  ->  step()  ->  
 | RLE needs | It reads it from |
 | --- | --- |
 | what the model may emit | schema-driven: `GET /schema` `action`; SDK MCP: registered `self.tool()` methods plus `GradeAction` |
-| how the contract is selected | schema-driven: `defaults.gym_openenv.model_response_field`; SDK MCP: top-level `environment_protocol = "mcp_environment"` |
-| how many steps, how many tokens | `rle.toml` → `defaults.reinforcement`, clamped by server ceilings |
+| how the contract is selected | schema-driven: `defaults.rollout.gym_openenv.model_response_field`; SDK MCP: `rle.environmentProtocol = "mcp_environment"` |
+| how many tokens | `rle.toml` → `defaults.rollout`, clamped by server ceilings (the step budget is now a fixed server ceiling, not a manifest field) |
 | the episode to run | the job's `task` JSON, forwarded verbatim to `reset()` |
 
 {{ references/anatomy.md }}
@@ -93,9 +93,9 @@ reset(task)  ->  observation  ->  model completion  ->  action  ->  step()  ->  
   carrying `model_response_field`; SDK MCP environments subclass `RLEnvironment`, register typed
   tools with `self.tool()`, and grade `GradeAction`.
 - `rle.toml` has `schema_version = "1.0.0"`, `[rle] type = "Gym"` / `subtype = "OpenEnv"`,
-  and matching reinforcement budgets. Schema-driven mode sets
-  `[defaults.gym_openenv] model_response_field`; SDK MCP mode instead sets top-level
-  `environment_protocol = "mcp_environment"` and must not set `model_response_field`.
+  and a sensible `[defaults.rollout] max_completion_tokens`. Schema-driven mode sets
+  `[defaults.rollout.gym_openenv] model_response_field`; SDK MCP mode instead sets
+  `[rle] environmentProtocol = "mcp_environment"` and must not set `model_response_field`.
 - `reset()` ends in `**kwargs` and rejects selectors it does not understand.
 - The episode reaches `done=True` with a real reward on every terminal path — including the
   give-up path — so the rollout is never exported ungraded.
