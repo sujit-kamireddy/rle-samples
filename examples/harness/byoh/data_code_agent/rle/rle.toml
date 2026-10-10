@@ -92,19 +92,6 @@ invocation_url = "https://your-harness.example.com/invoke"
 # instead (see the hillclimb note on [defaults.train.grpo] below).
 renderer_name = "mai_harmony_internal"
 
-# [defaults.rollout]
-# Both of these are Gym/OpenEnv controls for RLE's own policy loop. A Harness
-# drives the model itself, so they are inert here and are left unset.
-#
-# Output budget for a single model turn. Integer > 0. Effective value is
-# min(value, 8192); omitted, a Gym rollout gets the service cap of 8192.
-# max_completion_tokens = 4096
-# The default bound is 65536 tokens summed across a rollout's trainable roots --
-# an aggregate, not a per-sequence limit. This agent reads whole data files into
-# context and measured a 41,087-token mean, so the tail crossed the default and
-# 8% of validation rollouts were dropped as untrainable. Doubling it keeps them.
-# max_rollout_input_tokens = 131072
-
 # [defaults.rollout.gym_openenv]
 # Gym/OpenEnv only: names the action property that receives the model
 # completion verbatim. Not valid for a Harness, so it is unset here even

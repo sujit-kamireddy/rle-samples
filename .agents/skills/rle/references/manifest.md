@@ -14,9 +14,6 @@ version = "1.0.0"
 type = "Gym"
 subtype = "OpenEnv"
 
-[defaults.rollout]
-max_completion_tokens = 8192
-
 [defaults.rollout.gym_openenv]
 model_response_field = "answer_text"
 ```
@@ -32,9 +29,6 @@ version = "1.0.0"
 type = "Gym"
 subtype = "OpenEnv"
 environmentProtocol = "mcp_environment"
-
-[defaults.rollout]
-max_completion_tokens = 8192
 ```
 
 ### Rules
@@ -57,17 +51,12 @@ fixed 32 `step()` calls server-side; the old `[defaults.reinforcement] max_episo
 gone from the schema entirely (a publish-time error if present) rather than defaulted. Design the
 environment to terminate well before 32 steps regardless.
 
-**`max_completion_tokens` is the per-call `max_tokens` on the model request, under
-`[defaults.rollout]`.** Server ceiling: **8192**. Effective value is `min(yours, 8192)` when you set
-a positive value, and **8192** when you leave it unset — the rollout always sends an explicit
-budget, so the sampler's own default never applies. Asking for more than 8192 is not an error; it is
-silently clamped, because the capture proxy applies the same ceiling downstream.
-
-Do not treat the ceiling as a free default to copy blindly: a budget far above what the episode
-needs costs tokens on every call, and a budget below it truncates the model mid-reasoning and
-submits a half-formed answer that grades as wrong. Measure it — `math_rl` documents in its own
-`rle.toml` that 4096 truncated 2 of 3 sampled problems against Qwen3-32B while the longest
-self-terminating run used 6252, which is why it sits at 8192.
+**There is no manifest field for the completion-token budget any more.** Every model call's
+`max_tokens` is now a fixed server ceiling (**8192**) regardless of what the environment would
+otherwise ask for; the old `[defaults.rollout] max_completion_tokens` field is gone from the schema
+entirely (a publish-time error if present) rather than defaulted, following the same pattern as
+`max_episode_steps`. This may be re-exposed in the manifest later once there is feedback on which
+environments actually need a different budget.
 
 ### What the manifest does *not* cover
 

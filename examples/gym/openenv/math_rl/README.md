@@ -28,9 +28,6 @@ The manifest selects this mode explicitly:
 ```toml
 [rle]
 environmentProtocol = "mcp_environment"
-
-[defaults.rollout]
-max_completion_tokens = 8192
 ```
 
 `max_episode_steps` is no longer a manifest field -- RLE now caps a Gym

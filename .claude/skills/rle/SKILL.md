@@ -15,7 +15,7 @@ description: >-
 
   USE FOR: writing any Foundry RLE environment; deciding Gym vs Harness and, for Harness, BYOH vs
   HostedAgent; rle.toml, schema-driven model_response_field, SDK RLEnvironment/GradeAction,
-  environmentProtocol, max_completion_tokens, GET /schema action vocabulary,
+  environmentProtocol, GET /schema action vocabulary,
   reward shaping, reset selectors, a Harness's /invoke or Responses wire contract,
   agent_name/agent_version vs invocation_url, and debugging EnvironmentContractViolation,
   RolloutDependencyFailed, degenerate_rollout, a wrong episode being graded, or a truncated answer.
@@ -92,10 +92,11 @@ reset(task)  ->  observation  ->  model completion  ->  action  ->  step()  ->  
 - Choose exactly one contract. Schema-driven environments declare exactly one action variant
   carrying `model_response_field`; SDK MCP environments subclass `RLEnvironment`, register typed
   tools with `self.tool()`, and grade `GradeAction`.
-- `rle.toml` has `schema_version = "1.0.0"`, `[rle] type = "Gym"` / `subtype = "OpenEnv"`,
-  and a sensible `[defaults.rollout] max_completion_tokens`. Schema-driven mode sets
-  `[defaults.rollout.gym_openenv] model_response_field`; SDK MCP mode instead sets
-  `[rle] environmentProtocol = "mcp_environment"` and must not set `model_response_field`.
+- `rle.toml` has `schema_version = "1.0.0"`, `[rle] type = "Gym"` / `subtype = "OpenEnv"`.
+  Schema-driven mode sets `[defaults.rollout.gym_openenv] model_response_field`; SDK MCP mode
+  instead sets `[rle] environmentProtocol = "mcp_environment"` and must not set
+  `model_response_field`. The completion-token budget is a fixed server ceiling (8192), not a
+  manifest field.
 - `reset()` ends in `**kwargs` and rejects selectors it does not understand.
 - The episode reaches `done=True` with a real reward on every terminal path — including the
   give-up path — so the rollout is never exported ungraded.
