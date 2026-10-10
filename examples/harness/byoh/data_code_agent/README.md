@@ -123,7 +123,7 @@ $env:FOUNDRY_PROJECT_ENDPOINT = "https://<account>.services.ai.azure.com/api/pro
 $env:AZURE_CONTAINER_REGISTRY_ENDPOINT = "<registry>.azurecr.io"
 ```
 
-Set `baseUrl` in `rle/rle.toml` to your deployed agent's invocation URL:
+Set `base_url` in `rle/rle.toml` to your deployed agent's invocation URL:
 
 ```toml
 [rle]
@@ -132,7 +132,9 @@ version = "2.0.0"
 type = "Harness"
 subtype = "BYOH"
 environmentProtocol = "mcp_environment"
-baseUrl = "https://<your-deployed-agent-host>/invoke"
+
+[rle.harness]
+base_url = "https://<your-deployed-agent-host>/invoke"
 ```
 
 `environmentProtocol = "mcp_environment"` is what this sample's compliance
@@ -189,19 +191,24 @@ the same `(reward_mode, pii_categories-count)` cells at natural frequency
 (no artificial oversampling of rare cells) rather than slicing the task pool
 positionally, so neither file's difficulty mix drifts from the full 5,000-task
 pool's. Re-run it with `--train-size`/`--eval-size` to resize, then update
-`rle/rle.toml`'s `max_train_examples`/`max_test_examples`/`max_steps` to
-match -- that file's comments explain why dataset size and `max_steps` are
+`--task-count` below and `rle/rle.toml`'s `[defaults.train.grpo].max_steps`
+to match -- that file's comments explain why dataset size and `max_steps` are
 coupled.
 
-`rle/rle.toml` records how this environment is trained, so a run needs no
-flags. Its `[train.options]` are pre-tuned for this environment and produced a
-validated hillclimb against Qwen3-32B -- see that file's comments for the
-reasoning behind each one and for how to resume a run if
-`rollout_failure_rate_abort` trips.
+`model`, `training_file`, `validation_file` and `suffix` are CLI-flag-only:
+`rle.toml` no longer carries a `[train]` table, so every run needs them
+passed explicitly. `rle/rle.toml`'s `[defaults.train.grpo]` is still pre-tuned
+for this environment and produced a validated hillclimb against Qwen3-32B --
+see that file's comments for the reasoning behind each one and for how to
+resume a run if `rollout_failure_rate_abort` trips.
 
 ```bash
 cd rle
-azd ai rle train --rle-version <published-version>
+azd ai rle train --rle-version <published-version> \
+  --model mai/mai-code-1.1-flash \
+  --training-file ../job_data/train.jsonl \
+  --validation-file ../job_data/validation.jsonl \
+  --suffix data-code-agent
 ```
 
 Always pass `--rle-version` explicitly. Leaving it off lets the CLI resolve
@@ -213,7 +220,12 @@ Use `--task-count` to train on only the first N tasks while checking the
 environment end to end, which is cheaper than waiting on the full dataset:
 
 ```bash
-azd ai rle train --rle-version <published-version> --task-count 8
+azd ai rle train --rle-version <published-version> \
+  --model mai/mai-code-1.1-flash \
+  --training-file ../job_data/train.jsonl \
+  --validation-file ../job_data/validation.jsonl \
+  --suffix data-code-agent \
+  --task-count 8
 ```
 
 Add `--follow` to mirror the run's logs and metrics locally while it runs.

@@ -11,9 +11,11 @@ problems and grades Python submissions against hidden tests. It uses the SDK
 - `check_solution(code: str)` is a typed MCP tool registered with
   `self.tool()`. It runs the same hidden-test grader as final submission.
 - The model's final response arrives as `GradeAction.response`.
-- Top-level `environment_protocol = "mcp_environment"` selects this protocol;
+- `[rle] environmentProtocol = "mcp_environment"` selects this protocol;
   there is no `model_response_field`.
-- `max_episode_steps = 3` budgets up to two tool calls and one final grade.
+- There is no `max_episode_steps` any more; RLE caps every Gym episode at a
+  fixed 32-step server ceiling, which comfortably covers a few tool calls
+  plus one final grade.
 
 Tool use is optional, matching the prior sample contract: a correct fenced
 final answer earns full correctness reward even when `check_solution` was not
