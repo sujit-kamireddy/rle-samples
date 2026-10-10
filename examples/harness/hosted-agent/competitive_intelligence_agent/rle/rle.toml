@@ -102,11 +102,6 @@ save_every = 2
 # advantage signal to GRPO, so sampling them is spend with no gradient.
 remove_constant_reward_groups = true
 
-# Skip the post-update KL measurement. It costs a second forward pass per step
-# and nothing in this run reads it; `optim/kl_sample_train_v1` still reports
-# sampler/trainer agreement without it.
-compute_post_kl = false
-
 # Fixed so a replication draws the same batches in the same order.
 sampling_seed = 42
 

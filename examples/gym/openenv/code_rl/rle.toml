@@ -82,14 +82,9 @@ model_response_field = "response"
 # eval_every = 10                        # integer > 0
 # save_every = 10                        # integer > 0
 # remove_constant_reward_groups = true   # bool
-# compute_post_kl = false                # bool
 # sampling_seed = 42                     # integer
 # rollout_failure_rate_abort = 0.45      # finite float in [0, 1]
-# rollout_failure_rate_warn = 0.3        # finite float in [0, 1]
-# rollout_failure_window_size = 50       # integer > 0
-# rollout_failure_min_attempts = 10      # integer > 0
 # min_trainable_group_members = 2        # integer > 0
-# group_failure_rate_abort = 0.5         # finite float in [0, 1]
 
 
 # ---------------------------------------------------------------------------
