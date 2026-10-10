@@ -23,10 +23,6 @@ name = "data_code_agent"
 # Semantic version, MAJOR.MINOR.PATCH. Immutable: publishing a change means a
 # new version.
 version = "1.0.0"
-# "Gym" or "Harness".
-type = "Harness"
-# "HostedAgent" or "BYOH" for Harness; "OpenEnv" for Gym.
-subtype = "BYOH"
 
 # PROTOCOL.
 #
@@ -48,7 +44,12 @@ environmentProtocol = "mcp_environment"
 # as an argument -- but declared so a pinned tag does not fail the strict parse.
 # imageTag = "2.0.0"
 
-[rle.harness]
+[harness]
+# "Gym" or "Harness".
+type = "Harness"
+# "HostedAgent" or "BYOH" for Harness; "OpenEnv" for Gym.
+subtype = "BYOH"
+
 # Where RLE POSTs each rollout. Required for BYOH, and the only thing RLE knows
 # about your harness: it is reached over the public internet with no auth
 # header of any kind, so the endpoint has to protect itself. It must answer

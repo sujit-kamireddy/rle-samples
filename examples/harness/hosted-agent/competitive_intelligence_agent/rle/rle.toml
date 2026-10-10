@@ -24,8 +24,6 @@ schema_version = "1.0.0"
 name = "competitive_intelligence_agent"
 # Bump before republishing: registered versions are immutable.
 version = "2.0.1"
-type = "Harness"
-subtype = "HostedAgent"
 
 # PROTOCOL.
 #
@@ -47,7 +45,10 @@ environmentProtocol = "mcp_environment"
 # read this, but it is declared so a pinned tag does not fail the strict parse.
 # imageTag = "2.0.0"
 
-[rle.harness]
+[harness]
+type = "Harness"
+subtype = "HostedAgent"
+
 # The registered Foundry Hosted Agent RLE calls for each rollout. Replace both
 # of these with your own registration -- see step 3 in `../README.md`. RLE
 # resolves the name against the project and posts to

@@ -23,10 +23,6 @@ name = "code_rl"
 # Semantic version, MAJOR.MINOR.PATCH. Immutable: publishing a change means a
 # new version.
 version = "1.0.0"
-# "Gym" or "Harness".
-type = "Gym"
-# "OpenEnv" for Gym; "HostedAgent" or "BYOH" for Harness.
-subtype = "OpenEnv"
 
 # RLE decides whether to open an MCP sandbox session for a rollout from this
 # field, recorded at publish time and immutable for the version.
@@ -38,10 +34,16 @@ environmentProtocol = "mcp_environment"
 # parse.
 # imageTag = "1.0.0"
 
-# [rle.harness] is Harness-only and is rejected for a Gym target: RLE reaches
-# this environment through the sandbox it schedules from the published image,
-# so there is no agent/harness address to register.
-# [rle.harness]
+[harness]
+# "Gym" or "Harness".
+type = "Gym"
+# "OpenEnv" for Gym; "HostedAgent" or "BYOH" for Harness.
+subtype = "OpenEnv"
+
+# agent_name/agent_version/invocation_url are Harness-only and are rejected
+# for a Gym target: RLE reaches this environment through the sandbox it
+# schedules from the published image, so there is no agent/harness address
+# to register.
 # agent_name = "..."
 # agent_version = "..."
 # invocation_url = "..."

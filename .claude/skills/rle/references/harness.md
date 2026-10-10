@@ -15,14 +15,14 @@ Every Harness sample ships two independent pieces that deploy and publish separa
 
 `rle/` is identical in shape whichever subtype invokes it — RLE does not care which one called the
 harness — so most of what differs between BYOH and HostedAgent lives entirely in `agent/`'s
-entrypoint and `rle.toml`'s `[rle]` section.
+entrypoint and `rle.toml`'s `[harness]` table.
 
 ### Choosing a subtype
 
 | | `HostedAgent` | `BYOH` (Bring Your Own Harness) |
 | --- | --- | --- |
 | Where the agent runs | A Foundry Hosted Agent version | Anywhere you register a base URL |
-| `rle.toml` identifies it by | `[rle.harness] agent_name` / `agent_version` | `[rle.harness] invocation_url` |
+| `rle.toml` identifies it by | `[harness] agent_name` / `agent_version` | `[harness] invocation_url` |
 | Invocation | One synchronous call | Async: start, then poll, then optional cancel |
 | Hosting burden | None — Foundry hosts it | You deploy and protect the endpoint yourself |
 
@@ -138,10 +138,11 @@ Same manifest shape as Gym, with a different `[rle]` payload and inert Gym-only 
 [rle]
 name = "my_harness_env"
 version = "1.0.0"
+
+[harness]
 type = "Harness"
 subtype = "BYOH"          # or "HostedAgent"
 
-[rle.harness]
 # BYOH only — rejected for HostedAgent:
 invocation_url = "https://your-harness.example.com/invoke"
 
@@ -167,7 +168,7 @@ invocation_url = "https://your-harness.example.com/invoke"
    from a working sample and copies its paired `agent/` alongside it as a reference to adapt.
 2. Build and deploy `agent/` — anywhere reachable over HTTPS for BYOH, or as a registered Foundry
    Hosted Agent version for HostedAgent — independently of the RLE side.
-3. Point `rle.toml` at it (`[rle.harness] invocation_url`, or `agent_name`/`agent_version`), then
+3. Point `rle.toml` at it (`[harness] invocation_url`, or `agent_name`/`agent_version`), then
    `azd ai rle publish`.
 4. `azd ai rle rollout <name> --version <v> --agent-input '...'` exercises one rollout end to end
    before training: confirm the harness answers, and that `/grade` grades the episode the task
@@ -178,8 +179,8 @@ invocation_url = "https://your-harness.example.com/invoke"
 
 ### Exit criteria
 
-- `rle.toml` has `[rle] type = "Harness"`, the correct `subtype`, and exactly one of
-  `[rle.harness] invocation_url` (BYOH) or `agent_name`/`agent_version` (HostedAgent) — never both,
+- `rle.toml` has `[harness] type = "Harness"`, the correct `subtype`, and exactly one of
+  `[harness] invocation_url` (BYOH) or `agent_name`/`agent_version` (HostedAgent) — never both,
   never neither.
 - `rle/server/env.py`'s `/reset` pins whatever `/grade` needs to identify and score the right
   episode, keyed so a concurrent rollout with a different task can't cross-contaminate it.

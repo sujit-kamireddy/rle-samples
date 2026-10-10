@@ -402,10 +402,10 @@ Point `rle/rle.toml` at the agent you registered in step 1:
 [rle]
 name = "competitive_intelligence_agent"
 version = "2.0.0"
+
+[harness]
 type = "Harness"
 subtype = "HostedAgent"
-
-[rle.harness]
 agent_name = "<your-registered-agent-name>"
 agent_version = "1"
 ```

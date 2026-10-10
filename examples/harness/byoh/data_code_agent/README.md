@@ -129,11 +129,11 @@ Set `invocation_url` in `rle/rle.toml` to your deployed agent's invocation URL:
 [rle]
 name = "data_code_agent_byoh"
 version = "2.0.0"
-type = "Harness"
-subtype = "BYOH"
 environmentProtocol = "mcp_environment"
 
-[rle.harness]
+[harness]
+type = "Harness"
+subtype = "BYOH"
 invocation_url = "https://<your-deployed-agent-host>/invoke"
 ```
 
