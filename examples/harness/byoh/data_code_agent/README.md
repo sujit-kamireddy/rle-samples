@@ -191,13 +191,13 @@ the same `(reward_mode, pii_categories-count)` cells at natural frequency
 (no artificial oversampling of rare cells) rather than slicing the task pool
 positionally, so neither file's difficulty mix drifts from the full 5,000-task
 pool's. Re-run it with `--train-size`/`--eval-size` to resize, then update
-`--task-count` below and `rle/rle.toml`'s `[defaults.train.grpo].max_steps`
+`--task-count` below and `rle/rle.toml`'s `[train.grpo].max_steps`
 to match -- that file's comments explain why dataset size and `max_steps` are
 coupled.
 
 `model`, `training_file`, `validation_file` and `suffix` are CLI-flag-only:
 `rle.toml` no longer carries a `[train]` table, so every run needs them
-passed explicitly. `rle/rle.toml`'s `[defaults.train.grpo]` is still pre-tuned
+passed explicitly. `rle/rle.toml`'s `[train.grpo]` is still pre-tuned
 for this environment and produced a validated hillclimb against Qwen3-32B --
 see that file's comments for the reasoning behind each one and for how to
 resume a run if `rollout_failure_rate_abort` trips.

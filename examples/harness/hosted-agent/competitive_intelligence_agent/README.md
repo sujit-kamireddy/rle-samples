@@ -446,7 +446,7 @@ A rollout that returns a reward between 0 and 1 with seven `dim/` entries in
 
 `model`, `training_file`, `validation_file` and `suffix` are CLI-flag-only:
 `rle.toml` no longer carries a `[train]` table, so every run needs them passed
-explicitly. `rle/rle.toml`'s `[defaults.train.grpo]` and `[defaults.rollout]`
+explicitly. `rle/rle.toml`'s `[train.grpo]` and `[rollout]`
 are still pre-tuned for this environment. It must run from the folder holding
 `rle.toml`, because the CLI resolves `--training-file`/`--validation-file`
 relative to the working directory:

@@ -4,15 +4,15 @@
 # `azd ai rle init`, `publish` and `train` read: all three resolve `rle.toml`
 # from `<sample>/rle/`, so the sample does not work without it.
 #
-# `[rle]` and `[defaults]` are the only tables this file has, and both
+# `[rle]` and `[train.grpo]` are the only tables this file has, and both
 # describe the published version: everything here is immutable once
-# published. There is no `[train]` table any more -- `model`,
-# `training_file`, `validation_file` and `suffix` are CLI-flag-only now; see
+# published. `model`, `training_file`, `validation_file` and `suffix` are
+# CLI-flag-only, not manifest fields; see
 # `../README.md#5-start-the-training-run` for the exact command this
 # environment is trained with. The manifest is parsed in *strict* mode: an
 # unknown key is a hard error.
 #
-# [defaults.train.grpo] is carried over from the published run that produced
+# [train.grpo] is carried over from the published run that produced
 # the reward curve in `../README.md`, with one deliberate change: that run was
 # configured for eight epochs and stopped by hand once the held-out curve
 # turned over, while this one is pinned to a single epoch so it finishes on
@@ -61,12 +61,12 @@ agent_version = "1"
 
 
 # ---------------------------------------------------------------------------
-# [defaults] -- published with the version and returned by the service. Every
-# value here is optional and none of them has a service-side default: omitted
-# means absent.
+# [train.grpo] -- published with the version and returned by the service.
+# Every value here is optional and none of them has a service-side default:
+# omitted means absent.
 # ---------------------------------------------------------------------------
 
-[defaults.train.grpo]
+[train.grpo]
 # Carried unchanged from the published run.
 learning_rate = 0.0003
 group_size = 6

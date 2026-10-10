@@ -6,15 +6,15 @@
 # manifest is parsed in *strict* mode: an unknown key is a hard error, so
 # uncommenting a line is always safe but inventing one is not.
 #
-# `[rle]` and `[defaults]` are the only tables this file has, and both
-# describe the published version: everything here is immutable once
-# published. There is no `[train]` table any more -- `model`,
-# `training_file`, `validation_file` and `suffix` are CLI-flag-only now; see
+# `[rle]`, `[model]`, `[train.grpo]` and `[rollout]` are the only tables this
+# file has, and all describe the published version: everything here is
+# immutable once published. `model`, `training_file`, `validation_file` and
+# `suffix` are CLI-flag-only, not manifest fields; see
 # the commands below.
 
 # Manifest schema version. Optional; the only accepted value is "1.0.0", which
-# is also what is assumed when it is omitted. Required as soon as [defaults] is
-# supplied.
+# is also what is assumed when it is omitted. Required as soon as [model],
+# [train] or [rollout] is supplied.
 schema_version = "1.0.0"
 
 [rle]
@@ -48,12 +48,13 @@ environmentProtocol = "mcp_environment"
 
 
 # ---------------------------------------------------------------------------
-# [defaults] -- published with the version and returned by the service. Every
-# value here is optional and none of them has a service-side default: omitted
-# means absent. Supplying any of them requires schema_version = "1.0.0".
+# [model], [train.grpo] and [rollout] -- published with the version and
+# returned by the service. Every value here is optional and none of them has
+# a service-side default: omitted means absent. Supplying any of them
+# requires schema_version = "1.0.0".
 # ---------------------------------------------------------------------------
 
-# [defaults.model]
+# [model]
 # Informational. Stored with the version; Execute Rollout never reads it.
 # Maximum 256 characters.
 # name = "qwen3-32b-1"
@@ -64,13 +65,13 @@ environmentProtocol = "mcp_environment"
 # qwen3_5_ext_disable_thinking.
 # renderer_name = "qwen3_ext"
 
-[defaults.rollout.gym_openenv]
+[rollout.gym_openenv]
 # Names the action property that receives the model completion's content
 # verbatim. It must be a property the environment already declares in its own
 # action model, so there is no default. Maximum 128 characters.
 model_response_field = "response"
 
-# [defaults.train.grpo]
+# [train.grpo]
 # Recipe-level GRPO settings. Stored with the version and read by training;
 # RLE itself never consumes them. Each is optional and has no default.
 # learning_rate = 0.0003                 # finite float > 0
@@ -90,10 +91,11 @@ model_response_field = "response"
 # ---------------------------------------------------------------------------
 # Training a published version.
 #
-# There is no `[train]` table: `model`, `training_file`, `validation_file` and
-# `suffix` are CLI-flag-only, and `--task-count N` caps the number of training
-# rows read. Any free-form option that used to live in `[train.options]` and
-# is not one of the `[defaults.train.grpo]`/`[defaults.rollout]` fields above
+# There is no free-form `[train]` options table: `model`, `training_file`,
+# `validation_file` and `suffix` are CLI-flag-only, and `--task-count N` caps
+# the number of training rows read. Any option that used to live in a
+# free-form `[train.options]` table and is not one of the
+# `[train.grpo]`/`[rollout]` fields above
 # (for example a fixed concurrency or a held-out example count) has no
 # manifest home any more and is not accepted by the CLI either.
 # ---------------------------------------------------------------------------

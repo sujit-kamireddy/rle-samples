@@ -4,10 +4,10 @@
 # `azd ai rle init`, `publish` and `train` read: all three resolve `rle.toml`
 # from `<sample>/rle/`, so the sample does not work without it.
 #
-# `[rle]` and `[defaults]` are the only tables this file has, and both
-# describe the published version: everything here is immutable once
-# published. There is no `[train]` table any more -- `model`,
-# `training_file`, `validation_file` and `suffix` are CLI-flag-only now; see
+# `[rle]`, `[model]`, `[train.grpo]` and `[rollout]` are the only tables this
+# file has, and all describe the published version: everything here is
+# immutable once published. `model`, `training_file`, `validation_file` and
+# `suffix` are CLI-flag-only, not manifest fields; see
 # `../README.md#5-start-a-training-job` for the exact command this
 # environment is trained with. The manifest is parsed in *strict* mode: an
 # unknown key is a hard error, so uncommenting a line is always safe but
@@ -68,13 +68,14 @@ invocation_url = "https://your-harness.example.com/invoke"
 
 
 # ---------------------------------------------------------------------------
-# [defaults] -- published with the version and returned by the service. Every
-# value here is optional and none of them has a service-side default: omitted
-# means absent. Supplying any of them requires schema_version = "1.0.0".
+# [model], [train.grpo] and [rollout] -- published with the version and
+# returned by the service. Every value here is optional and none of them has
+# a service-side default: omitted means absent. Supplying any of them
+# requires schema_version = "1.0.0".
 #
 # For the Harness type RLE consumes none of these: the harness owns the model
-# call, so they are carried for downstream training. [defaults.train.grpo] and
-# [defaults.rollout] are the only recipe settings a manifest can still carry --
+# call, so they are carried for downstream training. [train.grpo] and
+# [rollout] are the only recipe settings a manifest can still carry --
 # everything else that used to live in a free-form `[train.options]` table
 # (max_train_examples, max_test_examples, max_concurrent_rollouts, seed,
 # batch_size, rollout_max_retries, renderer_name aside) now has no manifest
@@ -82,24 +83,24 @@ invocation_url = "https://your-harness.example.com/invoke"
 # `../README.md#5-start-a-training-job`.
 # ---------------------------------------------------------------------------
 
-[defaults.model]
+[model]
 # Informational. Stored with the version; Execute Rollout never reads it.
 # name = "mai/mai-code-1.1-flash"
 # The Capture Proxy renderer. Left unset, the harness sends the model's default
 # renderer. Switched to MAI's own renderer: mai_harmony_internal is a
 # capture-only renderer for MAI-Code-1.1-Flash (no local tokenization), per
 # tools/local_finetune_facade/mai_recipe.py in loom. Qwen3-32B used qwen3_ext
-# instead (see the hillclimb note on [defaults.train.grpo] below).
+# instead (see the hillclimb note on [train.grpo] below).
 renderer_name = "mai_harmony_internal"
 
-# [defaults.rollout.gym_openenv]
+# [rollout.gym_openenv]
 # Gym/OpenEnv only: names the action property that receives the model
 # completion verbatim. Not valid for a Harness, so it is unset here even
 # though this folder serves an OpenEnv service -- the *callable interface*
 # RLE sees is still the harness.
 # model_response_field = "response"
 
-[defaults.train.grpo]
+[train.grpo]
 # Recipe-level GRPO settings, read by training and carried here so a published
 # version records what it was tuned against. The values below are the ones
 # that actually produced a measured hillclimb on this environment with
