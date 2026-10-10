@@ -52,7 +52,7 @@ environmentProtocol = "mcp_environment"
 # Where RLE POSTs each rollout. Required for BYOH, and the only thing RLE knows
 # about your harness: it is reached over the public internet with no auth
 # header of any kind, so the endpoint has to protect itself. It must answer
-# exactly 202 and then serve GET {base_url}/rollouts/{operation_id} for
+# exactly 202 and then serve GET {invocation_url}/rollouts/{operation_id} for
 # polling and DELETE for cancellation.
 # Replace the placeholder below with your own deployed harness's URL -- see
 # `../agent/README.md#build-and-deploy` for verified Google Cloud Run and
@@ -60,7 +60,7 @@ environmentProtocol = "mcp_environment"
 # is a well-formed absolute HTTPS URL (no DNS/reachability check), so leaving
 # the placeholder as-is will publish successfully and only fail later, when a
 # rollout can't reach this host.
-base_url = "https://your-harness.example.com/invoke"
+invocation_url = "https://your-harness.example.com/invoke"
 
 # agent_name and agent_version are HostedAgent-only and are rejected for BYOH.
 # agent_name = "data-code-agent"

@@ -17,7 +17,7 @@ description: >-
   HostedAgent; rle.toml, schema-driven model_response_field, SDK RLEnvironment/GradeAction,
   environmentProtocol, max_completion_tokens, GET /schema action vocabulary,
   reward shaping, reset selectors, a Harness's /invoke or Responses wire contract,
-  agent_name/agent_version vs base_url, and debugging EnvironmentContractViolation,
+  agent_name/agent_version vs invocation_url, and debugging EnvironmentContractViolation,
   RolloutDependencyFailed, degenerate_rollout, a wrong episode being graded, or a truncated answer.
 
   DO NOT USE FOR: training-job hyperparameter tuning, Foundry model deployment, or changes to the

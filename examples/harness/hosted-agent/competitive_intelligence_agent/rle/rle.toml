@@ -56,8 +56,8 @@ agent_name = "competitive-intelligence-rle-agent"
 # A positive integer, or "draft-{unix-timestamp}" for an unpublished draft.
 agent_version = "1"
 
-# base_url is BYOH-only and is rejected for HostedAgent.
-# base_url = "https://your-harness.example.com/invoke"
+# invocation_url is BYOH-only and is rejected for HostedAgent.
+# invocation_url = "https://your-harness.example.com/invoke"
 
 
 # ---------------------------------------------------------------------------

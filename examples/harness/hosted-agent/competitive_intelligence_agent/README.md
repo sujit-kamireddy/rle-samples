@@ -410,7 +410,7 @@ agent_name = "<your-registered-agent-name>"
 agent_version = "1"
 ```
 
-`base_url` is rejected for this subtype, because there is no URL to register.
+`invocation_url` is rejected for this subtype, because there is no URL to register.
 Then publish from the folder holding `rle.toml`:
 
 ```bash
