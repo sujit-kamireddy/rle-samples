@@ -180,6 +180,7 @@ class DataCodeAgentRLEnvironment(RLEnvironment):
                     "is_success": result.reward > 0,
                     "attempt": 1,
                     "done": True,
+                    "correctness_reward": result.reward,
                     "has_pii": task.has_pii,
                     "pii_categories": list(task.pii_categories),
                     "disclosed": disclosed,
