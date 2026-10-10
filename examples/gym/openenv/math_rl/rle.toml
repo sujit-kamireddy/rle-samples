@@ -64,27 +64,6 @@ environmentProtocol = "mcp_environment"
 # qwen3_5_ext_disable_thinking.
 # renderer_name = "qwen3_ext"
 
-[defaults.rollout]
-# Output budget for a single model turn. Integer > 0, and the effective value
-# is min(value, 8192) -- so 8192 is both the cap and what an omitted setting
-# gets. It is set explicitly anyway, so the budget this environment was tuned
-# against stays visible and survives a change to the service cap. The budget is
-# dominated by the reasoning, not by the answer, so a two-digit result still
-# needs thousands of tokens: measured against Qwen3-32B, 4096 truncated 2 of 3
-# sampled problems, while the longest run that finished on its own used 6252.
-max_completion_tokens = 8192
-
-# Bounds the full rollout sequence length seen by the sampler. Integer > 0.
-# max_sequence_tokens = 32767
-# Bounds the prompt/context budget handed to the model each turn. Integer > 0.
-# max_rollout_input_tokens = 131072
-# Declares the tokenizer vocabulary size the rollout expects. Integer > 0.
-# vocab_size = 151936
-# Bounds how long a single rollout may run before it is aborted. Finite float > 0.
-# rollout_timeout_s = 120
-# Bounds the size of a single rollout response payload, in bytes. Integer > 0.
-# max_rollout_response_bytes = 1048576
-
 [defaults.rollout.gym_openenv]
 # Names the action property that receives the model completion's content
 # verbatim. It must be a property the environment already declares in its own

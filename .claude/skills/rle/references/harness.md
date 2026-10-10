@@ -152,11 +152,11 @@ invocation_url = "https://your-harness.example.com/invoke"
 
 - `[defaults.rollout.gym_openenv]` (`model_response_field`) is Gym/OpenEnv-only and rejected for
   Harness.
-- `[defaults.rollout]` (`max_completion_tokens`, `max_sequence_tokens`, `max_rollout_input_tokens`,
-  `vocab_size`, `rollout_timeout_s`, `max_rollout_response_bytes`) and `[defaults.train.grpo]` are
-  still meaningful for Harness — the harness owns its own model-call/turn loop, so RLE never reads
-  these at rollout time, but `azd ai rle train` flattens both tables into the training job's
-  hyperparameters, so this is where a Harness sample's tuned GRPO/rollout defaults live.
+- `[defaults.train.grpo]` is still meaningful for Harness — the harness owns its own
+  model-call/turn loop, so RLE never reads it at rollout time, but `azd ai rle train` flattens it
+  into the training job's hyperparameters, so this is where a Harness sample's tuned GRPO defaults
+  live. There is no manifest field for a completion-token budget any more; RLE applies a fixed
+  server ceiling regardless of rollout kind.
 - There is no `[train]` / `[train.options]` table any more. `model`, `training-file`,
   `validation-file`, and `suffix` are CLI-flag-only on `azd ai rle train` — there is no manifest
   fallback for them.

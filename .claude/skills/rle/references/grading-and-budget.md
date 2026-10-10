@@ -52,13 +52,9 @@ So:
 
 ### Token budget
 
-`max_completion_tokens` in `rle.toml` becomes `max_tokens` on every model call, clamped to the 8192
-server ceiling (see the manifest reference). Two failure modes, both quiet:
-
-- **Too low:** a reasoning model is cut off mid-thought and submits a truncated answer, which the
-  format term then scores as malformed. It looks like a bad policy; it is a bad budget.
-- **Too high:** every call pays for headroom nobody uses.
-
-Measure it. Run several episodes locally against the real model, look at the longest completion that
-terminated on its own, and set the budget above that — then record the measurement in a comment in
-`rle.toml` the way `math_rl` does, so the next person does not have to re-derive it.
+There is no manifest field for the completion-token budget any more. Every model call's
+`max_tokens` is a fixed server ceiling (8192, see the manifest reference) regardless of what the
+environment would otherwise ask for. A reasoning model can still be cut off mid-thought and submit
+a truncated answer, which the format term then scores as malformed -- that looks like a bad policy;
+it is actually the ceiling. Design the environment's expected completions to fit comfortably inside
+it; there is nothing to configure here.

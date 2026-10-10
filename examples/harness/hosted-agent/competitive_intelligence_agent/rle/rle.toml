@@ -114,7 +114,3 @@ sampling_seed = 42
 # rather than abort a step. The abort threshold stays well above the observed
 # failure rate so a bad patch of minutes cannot end a 15-hour run.
 rollout_failure_rate_abort = 0.5
-
-[defaults.rollout]
-max_sequence_tokens = 32767
-vocab_size = 151936

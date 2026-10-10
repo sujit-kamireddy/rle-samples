@@ -15,8 +15,7 @@
 | HTTP 500 `RolloutDependencyFailed` | a dependency of the rollout (commonly the capture proxy's model completion) failed; the error body carries no inner detail | reproduce locally with `azd ai rle run` first to rule out the environment, then escalate with the rollout id — this class of failure is usually service-side, not authoring |
 | Rollout export reports `degenerate_rollout` (FATAL) | exactly one model call **and** the episode came back ungraded | make every terminal path set a reward and `done=True`; never end by exhausting the step budget |
 | Reward is real but for the wrong problem | `reset()` dropped an unknown selector and the picker drew a random row | end `reset()`'s signature in `**kwargs` and call `reject_unknown_selectors(kwargs)` first |
-| Answers look truncated / format score is always negative | completion hit the token budget | raise `max_completion_tokens` (ceiling 8192) and re-measure |
-| Setting `max_completion_tokens` above 8192 has no effect | silently clamped to the server ceiling | the ceiling is the ceiling; shorten the required reasoning instead |
+| Answers look truncated / format score is always negative | completion hit RLE's fixed 8192-token server ceiling (no longer a manifest field to raise) | shorten the required reasoning so it fits inside the ceiling |
 | Episode stops earlier than expected | the episode is hitting RLE's fixed 32-step server ceiling (no longer a manifest field to raise) | redesign the environment to terminate with a grade well inside 32 steps |
 | Connection drops mid-rollout | `step()` blocked the event loop past the WebSocket keepalive interval | move long grading work off-thread |
 | Rollout aborts citing an unexpected frame | the environment sent a WebSocket frame when nothing was awaiting a response | only ever reply; never push |
