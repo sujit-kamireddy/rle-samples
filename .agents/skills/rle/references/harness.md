@@ -22,7 +22,7 @@ entrypoint and `rle.toml`'s `[rle]` section.
 | | `HostedAgent` | `BYOH` (Bring Your Own Harness) |
 | --- | --- | --- |
 | Where the agent runs | A Foundry Hosted Agent version | Anywhere you register a base URL |
-| `rle.toml` identifies it by | `agentName` / `agentVersion` | `baseUrl` |
+| `rle.toml` identifies it by | `[rle.harness] agent_name` / `agent_version` | `[rle.harness] invocation_url` |
 | Invocation | One synchronous call | Async: start, then poll, then optional cancel |
 | Hosting burden | None — Foundry hosts it | You deploy and protect the endpoint yourself |
 
@@ -49,7 +49,7 @@ OpenEnv `reset`/`step` protocol:
 
 ### BYOH wire contract
 
-RLE invokes a BYOH harness asynchronously against the registered `baseUrl`. Two identifiers arrive
+RLE invokes a BYOH harness asynchronously against the registered `invocation_url`. Two identifiers arrive
 and answer different questions: `rollout_id` is the correlation handle both sides log;
 `operation_id` is what RLE polls and cancels, is minted per invocation, and — because the poll and
 cancel legs carry no credential — is also what authorizes those calls. Key your own state on
@@ -132,7 +132,7 @@ what reaches `rle/`'s `/grade` as `agent_response`.
 
 ### `rle.toml` for Harness
 
-Same manifest shape as Gym, with a different `[rle]` payload and inert `[defaults]`:
+Same manifest shape as Gym, with a different `[rle]` payload and inert Gym-only defaults:
 
 ```toml
 [rle]
@@ -141,20 +141,25 @@ version = "1.0.0"
 type = "Harness"
 subtype = "BYOH"          # or "HostedAgent"
 
+[rle.harness]
 # BYOH only — rejected for HostedAgent:
-baseUrl = "https://your-harness.example.com/invoke"
+invocation_url = "https://your-harness.example.com/invoke"
 
 # HostedAgent only — rejected for BYOH:
-# agentName = "my-agent"
-# agentVersion = "1"      # or "draft-<unix-timestamp>"
+# agent_name = "my-agent"
+# agent_version = "1"      # or "draft-<unix-timestamp>"
 ```
 
-- `[defaults.gym_openenv]` (`model_response_field`) is Gym/OpenEnv-only and rejected for Harness.
-- `[defaults.reinforcement]` (`max_episode_steps`, `max_completion_tokens`) is inert for Harness —
-  the harness owns its own model calls and turn budget, so RLE never reads these here. They are
-  still accepted and carried through to Training Jobs, which do read them.
-- `[train]` and `[train.options]` behave exactly as they do for Gym/OpenEnv: local-only, never
-  published, and overridable per run with `azd ai rle train` flags.
+- `[defaults.rollout.gym_openenv]` (`model_response_field`) is Gym/OpenEnv-only and rejected for
+  Harness.
+- `[defaults.train.grpo]` is still meaningful for Harness — the harness owns its own
+  model-call/turn loop, so RLE never reads it at rollout time, but `azd ai rle train` flattens it
+  into the training job's hyperparameters, so this is where a Harness sample's tuned GRPO defaults
+  live. There is no manifest field for a completion-token budget any more; RLE applies a fixed
+  server ceiling regardless of rollout kind.
+- There is no `[train]` / `[train.options]` table any more. `model`, `training-file`,
+  `validation-file`, and `suffix` are CLI-flag-only on `azd ai rle train` — there is no manifest
+  fallback for them.
 
 ### Workflow
 
@@ -162,17 +167,20 @@ baseUrl = "https://your-harness.example.com/invoke"
    from a working sample and copies its paired `agent/` alongside it as a reference to adapt.
 2. Build and deploy `agent/` — anywhere reachable over HTTPS for BYOH, or as a registered Foundry
    Hosted Agent version for HostedAgent — independently of the RLE side.
-3. Point `rle.toml` at it (`baseUrl`, or `agentName`/`agentVersion`), then `azd ai rle publish`.
+3. Point `rle.toml` at it (`[rle.harness] invocation_url`, or `agent_name`/`agent_version`), then
+   `azd ai rle publish`.
 4. `azd ai rle rollout <name> --version <v> --agent-input '...'` exercises one rollout end to end
    before training: confirm the harness answers, and that `/grade` grades the episode the task
    asked for.
 5. `azd ai rle train` as usual — a Harness rollout still trains through the same recipe, it just
-   never touches `[defaults.reinforcement]` or `model_response_field`.
+   never touches `[defaults.rollout.gym_openenv]` or `model_response_field`, which are
+   Gym/OpenEnv-only.
 
 ### Exit criteria
 
 - `rle.toml` has `[rle] type = "Harness"`, the correct `subtype`, and exactly one of
-  `baseUrl` (BYOH) or `agentName`/`agentVersion` (HostedAgent) — never both, never neither.
+  `[rle.harness] invocation_url` (BYOH) or `agent_name`/`agent_version` (HostedAgent) — never both,
+  never neither.
 - `rle/server/env.py`'s `/reset` pins whatever `/grade` needs to identify and score the right
   episode, keyed so a concurrent rollout with a different task can't cross-contaminate it.
 - The harness answers the real wire contract for its subtype (202 + poll + optional cancel for

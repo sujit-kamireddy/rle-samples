@@ -27,7 +27,7 @@ these references rather than assuming either sample uses it.
    Observation/State models.
 4. `server/grading.py` — scoring, testable on its own.
 5. `server/<name>_environment.py` — `reset()` / `step()`.
-6. `rle.toml` — name, version, contract selector, step and token budgets.
+6. `rle.toml` — name, version, contract selector, token budget.
 7. `README.md` — what the episode is and how it is graded.
 
 ### 3. Run it locally

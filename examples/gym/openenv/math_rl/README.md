@@ -26,14 +26,14 @@ state proves that tool activity belongs to the same episode instance.
 The manifest selects this mode explicitly:
 
 ```toml
-environment_protocol = "mcp_environment"
-
-[defaults.reinforcement]
-max_episode_steps = 4
+[rle]
+environmentProtocol = "mcp_environment"
 ```
 
-The four-step budget allows up to three helper calls plus terminal grading.
-There is no `model_response_field`; that setting belongs to schema-driven Gym.
+`max_episode_steps` is no longer a manifest field -- RLE now caps a Gym
+episode server-side at 32 turns regardless of what this environment sets,
+so there is nothing to configure here. There is no `model_response_field`;
+that setting belongs to schema-driven Gym.
 
 ## Layout
 

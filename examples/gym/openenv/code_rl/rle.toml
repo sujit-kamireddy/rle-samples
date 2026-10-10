@@ -6,14 +6,16 @@
 # manifest is parsed in *strict* mode: an unknown key is a hard error, so
 # uncommenting a line is always safe but inventing one is not.
 #
-# `[rle]` and `[defaults]` describe the published version and are immutable once
-# published. `[train]` is local-only and never published.
+# `[rle]` and `[defaults]` are the only tables this file has, and both
+# describe the published version: everything here is immutable once
+# published. There is no `[train]` table any more -- `model`,
+# `training_file`, `validation_file` and `suffix` are CLI-flag-only now; see
+# the commands below.
 
 # Manifest schema version. Optional; the only accepted value is "1.0.0", which
 # is also what is assumed when it is omitted. Required as soon as [defaults] is
 # supplied.
 schema_version = "1.0.0"
-environment_protocol = "mcp_environment"
 
 [rle]
 # snake_case, starting with a letter.
@@ -26,18 +28,23 @@ type = "Gym"
 # "OpenEnv" for Gym; "HostedAgent" or "BYOH" for Harness.
 subtype = "OpenEnv"
 
-# agentName, agentVersion and baseUrl are Harness-only and are all rejected for
-# a Gym target: RLE reaches this environment through the sandbox it schedules
-# from the published image, so there is no address to register.
-# agentName = "..."
-# agentVersion = "..."
-# baseUrl = "..."
+# RLE decides whether to open an MCP sandbox session for a rollout from this
+# field, recorded at publish time and immutable for the version.
+environmentProtocol = "mcp_environment"
 
 # Pins the environment container independently of `version`, for build scripts
 # that tag images. Not used by the CLI itself -- `azd ai rle publish` takes the
 # image as an argument -- but declared so a pinned tag does not fail the strict
 # parse.
 # imageTag = "1.0.0"
+
+# [rle.harness] is Harness-only and is rejected for a Gym target: RLE reaches
+# this environment through the sandbox it schedules from the published image,
+# so there is no agent/harness address to register.
+# [rle.harness]
+# agent_name = "..."
+# agent_version = "..."
+# invocation_url = "..."
 
 
 # ---------------------------------------------------------------------------
@@ -57,64 +64,47 @@ subtype = "OpenEnv"
 # qwen3_5_ext_disable_thinking.
 # renderer_name = "qwen3_ext"
 
-[defaults.reinforcement]
-# Maximum turns in one episode. Integer > 0, and required for Gym/OpenEnv --
-# it is what makes Execute Rollout treat this as an enabled Gym target. The
-# effective value is min(value, 32), so asking for more than 32 changes
-# nothing.
+[defaults.rollout.gym_openenv]
+# Names the action property that receives the model completion's content
+# verbatim. It must be a property the environment already declares in its own
+# action model, so there is no default. Maximum 128 characters.
+model_response_field = "response"
+
+# [defaults.train.grpo]
+# Recipe-level GRPO settings. Stored with the version and read by training;
+# RLE itself never consumes them. Each is optional and has no default.
+# learning_rate = 0.0003                 # finite float > 0
+# group_size = 8                         # integer > 0
+# groups_per_batch = 128                 # integer > 0
+# lora_rank = 32                         # integer > 0
+# num_epochs = 1                         # integer > 0
+# max_steps = 150                        # integer > 0
+# eval_every = 10                        # integer > 0
+# save_every = 10                        # integer > 0
+# remove_constant_reward_groups = true   # bool
+# compute_post_kl = false                # bool
+# sampling_seed = 42                     # integer
+# rollout_failure_rate_abort = 0.45      # finite float in [0, 1]
+# rollout_failure_rate_warn = 0.3        # finite float in [0, 1]
+# rollout_failure_window_size = 50       # integer > 0
+# rollout_failure_min_attempts = 10      # integer > 0
+# min_trainable_group_members = 2        # integer > 0
+# group_failure_rate_abort = 0.5         # finite float in [0, 1]
+
+
+# ---------------------------------------------------------------------------
+# Training a published version.
 #
-# Two check_solution MCP calls plus the final GradeAction grading step.
-max_episode_steps = 3
-
-# Output budget for a single model turn: the reasoning plus the whole function
-# it produces. Integer > 0, and the effective value is min(value, 8192) -- so
-# 8192 is both the cap and what an omitted setting gets. It is set explicitly
-# anyway, so the budget this environment was tuned against stays visible and
-# survives a change to the service cap. Applies per turn, so each of the three
-# steps gets it. An untrained Qwen3-32B still overruns it on some problems and
-# is graded as a failed turn, which is the signal that teaches it to answer
-# inside the budget.
-max_completion_tokens = 8192
-
-# [defaults.reinforcement.hyperparameters]
-# Passed through to Training Jobs; RLE's rollout path ignores them. Each is
-# optional and has no default.
-# n_epochs = 1                     # integer > 0
-# batch_size = 8                   # integer > 0; unrelated to grpo.groups_per_batch
-# learning_rate_multiplier = 1.0   # finite float > 0
-# eval_interval = 10               # integer > 0
-# eval_samples = 32                # integer > 0
-# compute_multiplier = 1.0         # finite float > 0
-# reasoning_effort = "medium"      # exactly "low", "medium" or "high"
-
-# [defaults.grpo]
-# Recipe-level GRPO settings. Stored with the version and read by Training
-# Jobs; RLE itself never consumes them.
-# group_size = 8                   # integer > 0
-# groups_per_batch = 128           # integer > 0
-# max_steps = 150                  # integer > 0
-
+# There is no `[train]` table: `model`, `training_file`, `validation_file` and
+# `suffix` are CLI-flag-only, and `--task-count N` caps the number of training
+# rows read. Any free-form option that used to live in `[train.options]` and
+# is not one of the `[defaults.train.grpo]`/`[defaults.rollout]` fields above
+# (for example a fixed concurrency or a held-out example count) has no
+# manifest home any more and is not accepted by the CLI either.
 # ---------------------------------------------------------------------------
-# [train] -- how this environment is usually trained, so a run is one command.
-# Local-only: never published, free to change without republishing, and any
-# flag on `azd ai rle train` overrides it for a single run.
-# ---------------------------------------------------------------------------
-# [train]
-# Base model to train. Only RL-enabled models are accepted.
-# model = "qwen3-32b-1"
-# Paths are relative to this file.
-# training_file = "./job_data/train.jsonl"
-# validation_file = "./job_data/validation.jsonl"
-# Appended to the fine-tuned model name, to tell runs apart.
-# suffix = "code-rl"
-# Per-run override of defaults.reinforcement.max_episode_steps. Integer > 0.
-# max_episode_steps = 3
-
-# Free-form options forwarded to the training service, which owns the
-# vocabulary and validates it per recipe -- an unsupported key is rejected by
-# name, with the supported set. `azd ai rle train --task-count N` sets
-# max_train_examples.
-# [train.options]
-# group_size = 4                   # rollouts per GRPO group; needs at least 2
-# max_concurrent_rollouts = 8      # how many rollouts run at once
-# max_train_examples = 16          # caps rows read from training_file
+# cd rle
+# azd ai rle train --rle-version 1.0.0 \
+#   --model qwen3-32b-1 \
+#   --training-file ./job_data/train.jsonl \
+#   --validation-file ./job_data/validation.jsonl \
+#   --suffix code-rl

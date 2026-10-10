@@ -404,11 +404,13 @@ name = "competitive_intelligence_agent"
 version = "2.0.0"
 type = "Harness"
 subtype = "HostedAgent"
-agentName = "<your-registered-agent-name>"
-agentVersion = "1"
+
+[rle.harness]
+agent_name = "<your-registered-agent-name>"
+agent_version = "1"
 ```
 
-`baseUrl` is rejected for this subtype, because there is no URL to register.
+`invocation_url` is rejected for this subtype, because there is no URL to register.
 Then publish from the folder holding `rle.toml`:
 
 ```bash
@@ -442,14 +444,21 @@ A rollout that returns a reward between 0 and 1 with seven `dim/` entries in
 
 ## 5. Start the training run
 
-`rle/rle.toml` records everything, so the run needs no flags beyond the
-version. It must run from the folder holding `rle.toml`, because the CLI reads
-`./rle.toml` and resolves `training_file` and `validation_file` relative to the
-working directory:
+`model`, `training_file`, `validation_file` and `suffix` are CLI-flag-only:
+`rle.toml` no longer carries a `[train]` table, so every run needs them passed
+explicitly. `rle/rle.toml`'s `[defaults.train.grpo]` and `[defaults.rollout]`
+are still pre-tuned for this environment. It must run from the folder holding
+`rle.toml`, because the CLI resolves `--training-file`/`--validation-file`
+relative to the working directory:
 
 ```bash
 cd "$SAMPLE/rle"
-azd ai rle train --rle-version 2.0.0 --follow
+azd ai rle train --rle-version 2.0.0 \
+  --model qwen3-32b-1 \
+  --training-file ../job_data/train.jsonl \
+  --validation-file ../job_data/validation.jsonl \
+  --suffix ci-agent-1epoch \
+  --follow
 ```
 
 Pass `--rle-version` explicitly. Without it the CLI resolves a version on its
@@ -461,7 +470,12 @@ discovering a problem at step 3:
 
 ```bash
 cd "$SAMPLE/rle"
-azd ai rle train --rle-version 2.0.0 --task-count 8
+azd ai rle train --rle-version 2.0.0 \
+  --model qwen3-32b-1 \
+  --training-file ../job_data/train.jsonl \
+  --validation-file ../job_data/validation.jsonl \
+  --suffix ci-agent-1epoch \
+  --task-count 8
 ```
 
 ### What the full run costs

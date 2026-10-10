@@ -4,15 +4,19 @@
 # `azd ai rle init`, `publish` and `train` read: all three resolve `rle.toml`
 # from `<sample>/rle/`, so the sample does not work without it.
 #
-# `[rle]` and `[defaults]` describe the published version and are immutable
-# once published. `[train]` is local-only and never published. The manifest is
-# parsed in *strict* mode: an unknown key is a hard error.
+# `[rle]` and `[defaults]` are the only tables this file has, and both
+# describe the published version: everything here is immutable once
+# published. There is no `[train]` table any more -- `model`,
+# `training_file`, `validation_file` and `suffix` are CLI-flag-only now; see
+# `../README.md#5-start-the-training-run` for the exact command this
+# environment is trained with. The manifest is parsed in *strict* mode: an
+# unknown key is a hard error.
 #
-# Hyperparameters are carried over from the published run that produced the
-# reward curve in `../README.md`, with one deliberate change: that run was
+# [defaults.train.grpo] is carried over from the published run that produced
+# the reward curve in `../README.md`, with one deliberate change: that run was
 # configured for eight epochs and stopped by hand once the held-out curve
-# turned over, while this one is pinned to a single epoch so it finishes on its
-# own at the point the original was stopped. See `[train.options]`.
+# turned over, while this one is pinned to a single epoch so it finishes on
+# its own at the point the original was stopped. See the comments below.
 
 schema_version = "1.0.0"
 
@@ -38,40 +42,38 @@ subtype = "HostedAgent"
 # manifest in strict mode and reject it outright.
 environmentProtocol = "mcp_environment"
 
-# The registered Foundry Hosted Agent RLE calls for each rollout. Replace both
-# of these with your own registration -- see step 3 in `../README.md`. RLE
-# resolves the name against the project and posts to
-# {project}/agents/{agentName}/endpoint/protocols/openai/responses.
-agentName = "competitive-intelligence-rle-agent"
-# A positive integer, or "draft-{unix-timestamp}" for an unpublished draft.
-agentVersion = "1"
-
-# baseUrl is BYOH-only and is rejected for HostedAgent.
-# baseUrl = "https://your-harness.example.com/invoke"
-
 # Pins the harness container independently of `version`, for build scripts that
 # tag images. The CLI takes the image as an argument to `publish` and does not
 # read this, but it is declared so a pinned tag does not fail the strict parse.
 # imageTag = "2.0.0"
 
+[rle.harness]
+# The registered Foundry Hosted Agent RLE calls for each rollout. Replace both
+# of these with your own registration -- see step 3 in `../README.md`. RLE
+# resolves the name against the project and posts to
+# {project}/agents/{agent_name}/endpoint/protocols/openai/responses.
+agent_name = "competitive-intelligence-rle-agent"
+# A positive integer, or "draft-{unix-timestamp}" for an unpublished draft.
+agent_version = "1"
+
+# invocation_url is BYOH-only and is rejected for HostedAgent.
+# invocation_url = "https://your-harness.example.com/invoke"
+
 
 # ---------------------------------------------------------------------------
-# [train] -- how this environment is trained, so a run is one command.
-# Local-only: never published, and any flag on `azd ai rle train` overrides it.
+# [defaults] -- published with the version and returned by the service. Every
+# value here is optional and none of them has a service-side default: omitted
+# means absent.
 # ---------------------------------------------------------------------------
-[train]
-model = "qwen3-32b-1"
-# Paths are relative to this file. `verify_dataset.py` proves these two share
-# no scenario; see "The dataset" in `../README.md`.
-training_file = "../job_data/train.jsonl"
-validation_file = "../job_data/validation.jsonl"
-suffix = "ci-agent-1epoch"
 
-[train.options]
+[defaults.train.grpo]
 # Carried unchanged from the published run.
 learning_rate = 0.0003
 group_size = 6
-batch_size = 48
+# Groups per optimiser step. 48 training rows per batch, previously carried as
+# the Training-Jobs-vocabulary `batch_size`, which has no equivalent in this
+# schema; 48 x 6 = 288 rollouts per training batch.
+groups_per_batch = 48
 
 # ONE EPOCH, FOURTEEN STEPS.
 #
@@ -87,13 +89,7 @@ batch_size = 48
 # The policy had stopped exploring. Pinning the run to the epoch it actually
 # learned in removes the judgement call and makes the budget predictable.
 num_epochs = 1
-max_train_examples = 655
 max_steps = 14
-
-# The held-out set is 40 scenarios at 3 replicates. The replicates are what
-# make a step-to-step move readable: a single pass over 40 tasks carries enough
-# sampling noise to hide a real move of the size this run produces.
-max_test_examples = 120
 
 # Evaluate and checkpoint on the same even steps, so every published point on
 # the curve has weights behind it that can be served and inspected. Checkpoint
@@ -111,22 +107,10 @@ remove_constant_reward_groups = true
 # sampler/trainer agreement without it.
 compute_post_kl = false
 
-max_sequence_tokens = 32767
-vocab_size = 151936
-
-# 48 x 6 = 288 rollouts per training batch. The simulated tool surface is
-# served in-process by the RLE container, so unlike the production agent's
-# Fabric toolbox it imposes no throttling ceiling of its own, and concurrency
-# here is bounded by the sampling engine. Lower this to 32 if rollout failures
-# climb over the first two steps; the run costs roughly ten hours more.
-max_concurrent_rollouts = 64
-
 # Fixed so a replication draws the same batches in the same order.
-seed = 42
+sampling_seed = 42
 
 # Transient 502s from the capture proxy during a weight swap should be absorbed
 # rather than abort a step. The abort threshold stays well above the observed
 # failure rate so a bad patch of minutes cannot end a 15-hour run.
-rollout_max_retries = 3
 rollout_failure_rate_abort = 0.5
-untrainable_capture_retries = 1
