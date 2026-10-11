@@ -92,7 +92,7 @@ reset(task)  ->  observation  ->  model completion  ->  action  ->  step()  ->  
 - Choose exactly one contract. Schema-driven environments declare exactly one action variant
   carrying `model_response_field`; SDK MCP environments subclass `RLEnvironment`, register typed
   tools with `self.tool()`, and grade `GradeAction`.
-- `rle.toml` has `schema_version = "2.0.0"`, `[rle] type = "Gym"` / `subtype = "OpenEnv"`.
+- `rle.toml` has `schema_version = "1.0.0"`, `[rle] type = "Gym"` / `subtype = "OpenEnv"`.
   Schema-driven mode sets `[defaults.rollout.gym_openenv] model_response_field`; SDK MCP mode
   instead sets `[rle] environmentProtocol = "mcp_environment"` and must not set
   `model_response_field`. The completion-token budget is a fixed server ceiling (8192), not a

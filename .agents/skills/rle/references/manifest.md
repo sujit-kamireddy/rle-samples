@@ -6,7 +6,7 @@ re-read at rollout time.
 Schema-driven Gym mode:
 
 ```toml
-schema_version = "2.0.0"
+schema_version = "1.0.0"
 
 [rle]
 name = "math_rl"
@@ -23,7 +23,7 @@ model_response_field = "answer_text"
 SDK `RLEnvironment` MCP mode:
 
 ```toml
-schema_version = "2.0.0"
+schema_version = "1.0.0"
 
 [rle]
 name = "code_rl"
@@ -37,7 +37,7 @@ subtype = "OpenEnv"
 
 ### Rules
 
-**`schema_version` must be exactly `"2.0.0"`,** and it is *required whenever any of `[model]`,
+**`schema_version` must be exactly `"1.0.0"`,** and it is *required whenever any of `[model]`,
 `[train]`, or `[rollout]` is present. Omitting it while supplying those is a publish-time validation
 error, not a silent default.
 

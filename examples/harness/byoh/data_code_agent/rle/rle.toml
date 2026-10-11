@@ -15,7 +15,7 @@
 # environment leaves unset, listed with their default and their validation
 # rule so the whole surface is visible in one file.
 
-schema_version = "2.0.0"
+schema_version = "1.0.0"
 
 [rle]
 # snake_case, starting with a letter.
@@ -72,7 +72,7 @@ invocation_url = "https://your-harness.example.com/invoke"
 # [model], [train.grpo] and [rollout] -- published with the version and
 # returned by the service. Every value here is optional and none of them has
 # a service-side default: omitted means absent. Supplying any of them
-# requires schema_version = "2.0.0".
+# requires schema_version = "1.0.0".
 #
 # For the Harness type RLE consumes none of these: the harness owns the model
 # call, so they are carried for downstream training. [train.grpo] and
