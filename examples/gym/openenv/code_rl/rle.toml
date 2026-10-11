@@ -15,7 +15,7 @@
 # Manifest schema version. Optional; the only accepted value is "1.0.0", which
 # is also what is assumed when it is omitted. Required as soon as [model],
 # [train] or [rollout] is supplied.
-schema_version = "1.0.0"
+schema_version = "2.0.0"
 
 [rle]
 # snake_case, starting with a letter.
@@ -53,7 +53,7 @@ subtype = "OpenEnv"
 # [model], [train.grpo] and [rollout] -- published with the version and
 # returned by the service. Every value here is optional and none of them has
 # a service-side default: omitted means absent. Supplying any of them
-# requires schema_version = "1.0.0".
+# requires schema_version = "2.0.0".
 # ---------------------------------------------------------------------------
 
 # [model]

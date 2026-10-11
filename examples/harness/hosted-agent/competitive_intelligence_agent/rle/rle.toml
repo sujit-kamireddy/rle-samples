@@ -18,7 +18,7 @@
 # turned over, while this one is pinned to a single epoch so it finishes on
 # its own at the point the original was stopped. See the comments below.
 
-schema_version = "1.0.0"
+schema_version = "2.0.0"
 
 [rle]
 name = "competitive_intelligence_agent"
