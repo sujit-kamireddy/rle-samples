@@ -16,6 +16,60 @@ The `type` and `subtype` values match the RLE control plane. The manifest
 intentionally does not contain Foundry project endpoints, registry
 locations, service IDs, or credentials.
 
+## RLE SDK installation
+
+All four RLE container samples install `azure-ai-projects[rle]` wheels from the
+[public SDK manifest](https://raw.githubusercontent.com/Azure/azure-sdk-for-python/rle-releases/sdk/ai/azure-ai-projects/rle/registry.json),
+hosted by [Azure/azure-sdk-for-python#49488](https://github.com/Azure/azure-sdk-for-python/pull/49488).
+The SDK is installed inside the container during `azd ai rle publish`; no host
+SDK installation, SDK source-fork access, or GitHub credentials are required.
+Each sample includes `install_rle_sdk.py` in its own Docker build context.
+The Dockerfile copies the installer locally; it is not downloaded during builds.
+The installer selects the requested version and verifies its SHA-256 before
+running pip. Docker uses the wheel already fetched beside the registry, without
+downloading it again. Local development using the remote registry downloads the
+selected wheel instead. Approved version paths must not be overwritten, and a
+checksum mismatch always fails installation.
+Keep the four installer copies identical when updating them. Each sample
+retains its own build context and includes its installer when scaffolded by the CLI.
+
+Each sample's Dockerfile sets `ENV AZURE_AI_PROJECTS_VERSION=latest` before
+SDK installation. To pin a version, edit that line in your local Dockerfile to
+an exact version listed in the manifest. A missing version fails; it never falls
+back. No SDK setting is needed on the `azd` CLI side.
+The Dockerfiles use Git-source `ADD` scoped to the public distribution
+subdirectory. A builder supporting Git-source `ADD`
+(such as current Docker with BuildKit)
+resolves the branch commit on each build, so new releases refresh the SDK
+installation layer without relying on a CDN-cached raw manifest.
+
+The default Dockerfile setting is:
+
+```dockerfile
+ENV AZURE_AI_PROJECTS_VERSION=latest
+```
+
+To pin the SDK version, change that line locally before rebuilding:
+
+```dockerfile
+ENV AZURE_AI_PROJECTS_VERSION=2.7.0b1
+```
+
+For local server development outside Docker, run from the folder containing
+the sample's Dockerfile:
+
+```powershell
+python install_rle_sdk.py --requirements requirements.txt
+```
+
+The local installer also accepts `--version <version>` for a version listed in
+the manifest. Docker builds use the environment value defined in the Dockerfile.
+Runtime container environment variables cannot change the SDK baked into an
+image.
+[`tools/test_rle_sdk_distribution.py`](./tools/test_rle_sdk_distribution.py)
+checks that all sample installers match, along with version selection, checksum
+verification, and pip installation.
+
 ## `.agents/skills/` and `.claude/skills/` — the authoring skills
 
 The skills carry the RLE authoring contract: the server surface, the action

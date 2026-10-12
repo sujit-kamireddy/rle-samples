@@ -65,9 +65,11 @@ not problem content:
 
 ## Build and run
 
-The Dockerfile pins `openenv==0.6.0` and the immutable SDK source revision
-`e56ac36c6b497f74cc7cb1caf1f2fa07bd0cb241`; the public SDK wheel at that
-version does not yet contain `RLEnvironment`.
+The Dockerfile pins `openenv==0.6.0` and installs an RLE SDK wheel from the
+public manifest without accessing the SDK source fork. [`Dockerfile`](./Dockerfile)
+sets `ENV AZURE_AI_PROJECTS_VERSION=latest`; edit that line locally to pin
+an exact published SDK version before rebuilding. No SDK CLI setting is needed.
+See [SDK installation](../../../../README.md#rle-sdk-installation).
 
 ```bash
 docker build -t code-rl .

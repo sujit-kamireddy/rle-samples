@@ -13,6 +13,8 @@ root on `sys.path` so `rle.server` imports still resolve from there.
 ## Scripted client
 
 ```bash
+python ../../data_code_agent/rle/install_rle_sdk.py \
+  --requirements ../../data_code_agent/rle/requirements.txt
 python -m pip install -r ../../data_code_agent/rle/requirements-test.txt
 python -m rle.scripts.session_demo \
   --url http://127.0.0.1:8000 \

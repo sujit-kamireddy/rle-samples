@@ -14,26 +14,25 @@ FROM python:3.12-slim
 ARG PIP_INDEX_URL
 ARG PIP_FALLBACK_INDEX_URL
 
-# `git` is here only because `requirements.txt` still pins the SDK from a git
-# ref; it can go once the `rle` extra ships on PyPI. See that file.
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends git \
-    && rm -rf /var/lib/apt/lists/*
-
 WORKDIR /app
+ENV AZURE_AI_PROJECTS_VERSION=latest
 
 # This image installs openenv: the OpenEnv step protocol is exactly what it
 # serves. `azure-ai-projects[rle]` brings the `RLEnvironment` base class and
 # fastmcp with it.
 COPY requirements.txt /app/requirements.txt
+COPY install_rle_sdk.py /app/
+# Resolve the public branch commit; raw HTTP manifests can be CDN-cached.
+ADD https://github.com/Azure/azure-sdk-for-python.git#rle-releases:sdk/ai/azure-ai-projects/rle /app/rle-sdk-dist/
 RUN if [ -n "${PIP_FALLBACK_INDEX_URL}" ] && \
        ! pip download --no-deps --quiet --index-url "${PIP_INDEX_URL}" --dest /tmp/idxprobe six >/dev/null 2>&1; then \
         echo "Primary index unreachable; falling back to ${PIP_FALLBACK_INDEX_URL}"; \
         export PIP_INDEX_URL="${PIP_FALLBACK_INDEX_URL}"; \
     fi; \
     rm -rf /tmp/idxprobe; \
-    pip install --no-cache-dir --progress-bar off --index-url "${PIP_INDEX_URL}" \
-        -r /app/requirements.txt
+    python /app/install_rle_sdk.py --manifest /app/rle-sdk-dist/registry.json \
+        --requirements /app/requirements.txt \
+        --index-url "${PIP_INDEX_URL}"
 
 # This image is self-contained: the world, the tasks, the simulated tools and
 # the rubric are copied from this folder (`rle/`) itself.
