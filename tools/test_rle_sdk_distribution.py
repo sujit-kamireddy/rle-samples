@@ -20,12 +20,12 @@ SAMPLES = (
 )
 PUBLIC_GIT_SOURCE = (
     "https://github.com/Azure/azure-sdk-for-python.git#"
-    "rle-external-releases:sdk/ai/azure-ai-projects/rle-external"
+    "rle-external-releases:sdk/ai/azure-ai-projects/rle-releases"
 )
 SHARED_INSTALLER = ROOT / "tools" / "install_rle_sdk.py"
 SHARED_INSTALLER_URL = (
     "https://raw.githubusercontent.com/sujit-kamireddy/rle-samples/"
-    "8c1424cd7383fc5bae4493a2f16c5c08131c0a83/tools/install_rle_sdk.py"
+    "c2b4db2904d524d3f1793b0fb3eed31954f3729f/tools/install_rle_sdk.py"
 )
 VERSION = "2.7.0b1"
 SECOND_VERSION = "2.7.0b2"
@@ -163,6 +163,11 @@ def test_invalid_manifest_fails(installer, field, value):
     ("filename", "../../escape.whl"),
     ("url", "https://raw.githubusercontent.com/Azure/azure-sdk-for-python/main/sdk.whl"),
     ("url", "https://example.com/sdk.whl"),
+    ("url", (
+        "https://raw.githubusercontent.com/Azure/azure-sdk-for-python/"
+        f"rle-external-releases/sdk/ai/azure-ai-projects/rle-external/wheels/{VERSION}/"
+        f"azure_ai_projects-{VERSION}-py3-none-any.whl"
+    )),
     ("sha256", "not-a-hash"),
 ])
 def test_invalid_artifact_entry_fails(installer, field, value):

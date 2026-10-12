@@ -19,7 +19,7 @@ locations, service IDs, or credentials.
 ## RLE SDK installation
 
 All four RLE container samples install `azure-ai-projects[rle]` wheels from the
-[public SDK manifest](https://raw.githubusercontent.com/Azure/azure-sdk-for-python/rle-external-releases/sdk/ai/azure-ai-projects/rle-external/registry.json),
+[public SDK manifest](https://raw.githubusercontent.com/Azure/azure-sdk-for-python/rle-external-releases/sdk/ai/azure-ai-projects/rle-releases/registry.json),
 hosted by [Azure/azure-sdk-for-python#49482](https://github.com/Azure/azure-sdk-for-python/pull/49482).
 During `azd ai rle publish`, the environment image is built and its Dockerfile
 installs the SDK inside that container. The SDK is a container dependency, not
