@@ -63,17 +63,18 @@ to `safe_grade`; raw unboxed final text is never accepted as a lucky match.
 
 ## Build and run
 
-Choose Docker or Podman and run from this directory:
+Use a Git-source-ADD-capable builder (such as Docker with BuildKit) from this directory:
 
 ```bash
 docker build -t math-rl .
 docker run --rm -p 8000:8000 math-rl
 ```
 
-The Dockerfile pins `openenv==0.6.0` and immutable SDK source revision
-`e56ac36c6b497f74cc7cb1caf1f2fa07bd0cb241`. That revision contains
-`azure.ai.projects.rle.environments.RLEnvironment`; the released public 2.7.0
-wheel does not, so it is not currently an equivalent dependency.
+The Dockerfile pins `openenv==0.6.0` and installs an RLE SDK wheel from the
+public manifest without source repository access. [`Dockerfile`](./Dockerfile)
+sets `ENV AZURE_AI_PROJECTS_RLE_VERSION=latest`; edit that line locally to pin
+an exact published version for reproducible builds. No SDK CLI setting is needed.
+See [SDK installation](../../../../README.md#rle-sdk-installation).
 
 The server must use one worker. RLE owns the model loop and sends MCP
 `tools/list`, optional `tools/call`, and terminal `GradeAction` exchanges over

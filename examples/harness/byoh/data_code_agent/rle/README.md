@@ -8,8 +8,10 @@ control share that instance; multiple sessions can run independently in one
 container.
 
 The app uses `azure.ai.projects.rle.environments.create_app`, which installs
-query-based session routing. [`requirements.txt`](./requirements.txt) pins an
-SDK source commit containing that export. Rebuild before publishing; older
+query-based session routing. [`install_rle_sdk.py`](./install_rle_sdk.py) installs
+a public SDK wheel containing that export. [`Dockerfile`](./Dockerfile) defaults
+to `ENV AZURE_AI_PROJECTS_RLE_VERSION=latest`; edit that line locally to pin a
+published version. Rebuild before publishing; older
 environment images cannot serve the new routing contract.
 
 This folder is the only RLE service in the sample: it grades a rollout itself
@@ -37,7 +39,7 @@ Use **one Uvicorn worker**: session IDs belong to that process.
 Alternatively, create an isolated Python environment and run from the sample root:
 
 ```bash
-python -m pip install -r rle/requirements.txt
+python rle/install_rle_sdk.py --requirements rle/requirements.txt
 uvicorn rle.server.app:app --factory --host 127.0.0.1 --port 8000 --workers 1
 ```
 

@@ -1,14 +1,14 @@
 FROM python:3.12-slim
 
-# `git` is here only because `requirements.txt` still pins the SDK from a git
-# ref; it can go once the `rle` extra ships on PyPI. See that file.
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends git \
-    && rm -rf /var/lib/apt/lists/*
+ARG PIP_INDEX_URL=https://pypi.org/simple
 
 WORKDIR /app
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+ENV AZURE_AI_PROJECTS_RLE_VERSION=latest
+COPY install_rle_sdk.py requirements.txt /app/
+# Resolve the public branch commit; raw HTTP manifests can be CDN-cached.
+ADD https://github.com/Azure/azure-sdk-for-python.git#rle-external-releases:sdk/ai/azure-ai-projects/rle-external /app/rle-sdk-dist/
+RUN python /app/install_rle_sdk.py --manifest /app/rle-sdk-dist/registry.json \
+    --requirements /app/requirements.txt
 COPY __init__.py ./rle/__init__.py
 # The build context is this folder (`rle/`) itself -- `azd ai rle publish`
 # always builds from the directory holding rle.toml, so COPY sources are

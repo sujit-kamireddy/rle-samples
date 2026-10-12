@@ -1,14 +1,5 @@
-# The `RLEnvironment` base class, `GradeAction`, and query-routing `create_app`.
-#
-# TODO: replace with `azure-ai-projects[rle]` from PyPI once the extra ships.
-# It does not exist yet: the released 2.7.0 wheel carries no
-# `azure/ai/projects/rle/` at all and declares no `rle` extra, so installing it
-# by name would silently give an SDK without the base class and fail at import.
-# The fork that introduced it is pinned until then. The extra it declares is
-# `openenv>=0.6.0,<0.7.0` and `fastmcp>=3.0.0,<4.0.0`, both satisfied below.
-# This source revision includes the query-routing `create_app` used by this image,
-# and `GradeAction.answer`/`rollout` renamed to `response`/`rollout_graph`.
-azure-ai-projects[rle] @ git+https://github.com/sujit-kamireddy/azure-sdk-for-python@e56ac36c6b497f74cc7cb1caf1f2fa07bd0cb241#subdirectory=sdk/ai/azure-ai-projects
+# The SDK wheel and rle extra are installed by install_rle_sdk.py.
+# The Dockerfile selects latest or an exact version from the public registry.
 
 # The underlying serving protocol, session manager, and the MCP
 # environment `RLEnvironment` extends. Pinned rather than ranged, matching the

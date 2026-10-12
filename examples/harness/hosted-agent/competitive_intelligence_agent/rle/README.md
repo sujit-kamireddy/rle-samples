@@ -49,7 +49,7 @@ docker run --rm -p 127.0.0.1:8000:8000 ci-rle-openenv:local
 Or run it directly, which needs only the sample root on the path:
 
 ```bash
-python -m pip install -r rle/requirements.txt
+python rle/install_rle_sdk.py --requirements rle/requirements.txt
 PYTHONPATH="$PWD" \
   uvicorn rle.server.app:app --host 127.0.0.1 --port 8000 --workers 1
 ```
@@ -142,6 +142,8 @@ are only here to keep the sample itself correct. Run the commands below from
 this sample root.
 
 ```bash
+python ../../competitive_intelligence_agent/rle/install_rle_sdk.py \
+  --requirements ../../competitive_intelligence_agent/rle/requirements.txt
 python -m pip install -r ../../competitive_intelligence_agent/rle/requirements-test.txt
 python -m pytest rle/tests -q
 ```
@@ -154,10 +156,11 @@ always lands inside the `[0, 1]` range RLE requires.
 
 ## Dependency note
 
-[`requirements.txt`](./requirements.txt) installs `azure-ai-projects[rle]` from
-a pinned GitHub fork commit providing both `RLEnvironment` and the
-query-routing `create_app` export; an older wheel or image without that factory
-cannot serve this contract. Rebuild using the pinned source (or install a
-locally built updated SDK wheel). Swap the source line
-for a normal version pin once that API ships to PyPI; do not assume a released
-wheel or a different fork revision already contains it.
+[`install_rle_sdk.py`](./install_rle_sdk.py) installs `azure-ai-projects[rle]`
+from the public wheel manifest, providing both `RLEnvironment` and the
+query-routing `create_app` export. [`Dockerfile`](./Dockerfile) sets
+`ENV AZURE_AI_PROJECTS_RLE_VERSION=latest`; edit that line locally to pin a
+published version, without any SDK configuration in the CLI. Wheel hashes and package
+metadata are checked before installation. An older wheel or image without that
+factory cannot serve this contract; rebuild before publishing. See
+[SDK installation](../../../../../README.md#rle-sdk-installation).

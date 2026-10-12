@@ -28,14 +28,12 @@ ARG PIP_INDEX_URL
 
 WORKDIR /app
 
-ARG AZURE_AI_PROJECTS_RLE_REF=e56ac36c6b497f74cc7cb1caf1f2fa07bd0cb241
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends git \
-    && rm -rf /var/lib/apt/lists/* \
-    && pip install --no-cache-dir \
-      "azure-ai-projects[rle] @ git+https://github.com/sujit-kamireddy/azure-sdk-for-python@${AZURE_AI_PROJECTS_RLE_REF}#subdirectory=sdk/ai/azure-ai-projects" \
-      "openenv==0.6.0" \
-      numpy
+ENV AZURE_AI_PROJECTS_RLE_VERSION=latest
+COPY install_rle_sdk.py requirements.txt /app/
+# Resolve the public branch commit; raw HTTP manifests can be CDN-cached.
+ADD https://github.com/Azure/azure-sdk-for-python.git#rle-external-releases:sdk/ai/azure-ai-projects/rle-external /app/rle-sdk-dist/
+RUN python /app/install_rle_sdk.py --manifest /app/rle-sdk-dist/registry.json \
+    --requirements /app/requirements.txt
 
 COPY . /app/envs/code_rl
 

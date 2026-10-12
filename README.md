@@ -16,6 +16,54 @@ The `type` and `subtype` values match the RLE control plane. The manifest
 intentionally does not contain Foundry project endpoints, registry
 locations, service IDs, or credentials.
 
+## RLE SDK installation
+
+All four RLE container samples install `azure-ai-projects[rle]` wheels from the
+[public SDK manifest](https://raw.githubusercontent.com/Azure/azure-sdk-for-python/rle-external-releases/sdk/ai/azure-ai-projects/rle-external/registry.json),
+hosted by [Azure/azure-sdk-for-python#49482](https://github.com/Azure/azure-sdk-for-python/pull/49482).
+No source fork access, Git installation, or GitHub credentials are required.
+Each sample includes the same `install_rle_sdk.py`, which verifies the immutable
+wheel URL, SHA-256 and RLE package metadata before installing.
+
+Each sample's Dockerfile sets `ENV AZURE_AI_PROJECTS_RLE_VERSION=latest` before
+SDK installation. To pin a version, edit that line in your local Dockerfile to
+an exact version listed in the manifest. A missing version fails; it never falls
+back. No SDK version setting, environment forwarding, or SDK installation is
+needed on the `azd` CLI side.
+The Dockerfiles use Git-source `ADD` scoped to the public distribution
+subdirectory. A Git-source-ADD-capable builder (such as Docker with BuildKit)
+resolves the branch commit on each build, so new releases invalidate the SDK
+installation layer without relying on a CDN-cached raw manifest or GitHub REST
+API rate limits. Git is not installed in the runtime image.
+
+The default Dockerfile setting is:
+
+```dockerfile
+ENV AZURE_AI_PROJECTS_RLE_VERSION=latest
+```
+
+For reproducible builds, change it locally before rebuilding:
+
+```dockerfile
+ENV AZURE_AI_PROJECTS_RLE_VERSION=2.7.0.dev20261012053512
+```
+
+For local Python use, run from the sample's Docker build directory:
+
+```powershell
+python install_rle_sdk.py --requirements requirements.txt
+```
+
+The local Python installer also accepts `--version <version>`. Docker builds use
+only the environment value defined in the Dockerfile, defaulting to latest.
+Runtime container environment variables cannot change the SDK baked into an
+image. The public SDK PR contains only the manifest and wheels; release tooling
+and installer source stay in the SDK fork. Keep the standalone sample installer
+copies byte-identical, using the [math sample copy](./examples/gym/openenv/math_rl/install_rle_sdk.py)
+as the reference within this repository;
+[`tools/test_rle_sdk_distribution.py`](./tools/test_rle_sdk_distribution.py)
+checks parity and build wiring.
+
 ## `.agents/skills/` and `.claude/skills/` — the authoring skills
 
 The skills carry the RLE authoring contract: the server surface, the action
