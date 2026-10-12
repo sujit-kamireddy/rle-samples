@@ -26,9 +26,9 @@ SDK installation, SDK source-fork access, or GitHub credentials are required.
 Each sample includes `install_rle_sdk.py` in its own Docker build context.
 The Dockerfile copies the installer locally; it is not downloaded during builds.
 The installer selects the requested version and verifies its SHA-256 before
-running pip. Docker uses the wheel already fetched beside the registry, without
-downloading it again. Local development using the remote registry downloads the
-selected wheel instead. Approved version paths must not be overwritten, and a
+running pip. Docker fetches the registry JSON over HTTPS, then the installer
+downloads only the selected wheel from its registry URL. Local development uses
+the same download flow. Approved version paths must not be overwritten, and a
 checksum mismatch always fails installation.
 Keep the four installer copies identical when updating them. Each sample
 retains its own build context and includes its installer when scaffolded by the CLI.
@@ -37,11 +37,9 @@ Each sample's Dockerfile sets `ENV AZURE_AI_PROJECTS_VERSION=latest` before
 SDK installation. To pin a version, edit that line in your local Dockerfile to
 an exact version listed in the manifest. A missing version fails; it never falls
 back. No SDK setting is needed on the `azd` CLI side.
-The Dockerfiles use Git-source `ADD` scoped to the public distribution
-subdirectory. A builder supporting Git-source `ADD`
-(such as current Docker with BuildKit)
-resolves the branch commit on each build, so new releases refresh the SDK
-installation layer without relying on a CDN-cached raw manifest.
+The Dockerfiles use HTTP `ADD` for the public registry JSON. When its content
+changes, Docker invalidates the SDK installation layer. GitHub's CDN can briefly
+serve an older registry; this delay is accepted. No Git fetch is needed.
 
 The default Dockerfile setting is:
 

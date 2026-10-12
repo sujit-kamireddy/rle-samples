@@ -102,11 +102,7 @@ def main() -> None:
     )
     print(f"RLE SDK: {release.version} (SHA-256 {release.sha256})", flush=True)
     with tempfile.TemporaryDirectory(prefix="rle-sdk-") as temporary:
-        if args.manifest.startswith("https://"):
-            wheel = download_wheel(release, Path(temporary))
-        else:
-            wheel = Path(args.manifest).resolve().parent / "wheels" / release.version / release.filename
-            verify_checksum(wheel, release)
+        wheel = download_wheel(release, Path(temporary))
         command = [
             sys.executable, "-m", "pip", "install", "--no-cache-dir",
             "--progress-bar", "off", f"azure-ai-projects[rle] @ {wheel.as_uri()}",

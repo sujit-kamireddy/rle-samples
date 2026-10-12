@@ -31,8 +31,7 @@ WORKDIR /app
 ENV AZURE_AI_PROJECTS_VERSION=latest
 COPY requirements.txt /app/
 COPY install_rle_sdk.py /app/
-# Resolve the public branch commit; raw HTTP manifests can be CDN-cached.
-ADD https://github.com/Azure/azure-sdk-for-python.git#rle-releases:sdk/ai/azure-ai-projects/rle /app/rle-sdk-dist/
+ADD https://raw.githubusercontent.com/Azure/azure-sdk-for-python/rle-releases/sdk/ai/azure-ai-projects/rle/registry.json /app/rle-sdk-dist/registry.json
 RUN python /app/install_rle_sdk.py --manifest /app/rle-sdk-dist/registry.json \
     --requirements /app/requirements.txt
 

@@ -22,8 +22,7 @@ ENV AZURE_AI_PROJECTS_VERSION=latest
 # fastmcp with it.
 COPY requirements.txt /app/requirements.txt
 COPY install_rle_sdk.py /app/
-# Resolve the public branch commit; raw HTTP manifests can be CDN-cached.
-ADD https://github.com/Azure/azure-sdk-for-python.git#rle-releases:sdk/ai/azure-ai-projects/rle /app/rle-sdk-dist/
+ADD https://raw.githubusercontent.com/Azure/azure-sdk-for-python/rle-releases/sdk/ai/azure-ai-projects/rle/registry.json /app/rle-sdk-dist/registry.json
 RUN if [ -n "${PIP_FALLBACK_INDEX_URL}" ] && \
        ! pip download --no-deps --quiet --index-url "${PIP_INDEX_URL}" --dest /tmp/idxprobe six >/dev/null 2>&1; then \
         echo "Primary index unreachable; falling back to ${PIP_FALLBACK_INDEX_URL}"; \
