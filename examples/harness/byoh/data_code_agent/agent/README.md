@@ -78,8 +78,8 @@ The per-rollout compliance credentials (`mcp_endpoint` / `mcp_bearer_token`,
 sent on `/invoke`) are lifted out of the rollout context and set as
 `COMPLIANCE_ENDPOINT` / `COMPLIANCE_TOKEN` on that rollout's `opencode` process
 (per-process, never global, so concurrent rollouts can't overwrite each
-other's). `COMPLIANCE_ENDPOINT` isn't `mcp_endpoint` verbatim: `../rle`
-publishes under `environmentProtocol = "mcp_environment"`, so reaching its
+other's). `COMPLIANCE_ENDPOINT` isn't `mcp_endpoint` verbatim: `../rle` is
+always driven over RLE's MCP environment protocol, so reaching its
 tools needs a JSON-RPC `tools/call` on `/mcp`, not a flat route. Rather than
 teach the baked instruction a second wire format, the rollout is pointed at a
 loopback route on this service (`/local-tools/{operation_id}/...` in

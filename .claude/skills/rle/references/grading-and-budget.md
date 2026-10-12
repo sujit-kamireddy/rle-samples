@@ -42,22 +42,19 @@ The practical consequence for you:
 
 So:
 
-- Set `max_episode_steps` to what the episode actually needs. A single-turn environment declaring
-  `max_episode_steps = 1` and returning `done=True` on its first `step()` is the correct design, not
-  a workaround.
+- Design the environment to terminate with a grade well inside RLE's fixed 32-step server ceiling.
+  A single-turn environment that returns `done=True` on its first `step()` is the correct design,
+  not a workaround — there is no manifest field to declare that any more, it is just what the
+  environment does.
 - Never let the loop end by exhausting the step budget. If the policy has not submitted by the last
   step, grade it as a failure and set `done=True` yourself.
 - Never return from `step()` on an error path without a reward and `done=True`.
 
 ### Token budget
 
-`max_completion_tokens` in `rle.toml` becomes `max_tokens` on every model call, clamped to the 8192
-server ceiling (see the manifest reference). Two failure modes, both quiet:
-
-- **Too low:** a reasoning model is cut off mid-thought and submits a truncated answer, which the
-  format term then scores as malformed. It looks like a bad policy; it is a bad budget.
-- **Too high:** every call pays for headroom nobody uses.
-
-Measure it. Run several episodes locally against the real model, look at the longest completion that
-terminated on its own, and set the budget above that — then record the measurement in a comment in
-`rle.toml` the way `math_rl` does, so the next person does not have to re-derive it.
+There is no manifest field for the completion-token budget any more. Every model call's
+`max_tokens` is a fixed server ceiling (8192, see the manifest reference) regardless of what the
+environment would otherwise ask for. A reasoning model can still be cut off mid-thought and submit
+a truncated answer, which the format term then scores as malformed -- that looks like a bad policy;
+it is actually the ceiling. Design the environment's expected completions to fit comfortably inside
+it; there is nothing to configure here.

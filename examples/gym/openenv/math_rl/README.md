@@ -23,17 +23,19 @@ and row, helper count and last helper inputs/result, and terminal status.
 Because MCP calls and grading share one persistent OpenEnv WebSocket, this
 state proves that tool activity belongs to the same episode instance.
 
-The manifest selects this mode explicitly:
+The manifest no longer needs to select this mode -- RLE always drives Gym/BYOH
+environments with the MCP environment protocol:
 
 ```toml
-environment_protocol = "mcp_environment"
-
-[defaults.reinforcement]
-max_episode_steps = 4
+[rle]
+name = "math_rl"
+version = "1.0.0"
 ```
 
-The four-step budget allows up to three helper calls plus terminal grading.
-There is no `model_response_field`; that setting belongs to schema-driven Gym.
+`max_episode_steps` is no longer a manifest field -- RLE now caps a Gym
+episode server-side at 32 turns regardless of what this environment sets,
+so there is nothing to configure here. There is no `model_response_field`;
+that setting belongs to schema-driven Gym.
 
 ## Layout
 
