@@ -23,10 +23,6 @@ PUBLIC_GIT_SOURCE = (
     "rle-releases:sdk/ai/azure-ai-projects/rle"
 )
 SHARED_INSTALLER = ROOT / "tools" / "install_rle_sdk.py"
-SHARED_INSTALLER_URL = (
-    "https://raw.githubusercontent.com/sujit-kamireddy/rle-samples/"
-    "b7c131b6ce0d9e33b492b782c07a6cb2a97c9222/tools/install_rle_sdk.py"
-)
 VERSION = "2.7.0b1"
 SECOND_VERSION = "2.7.0b2"
 LEGACY_VERSION = "2.7.0.dev20261012000000"
@@ -72,10 +68,10 @@ def manifest_for(installer, version=VERSION):
     }
 
 
-def test_samples_do_not_duplicate_the_shared_installer():
+def test_sample_installers_match_the_reference_copy():
     assert SHARED_INSTALLER.is_file()
     for sample in SAMPLES:
-        assert not (sample / "install_rle_sdk.py").exists()
+        assert (sample / "install_rle_sdk.py").read_text(encoding="utf-8") == SHARED_INSTALLER.read_text(encoding="utf-8"), sample
 
 
 @pytest.mark.parametrize("version", ["latest", "2.7.0b1"])
@@ -111,17 +107,17 @@ def test_sample_installs_public_sdk_and_refreshes_manifest_cache(sample):
     assert "ENV AZURE_AI_PROJECTS_VERSION=latest\n" in dockerfile
     assert "ARG AZURE_AI_PROJECTS_VERSION" not in dockerfile
     assert "ARG PIP_INDEX_URL" in dockerfile
-    digest = hashlib.sha256(SHARED_INSTALLER.read_text(encoding="utf-8").encode("utf-8")).hexdigest()
-    shared_add = f"ADD --checksum=sha256:{digest} {SHARED_INSTALLER_URL} /app/install_rle_sdk.py"
-    assert shared_add in dockerfile
+    installer_copy = "COPY install_rle_sdk.py /app/"
+    assert installer_copy in dockerfile
     assert "COPY requirements.txt /app/" in dockerfile
-    assert "COPY install_rle_sdk.py" not in dockerfile
+    assert "raw.githubusercontent.com/sujit-kamireddy/rle-samples" not in dockerfile
+    assert "ADD --checksum" not in dockerfile
     assert f"ADD {PUBLIC_GIT_SOURCE} /app/rle-sdk-dist/" in dockerfile
     assert "--manifest /app/rle-sdk-dist/registry.json" in dockerfile
     assert "--requirements /app/requirements.txt" in dockerfile
     assert "--version-file" not in dockerfile
     assert dockerfile.index("ENV AZURE_AI_PROJECTS_VERSION=latest") < dockerfile.index("python /app/install_rle_sdk.py")
-    assert dockerfile.index(shared_add) < dockerfile.index("python /app/install_rle_sdk.py")
+    assert dockerfile.index(installer_copy) < dockerfile.index("python /app/install_rle_sdk.py")
     assert dockerfile.index(f"ADD {PUBLIC_GIT_SOURCE}") < dockerfile.index("python /app/install_rle_sdk.py")
     assert "git+" not in dockerfile + requirements
     assert "sujit-kamireddy/azure-sdk-for-python" not in dockerfile + requirements
@@ -131,7 +127,7 @@ def test_sample_installs_public_sdk_and_refreshes_manifest_cache(sample):
     if ignore.exists() and "**" in ignore.read_text().splitlines():
         rules = ignore.read_text().splitlines()
         assert "!requirements.txt" in rules
-        assert "!install_rle_sdk.py" not in rules
+        assert "!install_rle_sdk.py" in rules
 
 
 def test_beta_latest_and_legacy_pins_resolve_independently(installer):

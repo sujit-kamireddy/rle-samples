@@ -26,17 +26,16 @@ installs the SDK inside that container. The SDK is a container dependency, not
 a dependency of the RLE CLI executable; no local SDK installation is needed
 to publish an environment.
 No source fork access, Git installation, or GitHub credentials are required.
-All sample Dockerfiles fetch one shared
-[`tools/install_rle_sdk.py`](./tools/install_rle_sdk.py) from an immutable public
-commit, checking the script's SHA-256 before running it. The installer then
+Each sample includes `install_rle_sdk.py` in its own Docker build context.
+The Dockerfile copies the installer locally; it is not downloaded during builds.
+The installer then
 verifies the public versioned wheel URL, SHA-256 and RLE package metadata before installing.
 Wheel URLs may pin a Git commit or use the public release branch; approved version
 paths must not be overwritten, and a checksum mismatch always fails installation.
-No installer copies are committed inside the samples, and each sample retains
-its own Docker build context. The CLI scaffolds and builds each sample folder
-independently, so the repository-root installer is outside that context and
-cannot be copied with Docker `COPY`. Updating the shared installer requires a new
-source commit and matching URL/checksum pins in the four Dockerfiles.
+For now, the four sample copies and the repository-root
+[`tools/install_rle_sdk.py`](./tools/install_rle_sdk.py) are kept identical.
+Update all five copies together. Each sample retains its own build context
+and includes its installer when scaffolded by the CLI.
 
 Each sample's Dockerfile sets `ENV AZURE_AI_PROJECTS_VERSION=latest` before
 SDK installation. To pin a version, edit that line in your local Dockerfile to
@@ -44,7 +43,7 @@ an exact version listed in the manifest. A missing version fails; it never falls
 back. No SDK version setting, environment forwarding, or SDK installation is
 needed on the `azd` CLI side.
 The Dockerfiles use Git-source `ADD` scoped to the public distribution
-subdirectory. A builder supporting Git-source `ADD` and `ADD --checksum`
+subdirectory. A builder supporting Git-source `ADD`
 (such as current Docker with BuildKit)
 resolves the branch commit on each build, so new releases invalidate the SDK
 installation layer without relying on a CDN-cached raw manifest or GitHub REST
@@ -76,11 +75,11 @@ The local Python installer also accepts `--version <version>`. Docker builds use
 only the environment value defined in the Dockerfile, defaulting to latest.
 Runtime container environment variables cannot change the SDK baked into an
 image. The public SDK PR contains only the manifest and wheels; release tooling
-and release validation stay in the SDK fork, while the one shared consumer
-installer lives in this repository's tools folder.
+and release validation stay in the SDK fork, while consumer installer copies
+live in this repository.
 [`tools/test_rle_sdk_distribution.py`](./tools/test_rle_sdk_distribution.py)
-checks that all samples use the same pinned installer and that its checksum
-matches the shared source, as well as version selection, artifact verification
+checks that all sample installers match the reference copy in `tools`, as well
+as version selection, artifact verification
 and pip installation.
 
 ## `.agents/skills/` and `.claude/skills/` — the authoring skills
