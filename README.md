@@ -21,11 +21,8 @@ locations, service IDs, or credentials.
 All four RLE container samples install `azure-ai-projects[rle]` wheels from the
 [public SDK manifest](https://raw.githubusercontent.com/Azure/azure-sdk-for-python/rle-releases/sdk/ai/azure-ai-projects/rle/registry.json),
 hosted by [Azure/azure-sdk-for-python#49488](https://github.com/Azure/azure-sdk-for-python/pull/49488).
-During `azd ai rle publish`, the environment image is built and its Dockerfile
-installs the SDK inside that container. The SDK is a container dependency, not
-a dependency of the RLE CLI executable; no local SDK installation is needed
-to publish an environment.
-No source fork access, Git installation, or GitHub credentials are required.
+The SDK is installed inside the container during `azd ai rle publish`; no host
+SDK installation, SDK source-fork access, or GitHub credentials are required.
 Each sample includes `install_rle_sdk.py` in its own Docker build context.
 The Dockerfile copies the installer locally; it is not downloaded during builds.
 The installer selects the requested version and verifies its SHA-256 before
@@ -33,22 +30,18 @@ running pip. Docker uses the wheel already fetched beside the registry, without
 downloading it again. Local development using the remote registry downloads the
 selected wheel instead. Approved version paths must not be overwritten, and a
 checksum mismatch always fails installation.
-For now, the four sample copies and the repository-root
-[`tools/install_rle_sdk.py`](./tools/install_rle_sdk.py) are kept identical.
-Update all five copies together. Each sample retains its own build context
-and includes its installer when scaffolded by the CLI.
+Keep the four installer copies identical when updating them. Each sample
+retains its own build context and includes its installer when scaffolded by the CLI.
 
 Each sample's Dockerfile sets `ENV AZURE_AI_PROJECTS_VERSION=latest` before
 SDK installation. To pin a version, edit that line in your local Dockerfile to
 an exact version listed in the manifest. A missing version fails; it never falls
-back. No SDK version setting, environment forwarding, or SDK installation is
-needed on the `azd` CLI side.
+back. No SDK setting is needed on the `azd` CLI side.
 The Dockerfiles use Git-source `ADD` scoped to the public distribution
 subdirectory. A builder supporting Git-source `ADD`
 (such as current Docker with BuildKit)
-resolves the branch commit on each build, so new releases invalidate the SDK
-installation layer without relying on a CDN-cached raw manifest or GitHub REST
-API rate limits. Git is not installed in the runtime image.
+resolves the branch commit on each build, so new releases refresh the SDK
+installation layer without relying on a CDN-cached raw manifest.
 
 The default Dockerfile setting is:
 
@@ -56,32 +49,26 @@ The default Dockerfile setting is:
 ENV AZURE_AI_PROJECTS_VERSION=latest
 ```
 
-For reproducible builds, change it locally before rebuilding:
+To pin the SDK version, change that line locally before rebuilding:
 
 ```dockerfile
 ENV AZURE_AI_PROJECTS_VERSION=2.7.0b1
 ```
 
-Only for local server development outside Docker, run from this repository's
-root, choosing the sample requirements:
+For local server development outside Docker, run from the folder containing
+the sample's Dockerfile:
 
 ```powershell
-python tools\install_rle_sdk.py --requirements examples\gym\openenv\math_rl\requirements.txt
+python install_rle_sdk.py --requirements requirements.txt
 ```
 
-Preview releases use beta versions such as `2.7.0b1` and `2.7.1b1`.
-Only versions listed in the public manifest are available for pinning.
-
-The local Python installer also accepts `--version <version>`. Docker builds use
-only the environment value defined in the Dockerfile, defaulting to latest.
+The local installer also accepts `--version <version>` for a version listed in
+the manifest. Docker builds use the environment value defined in the Dockerfile.
 Runtime container environment variables cannot change the SDK baked into an
-image. The public SDK PR contains only the manifest and wheels; release tooling
-and release validation stay in the SDK fork, while consumer installer copies
-live in this repository.
+image.
 [`tools/test_rle_sdk_distribution.py`](./tools/test_rle_sdk_distribution.py)
-checks that all sample installers match the reference copy in `tools`, as well
-as version selection, artifact verification
-and pip installation.
+checks that all sample installers match, along with version selection, checksum
+verification, and pip installation.
 
 ## `.agents/skills/` and `.claude/skills/` — the authoring skills
 

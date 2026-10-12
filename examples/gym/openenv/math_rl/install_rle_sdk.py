@@ -8,7 +8,6 @@ import hashlib
 import json
 import os
 from pathlib import Path
-import shutil
 import subprocess
 import sys
 import tempfile
@@ -97,28 +96,17 @@ def main() -> None:
     parser.add_argument("--version")
     parser.add_argument("--requirements", type=Path)
     parser.add_argument("--index-url", default=os.environ.get("PIP_INDEX_URL"))
-    parser.add_argument("--download-only", type=Path)
     args = parser.parse_args()
     release = resolve_release(
         load_manifest(args.manifest), selected_version(args.version)
     )
     print(f"RLE SDK: {release.version} (SHA-256 {release.sha256})", flush=True)
     with tempfile.TemporaryDirectory(prefix="rle-sdk-") as temporary:
-        directory = args.download_only or Path(temporary)
-        directory.mkdir(parents=True, exist_ok=True)
         if args.manifest.startswith("https://"):
-            wheel = download_wheel(release, directory)
+            wheel = download_wheel(release, Path(temporary))
         else:
             wheel = Path(args.manifest).resolve().parent / "wheels" / release.version / release.filename
             verify_checksum(wheel, release)
-            if args.download_only is not None:
-                target = directory / release.filename
-                if target.resolve() != wheel.resolve():
-                    shutil.copyfile(wheel, target)
-                wheel = target
-        if args.download_only is not None:
-            print(wheel)
-            return
         command = [
             sys.executable, "-m", "pip", "install", "--no-cache-dir",
             "--progress-bar", "off", f"azure-ai-projects[rle] @ {wheel.as_uri()}",

@@ -20,7 +20,7 @@ ENV AZURE_AI_PROJECTS_VERSION=latest
 # This image installs openenv: the OpenEnv step protocol is exactly what it
 # serves. `azure-ai-projects[rle]` brings the `RLEnvironment` base class and
 # fastmcp with it.
-COPY requirements.txt /app/
+COPY requirements.txt /app/requirements.txt
 COPY install_rle_sdk.py /app/
 # Resolve the public branch commit; raw HTTP manifests can be CDN-cached.
 ADD https://github.com/Azure/azure-sdk-for-python.git#rle-releases:sdk/ai/azure-ai-projects/rle /app/rle-sdk-dist/

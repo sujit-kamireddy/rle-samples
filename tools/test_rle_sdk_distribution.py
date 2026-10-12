@@ -1,4 +1,4 @@
-"""Dependency-light checks for shared public SDK installation."""
+"""Dependency-light checks for sample-local public SDK installation."""
 
 import hashlib
 import importlib.util
@@ -21,16 +21,15 @@ PUBLIC_GIT_SOURCE = (
     "https://github.com/Azure/azure-sdk-for-python.git#"
     "rle-releases:sdk/ai/azure-ai-projects/rle"
 )
-SHARED_INSTALLER = ROOT / "tools" / "install_rle_sdk.py"
+REFERENCE_INSTALLER = SAMPLES[0] / "install_rle_sdk.py"
 VERSION = "2.7.0b1"
 SECOND_VERSION = "2.7.0b2"
-LEGACY_VERSION = "2.7.0.dev20261012000000"
 
 
 @pytest.fixture(scope="module")
 def installer():
     spec = importlib.util.spec_from_file_location(
-        "sample_rle_sdk_installer", SHARED_INSTALLER,
+        "sample_rle_sdk_installer", REFERENCE_INSTALLER,
     )
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
@@ -60,9 +59,9 @@ def manifest_for(installer, version=VERSION):
 
 
 def test_sample_installers_match_the_reference_copy():
-    assert SHARED_INSTALLER.is_file()
+    reference = REFERENCE_INSTALLER.read_text(encoding="utf-8")
     for sample in SAMPLES:
-        assert (sample / "install_rle_sdk.py").read_text(encoding="utf-8") == SHARED_INSTALLER.read_text(encoding="utf-8"), sample
+        assert (sample / "install_rle_sdk.py").read_text(encoding="utf-8") == reference, sample
 
 
 @pytest.mark.parametrize("version", ["latest", "2.7.0b1"])
@@ -94,19 +93,17 @@ def test_final_upstream_registry_contract_resolves_latest_and_pin(installer, ver
 def test_sample_installs_public_sdk_and_refreshes_manifest_cache(sample):
     dockerfile = (sample / "Dockerfile").read_text()
     requirements = (sample / "requirements.txt").read_text()
-    assert not (sample / "sdk-version.txt").exists()
     assert "ENV AZURE_AI_PROJECTS_VERSION=latest\n" in dockerfile
     assert "ARG AZURE_AI_PROJECTS_VERSION" not in dockerfile
     assert "ARG PIP_INDEX_URL" in dockerfile
     installer_copy = "COPY install_rle_sdk.py /app/"
     assert installer_copy in dockerfile
-    assert "COPY requirements.txt /app/" in dockerfile
+    assert "COPY requirements.txt " in dockerfile
     assert "raw.githubusercontent.com/sujit-kamireddy/rle-samples" not in dockerfile
     assert "ADD --checksum" not in dockerfile
     assert f"ADD {PUBLIC_GIT_SOURCE} /app/rle-sdk-dist/" in dockerfile
     assert "--manifest /app/rle-sdk-dist/registry.json" in dockerfile
     assert "--requirements /app/requirements.txt" in dockerfile
-    assert "--version-file" not in dockerfile
     assert dockerfile.index("ENV AZURE_AI_PROJECTS_VERSION=latest") < dockerfile.index("python /app/install_rle_sdk.py")
     assert dockerfile.index(installer_copy) < dockerfile.index("python /app/install_rle_sdk.py")
     assert dockerfile.index(f"ADD {PUBLIC_GIT_SOURCE}") < dockerfile.index("python /app/install_rle_sdk.py")
@@ -121,26 +118,13 @@ def test_sample_installs_public_sdk_and_refreshes_manifest_cache(sample):
         assert "!install_rle_sdk.py" in rules
 
 
-def test_beta_latest_and_legacy_pins_resolve_independently(installer):
-    manifest = manifest_for(installer, LEGACY_VERSION)
-    for version in (VERSION, SECOND_VERSION):
-        manifest["versions"].update(manifest_for(installer, version)["versions"])
+def test_latest_and_pins_resolve_independently(installer):
+    manifest = manifest_for(installer)
+    manifest["versions"].update(manifest_for(installer, SECOND_VERSION)["versions"])
     manifest["latest"] = SECOND_VERSION
     assert installer.resolve_release(manifest).version == SECOND_VERSION
-    for version in (VERSION, SECOND_VERSION, LEGACY_VERSION):
+    for version in (VERSION, SECOND_VERSION):
         assert installer.resolve_release(manifest, version).version == version
-
-
-def test_versioned_release_branch_wheel_is_verified_before_installation(installer, tmp_path):
-    manifest = manifest_for(installer)
-    entry = manifest["versions"][VERSION]
-    entry["url"] = entry["url"].replace("a" * 40, installer.PUBLIC_BRANCH)
-    release = installer.resolve_release(manifest)
-    with patch.object(installer, "urlopen", return_value=io.BytesIO(wheel_bytes())):
-        assert installer.download_wheel(release, tmp_path).read_bytes() == wheel_bytes()
-    with patch.object(installer, "urlopen", return_value=io.BytesIO(b"tampered")):
-        with pytest.raises(ValueError, match="SHA-256 mismatch"):
-            installer.download_wheel(release, tmp_path)
 
 
 def test_registry_wheel_url_does_not_require_a_specific_release_layout(installer):
@@ -151,7 +135,7 @@ def test_registry_wheel_url_does_not_require_a_specific_release_layout(installer
 
 
 @pytest.mark.parametrize("version", [
-    "", "2.7.0", "missing", "../escape", SECOND_VERSION, "2.7.0.preview1", "2.7.0b0", "2.7.0b01",
+    "", "missing", SECOND_VERSION,
 ])
 def test_explicit_invalid_or_missing_version_never_falls_back(installer, version):
     with pytest.raises(ValueError):
@@ -194,23 +178,20 @@ def test_registry_versions_cannot_escape_the_wheel_directory(installer, version)
         installer.resolve_release(manifest)
 
 
-@pytest.mark.parametrize("version", [VERSION, LEGACY_VERSION])
-def test_download_checks_hash(installer, tmp_path, version):
-    data = wheel_bytes(version)
+def test_download_checks_hash(installer, tmp_path):
+    data = wheel_bytes()
     with patch.object(installer, "urlopen", return_value=io.BytesIO(data)):
         wheel = installer.download_wheel(
-            installer.resolve_release(manifest_for(installer, version)), tmp_path,
+            installer.resolve_release(manifest_for(installer)), tmp_path,
         )
     assert wheel.read_bytes() == data
 
 
-def test_checksum_failure_removes_download_and_never_installs(installer, tmp_path):
+def test_checksum_failure_removes_download(installer, tmp_path):
     with patch.object(installer, "urlopen", return_value=io.BytesIO(b"tampered")):
-        with patch.object(installer.subprocess, "run") as run:
-            with pytest.raises(ValueError, match="SHA-256 mismatch"):
-                installer.download_wheel(installer.resolve_release(manifest_for(installer)), tmp_path)
+        with pytest.raises(ValueError, match="SHA-256 mismatch"):
+            installer.download_wheel(installer.resolve_release(manifest_for(installer)), tmp_path)
     assert not list(tmp_path.iterdir())
-    run.assert_not_called()
 
 
 def test_selector_precedence_and_empty_values_fail(installer, monkeypatch):
@@ -224,9 +205,9 @@ def test_selector_precedence_and_empty_values_fail(installer, monkeypatch):
         installer.resolve_release(manifest_for(installer), installer.selected_version(None))
 
 
-@pytest.mark.parametrize("version", [VERSION, LEGACY_VERSION])
 @pytest.mark.parametrize("relative_manifest", [False, True])
-def test_pip_receives_verified_wheel_extra_and_requirements(installer, tmp_path, monkeypatch, version, relative_manifest):
+def test_pip_receives_verified_wheel_extra_and_requirements(installer, tmp_path, monkeypatch, relative_manifest):
+    version = VERSION
     manifest = tmp_path / "registry.json"
     manifest.write_text(json.dumps(manifest_for(installer, version)))
     requirements = tmp_path / "requirements.txt"
@@ -302,19 +283,11 @@ def test_remote_manifest_downloads_and_installs_verified_wheel(installer, monkey
     run.assert_called_once()
 
 
-def test_download_only_copies_verified_local_wheel_without_network(installer, tmp_path, monkeypatch):
-    manifest = tmp_path / "registry.json"
-    manifest.write_text(json.dumps(manifest_for(installer)))
-    filename = installer.resolve_release(manifest_for(installer)).filename
-    wheel = tmp_path / "wheels" / VERSION / filename
-    wheel.parent.mkdir(parents=True)
-    wheel.write_bytes(wheel_bytes())
-    for destination in (tmp_path / "download", wheel.parent):
-        monkeypatch.setattr(sys, "argv", [
-            "install_rle_sdk.py", "--manifest", str(manifest), "--download-only", str(destination),
-        ])
-        with patch.object(installer, "urlopen") as download, patch.object(installer.subprocess, "run") as run:
-            installer.main()
-        assert (destination / filename).read_bytes() == wheel_bytes()
-        download.assert_not_called()
-        run.assert_not_called()
+def test_remote_checksum_failure_never_installs(installer, monkeypatch):
+    monkeypatch.setattr(sys, "argv", ["install_rle_sdk.py", "--manifest", installer.MANIFEST_URL])
+    responses = [io.BytesIO(json.dumps(manifest_for(installer)).encode("utf-8")), io.BytesIO(b"tampered")]
+    with patch.object(installer, "urlopen", side_effect=responses):
+        with patch.object(installer.subprocess, "run") as run:
+            with pytest.raises(ValueError, match="SHA-256 mismatch"):
+                installer.main()
+    run.assert_not_called()

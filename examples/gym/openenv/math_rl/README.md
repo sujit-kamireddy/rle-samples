@@ -73,9 +73,9 @@ docker run --rm -p 8000:8000 math-rl
 ```
 
 The Dockerfile pins `openenv==0.6.0` and installs an RLE SDK wheel from the
-public manifest without source repository access. [`Dockerfile`](./Dockerfile)
+public manifest without accessing the SDK source fork. [`Dockerfile`](./Dockerfile)
 sets `ENV AZURE_AI_PROJECTS_VERSION=latest`; edit that line locally to pin
-an exact published version for reproducible builds. No SDK CLI setting is needed.
+an exact published SDK version before rebuilding. No SDK CLI setting is needed.
 See [SDK installation](../../../../README.md#rle-sdk-installation).
 
 The server must use one worker. RLE owns the model loop and sends MCP

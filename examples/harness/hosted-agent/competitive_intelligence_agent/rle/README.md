@@ -135,7 +135,7 @@ are only here to keep the sample itself correct. Run the commands below from
 this sample root.
 
 ```bash
-python ../../../../../tools/install_rle_sdk.py \
+python ../../competitive_intelligence_agent/rle/install_rle_sdk.py \
   --requirements ../../competitive_intelligence_agent/rle/requirements.txt
 python -m pip install -r ../../competitive_intelligence_agent/rle/requirements-test.txt
 python -m pytest rle/tests -q
