@@ -110,7 +110,7 @@ def load_manifest(location: str) -> object:
 def selected_version(explicit: str | None) -> str:
     if explicit is not None:
         return explicit
-    configured = os.environ.get("AZURE_AI_PROJECTS_RLE_VERSION")
+    configured = os.environ.get("AZURE_AI_PROJECTS_VERSION")
     if configured is not None:
         return configured
     return "latest"
