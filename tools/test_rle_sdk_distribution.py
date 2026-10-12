@@ -7,7 +7,6 @@ import json
 from pathlib import Path
 import sys
 from unittest.mock import patch
-import zipfile
 
 import pytest
 
@@ -40,16 +39,8 @@ def installer():
     return module
 
 
-def wheel_bytes(version=VERSION, *, extra="rle", module=True):
-    output = io.BytesIO()
-    with zipfile.ZipFile(output, "w") as archive:
-        archive.writestr(
-            f"azure_ai_projects-{version}.dist-info/METADATA",
-            f"Metadata-Version: 2.4\nName: azure-ai-projects\nVersion: {version}\nProvides-Extra: {extra}\n",
-        )
-        if module:
-            archive.writestr("azure/ai/projects/rle/environments/__init__.py", "")
-    return output.getvalue()
+def wheel_bytes(version=VERSION):
+    return f"SDK wheel fixture for {version}".encode("utf-8")
 
 
 def manifest_for(installer, version=VERSION):
@@ -152,13 +143,11 @@ def test_versioned_release_branch_wheel_is_verified_before_installation(installe
             installer.download_wheel(release, tmp_path)
 
 
-@pytest.mark.parametrize("reference", ["main", "other-branch", "a" * 39, "latest", "rle-external-releases"])
-def test_unapproved_wheel_references_are_rejected(installer, reference):
+def test_registry_wheel_url_does_not_require_a_specific_release_layout(installer):
     manifest = manifest_for(installer)
     entry = manifest["versions"][VERSION]
-    entry["url"] = entry["url"].replace("a" * 40, reference)
-    with pytest.raises(ValueError, match="public SDK commit or release branch"):
-        installer.resolve_release(manifest)
+    entry["url"] = "https://example.com/sdk.whl"
+    assert installer.resolve_release(manifest).url == entry["url"]
 
 
 @pytest.mark.parametrize("version", [
@@ -183,19 +172,11 @@ def test_invalid_manifest_fails(installer, field, value):
 
 @pytest.mark.parametrize("field,value", [
     ("filename", "../../escape.whl"),
-    ("url", "https://raw.githubusercontent.com/Azure/azure-sdk-for-python/main/sdk.whl"),
-    ("url", "https://example.com/sdk.whl"),
-    ("url", (
-        "https://raw.githubusercontent.com/Azure/azure-sdk-for-python/"
-        f"rle-external-releases/sdk/ai/azure-ai-projects/rle-external/wheels/{VERSION}/"
-        f"azure_ai_projects-{VERSION}-py3-none-any.whl"
-    )),
-    ("url", (
-        "https://raw.githubusercontent.com/Azure/azure-sdk-for-python/"
-        f"rle-releases/sdk/ai/azure-ai-projects/rle-releases/wheels/{VERSION}/"
-        f"azure_ai_projects-{VERSION}-py3-none-any.whl"
-    )),
-    ("sha256", "not-a-hash"),
+    ("filename", "..\\escape.whl"),
+    ("filename", "C:escape.whl"),
+    ("filename", "sdk.txt"),
+    ("url", "http://example.com/sdk.whl"),
+    ("sha256", None),
 ])
 def test_invalid_artifact_entry_fails(installer, field, value):
     manifest = manifest_for(installer)
@@ -204,8 +185,17 @@ def test_invalid_artifact_entry_fails(installer, field, value):
         installer.resolve_release(manifest)
 
 
+@pytest.mark.parametrize("version", [".", "..", "../escape", "escape\\outside", "C:escape"])
+def test_registry_versions_cannot_escape_the_wheel_directory(installer, version):
+    manifest = manifest_for(installer)
+    manifest["latest"] = version
+    manifest["versions"][version] = manifest["versions"][VERSION]
+    with pytest.raises(ValueError, match="safe wheel path components"):
+        installer.resolve_release(manifest)
+
+
 @pytest.mark.parametrize("version", [VERSION, LEGACY_VERSION])
-def test_download_checks_hash_and_wheel_metadata(installer, tmp_path, version):
+def test_download_checks_hash(installer, tmp_path, version):
     data = wheel_bytes(version)
     with patch.object(installer, "urlopen", return_value=io.BytesIO(data)):
         wheel = installer.download_wheel(
@@ -223,16 +213,6 @@ def test_checksum_failure_removes_download_and_never_installs(installer, tmp_pat
     run.assert_not_called()
 
 
-@pytest.mark.parametrize("kwargs", [
-    {"version": SECOND_VERSION}, {"extra": "voice"}, {"module": False},
-])
-def test_wrong_wheel_contents_fail(installer, tmp_path, kwargs):
-    wheel = tmp_path / "sdk.whl"
-    wheel.write_bytes(wheel_bytes(**kwargs))
-    with pytest.raises(ValueError):
-        installer.validate_wheel(wheel, VERSION)
-
-
 def test_selector_precedence_and_empty_values_fail(installer, monkeypatch):
     monkeypatch.delenv("AZURE_AI_PROJECTS_VERSION", raising=False)
     assert installer.selected_version(None) == "latest"
@@ -245,19 +225,96 @@ def test_selector_precedence_and_empty_values_fail(installer, monkeypatch):
 
 
 @pytest.mark.parametrize("version", [VERSION, LEGACY_VERSION])
-def test_pip_receives_verified_wheel_extra_and_requirements(installer, tmp_path, monkeypatch, version):
+@pytest.mark.parametrize("relative_manifest", [False, True])
+def test_pip_receives_verified_wheel_extra_and_requirements(installer, tmp_path, monkeypatch, version, relative_manifest):
     manifest = tmp_path / "registry.json"
     manifest.write_text(json.dumps(manifest_for(installer, version)))
     requirements = tmp_path / "requirements.txt"
     requirements.write_text("openenv==0.6.0\n")
+    release = installer.resolve_release(manifest_for(installer, version), version)
+    wheel = tmp_path / "wheels" / version / release.filename
+    wheel.parent.mkdir(parents=True)
+    wheel.write_bytes(wheel_bytes(version))
+    monkeypatch.chdir(tmp_path)
     monkeypatch.setattr(sys, "argv", [
-        "install_rle_sdk.py", "--manifest", str(manifest), "--version", version,
+        "install_rle_sdk.py", "--manifest", manifest.name if relative_manifest else str(manifest), "--version", version,
         "--requirements", str(requirements), "--index-url", "https://pypi.org/simple",
     ])
-    with patch.object(installer, "urlopen", return_value=io.BytesIO(wheel_bytes(version))):
+    with patch.object(installer, "urlopen", side_effect=AssertionError("Local wheels must not be downloaded")):
         with patch.object(installer.subprocess, "run") as run:
             installer.main()
     command = run.call_args.args[0]
     assert any(argument.startswith("azure-ai-projects[rle] @ file:") for argument in command)
+    assert f"azure-ai-projects[rle] @ {wheel.as_uri()}" in command
     assert command[-4:] == ["--index-url", "https://pypi.org/simple", "--requirement", str(requirements)]
     assert run.call_args.kwargs["check"] is True
+
+
+@pytest.mark.parametrize("selected", ["latest", VERSION])
+def test_local_manifest_selects_latest_or_environment_pin_without_network(installer, tmp_path, monkeypatch, selected):
+    registry = manifest_for(installer, SECOND_VERSION)
+    registry["versions"].update(manifest_for(installer)["versions"])
+    manifest = tmp_path / "registry.json"
+    manifest.write_text(json.dumps(registry))
+    for version in (VERSION, SECOND_VERSION):
+        release = installer.resolve_release(registry, version)
+        wheel = tmp_path / "wheels" / version / release.filename
+        wheel.parent.mkdir(parents=True)
+        wheel.write_bytes(wheel_bytes(version))
+    monkeypatch.setenv("AZURE_AI_PROJECTS_VERSION", selected)
+    monkeypatch.setattr(sys, "argv", ["install_rle_sdk.py", "--manifest", str(manifest)])
+    with patch.object(installer, "urlopen") as download, patch.object(installer.subprocess, "run") as run:
+        installer.main()
+    version = SECOND_VERSION if selected == "latest" else selected
+    expected = tmp_path / "wheels" / version / registry["versions"][version]["filename"]
+    assert f"azure-ai-projects[rle] @ {expected.as_uri()}" in run.call_args.args[0]
+    download.assert_not_called()
+
+
+@pytest.mark.parametrize("contents", [None, b"tampered"])
+def test_missing_or_tampered_local_wheel_fails_without_download_or_install(installer, tmp_path, monkeypatch, contents):
+    manifest = tmp_path / "registry.json"
+    manifest.write_text(json.dumps(manifest_for(installer)))
+    wheel = tmp_path / "wheels" / VERSION / installer.resolve_release(manifest_for(installer)).filename
+    if contents is not None:
+        wheel.parent.mkdir(parents=True)
+        wheel.write_bytes(contents)
+    monkeypatch.setattr(sys, "argv", ["install_rle_sdk.py", "--manifest", str(manifest)])
+    expected_error = FileNotFoundError if contents is None else ValueError
+    with patch.object(installer, "urlopen") as download, patch.object(installer.subprocess, "run") as run:
+        with pytest.raises(expected_error):
+            installer.main()
+    download.assert_not_called()
+    run.assert_not_called()
+    if contents is not None:
+        assert wheel.read_bytes() == contents
+
+
+def test_remote_manifest_downloads_and_installs_verified_wheel(installer, monkeypatch):
+    manifest = manifest_for(installer)
+    monkeypatch.setattr(sys, "argv", ["install_rle_sdk.py", "--manifest", installer.MANIFEST_URL])
+    responses = [io.BytesIO(json.dumps(manifest).encode("utf-8")), io.BytesIO(wheel_bytes())]
+    with patch.object(installer, "urlopen", side_effect=responses) as download:
+        with patch.object(installer.subprocess, "run") as run:
+            installer.main()
+    assert download.call_count == 2
+    assert download.call_args.args[0] == manifest["versions"][VERSION]["url"]
+    run.assert_called_once()
+
+
+def test_download_only_copies_verified_local_wheel_without_network(installer, tmp_path, monkeypatch):
+    manifest = tmp_path / "registry.json"
+    manifest.write_text(json.dumps(manifest_for(installer)))
+    filename = installer.resolve_release(manifest_for(installer)).filename
+    wheel = tmp_path / "wheels" / VERSION / filename
+    wheel.parent.mkdir(parents=True)
+    wheel.write_bytes(wheel_bytes())
+    for destination in (tmp_path / "download", wheel.parent):
+        monkeypatch.setattr(sys, "argv", [
+            "install_rle_sdk.py", "--manifest", str(manifest), "--download-only", str(destination),
+        ])
+        with patch.object(installer, "urlopen") as download, patch.object(installer.subprocess, "run") as run:
+            installer.main()
+        assert (destination / filename).read_bytes() == wheel_bytes()
+        download.assert_not_called()
+        run.assert_not_called()

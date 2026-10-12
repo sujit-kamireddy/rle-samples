@@ -28,10 +28,11 @@ to publish an environment.
 No source fork access, Git installation, or GitHub credentials are required.
 Each sample includes `install_rle_sdk.py` in its own Docker build context.
 The Dockerfile copies the installer locally; it is not downloaded during builds.
-The installer then
-verifies the public versioned wheel URL, SHA-256 and RLE package metadata before installing.
-Wheel URLs may pin a Git commit or use the public release branch; approved version
-paths must not be overwritten, and a checksum mismatch always fails installation.
+The installer selects the requested version and verifies its SHA-256 before
+running pip. Docker uses the wheel already fetched beside the registry, without
+downloading it again. Local development using the remote registry downloads the
+selected wheel instead. Approved version paths must not be overwritten, and a
+checksum mismatch always fails installation.
 For now, the four sample copies and the repository-root
 [`tools/install_rle_sdk.py`](./tools/install_rle_sdk.py) are kept identical.
 Update all five copies together. Each sample retains its own build context
