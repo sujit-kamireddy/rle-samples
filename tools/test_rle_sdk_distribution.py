@@ -1,6 +1,13 @@
 """Dependency-light checks for self-contained public SDK installation."""
 
+import hashlib
+import importlib.util
+import io
+import json
 from pathlib import Path
+import sys
+from unittest.mock import patch
+import zipfile
 
 import pytest
 
@@ -15,6 +22,49 @@ PUBLIC_GIT_SOURCE = (
     "https://github.com/Azure/azure-sdk-for-python.git#"
     "rle-external-releases:sdk/ai/azure-ai-projects/rle-external"
 )
+VERSION = "2.7.0b1"
+SECOND_VERSION = "2.7.0b2"
+LEGACY_VERSION = "2.7.0.dev20261012000000"
+
+
+@pytest.fixture(scope="module")
+def installer():
+    spec = importlib.util.spec_from_file_location(
+        "sample_rle_sdk_installer", SAMPLES[0] / "install_rle_sdk.py",
+    )
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+def wheel_bytes(version=VERSION, *, extra="rle", module=True):
+    output = io.BytesIO()
+    with zipfile.ZipFile(output, "w") as archive:
+        archive.writestr(
+            f"azure_ai_projects-{version}.dist-info/METADATA",
+            f"Metadata-Version: 2.4\nName: azure-ai-projects\nVersion: {version}\nProvides-Extra: {extra}\n",
+        )
+        if module:
+            archive.writestr("azure/ai/projects/rle/environments/__init__.py", "")
+    return output.getvalue()
+
+
+def manifest_for(installer, version=VERSION):
+    filename = f"azure_ai_projects-{version}-py3-none-any.whl"
+    return {
+        "schema_version": 1, "package": "azure-ai-projects", "channel": "rle-external",
+        "latest": version,
+        "versions": {version: {
+            "filename": filename,
+            "url": (
+                f"https://raw.githubusercontent.com/{installer.PUBLIC_REPOSITORY}/"
+                f"{'a' * 40}/{installer.PUBLIC_PATH}/wheels/{version}/{filename}"
+            ),
+            "sha256": hashlib.sha256(wheel_bytes(version)).hexdigest(),
+        }},
+    }
 
 
 def test_sample_installers_are_byte_identical():
@@ -46,3 +96,104 @@ def test_sample_installs_public_sdk_and_refreshes_manifest_cache(sample):
     if ignore.exists() and "**" in ignore.read_text().splitlines():
         rules = ignore.read_text().splitlines()
         assert "!install_rle_sdk.py" in rules
+
+
+def test_beta_latest_and_legacy_pins_resolve_independently(installer):
+    manifest = manifest_for(installer, LEGACY_VERSION)
+    for version in (VERSION, SECOND_VERSION):
+        manifest["versions"].update(manifest_for(installer, version)["versions"])
+    manifest["latest"] = SECOND_VERSION
+    assert installer.resolve_release(manifest).version == SECOND_VERSION
+    for version in (VERSION, SECOND_VERSION, LEGACY_VERSION):
+        assert installer.resolve_release(manifest, version).version == version
+
+
+@pytest.mark.parametrize("version", [
+    "", "2.7.0", "missing", "../escape", SECOND_VERSION, "2.7.0.preview1", "2.7.0b0", "2.7.0b01",
+])
+def test_explicit_invalid_or_missing_version_never_falls_back(installer, version):
+    with pytest.raises(ValueError):
+        installer.resolve_release(manifest_for(installer), version)
+
+
+@pytest.mark.parametrize("field,value", [
+    ("schema_version", 2), ("package", "other"), ("channel", "other"),
+    ("latest", ""), ("versions", []),
+])
+def test_invalid_manifest_fails(installer, field, value):
+    manifest = manifest_for(installer)
+    manifest[field] = value
+    with pytest.raises(ValueError):
+        installer.resolve_release(manifest)
+
+
+@pytest.mark.parametrize("field,value", [
+    ("filename", "../../escape.whl"),
+    ("url", "https://raw.githubusercontent.com/Azure/azure-sdk-for-python/main/sdk.whl"),
+    ("url", "https://example.com/sdk.whl"),
+    ("sha256", "not-a-hash"),
+])
+def test_invalid_artifact_entry_fails(installer, field, value):
+    manifest = manifest_for(installer)
+    manifest["versions"][VERSION][field] = value
+    with pytest.raises(ValueError):
+        installer.resolve_release(manifest)
+
+
+@pytest.mark.parametrize("version", [VERSION, LEGACY_VERSION])
+def test_download_checks_hash_and_wheel_metadata(installer, tmp_path, version):
+    data = wheel_bytes(version)
+    with patch.object(installer, "urlopen", return_value=io.BytesIO(data)):
+        wheel = installer.download_wheel(
+            installer.resolve_release(manifest_for(installer, version)), tmp_path,
+        )
+    assert wheel.read_bytes() == data
+
+
+def test_checksum_failure_removes_download_and_never_installs(installer, tmp_path):
+    with patch.object(installer, "urlopen", return_value=io.BytesIO(b"tampered")):
+        with patch.object(installer.subprocess, "run") as run:
+            with pytest.raises(ValueError, match="SHA-256 mismatch"):
+                installer.download_wheel(installer.resolve_release(manifest_for(installer)), tmp_path)
+    assert not list(tmp_path.iterdir())
+    run.assert_not_called()
+
+
+@pytest.mark.parametrize("kwargs", [
+    {"version": SECOND_VERSION}, {"extra": "voice"}, {"module": False},
+])
+def test_wrong_wheel_contents_fail(installer, tmp_path, kwargs):
+    wheel = tmp_path / "sdk.whl"
+    wheel.write_bytes(wheel_bytes(**kwargs))
+    with pytest.raises(ValueError):
+        installer.validate_wheel(wheel, VERSION)
+
+
+def test_selector_precedence_and_empty_values_fail(installer, monkeypatch):
+    monkeypatch.delenv("AZURE_AI_PROJECTS_RLE_VERSION", raising=False)
+    assert installer.selected_version(None) == "latest"
+    monkeypatch.setenv("AZURE_AI_PROJECTS_RLE_VERSION", SECOND_VERSION)
+    assert installer.selected_version(None) == SECOND_VERSION
+    assert installer.selected_version(VERSION) == VERSION
+    monkeypatch.setenv("AZURE_AI_PROJECTS_RLE_VERSION", "")
+    with pytest.raises(ValueError):
+        installer.resolve_release(manifest_for(installer), installer.selected_version(None))
+
+
+@pytest.mark.parametrize("version", [VERSION, LEGACY_VERSION])
+def test_pip_receives_verified_wheel_extra_and_requirements(installer, tmp_path, monkeypatch, version):
+    manifest = tmp_path / "registry.json"
+    manifest.write_text(json.dumps(manifest_for(installer, version)))
+    requirements = tmp_path / "requirements.txt"
+    requirements.write_text("openenv==0.6.0\n")
+    monkeypatch.setattr(sys, "argv", [
+        "install_rle_sdk.py", "--manifest", str(manifest), "--version", version,
+        "--requirements", str(requirements), "--index-url", "https://pypi.org/simple",
+    ])
+    with patch.object(installer, "urlopen", return_value=io.BytesIO(wheel_bytes(version))):
+        with patch.object(installer.subprocess, "run") as run:
+            installer.main()
+    command = run.call_args.args[0]
+    assert any(argument.startswith("azure-ai-projects[rle] @ file:") for argument in command)
+    assert command[-4:] == ["--index-url", "https://pypi.org/simple", "--requirement", str(requirements)]
+    assert run.call_args.kwargs["check"] is True

@@ -23,7 +23,7 @@ MANIFEST_URL = (
     f"https://raw.githubusercontent.com/{PUBLIC_REPOSITORY}/"
     f"{PUBLIC_BRANCH}/{PUBLIC_PATH}/registry.json"
 )
-VERSION_PATTERN = r"[0-9]+\.[0-9]+\.[0-9]+\.dev[0-9]+"
+VERSION_PATTERN = r"[0-9]+\.[0-9]+\.[0-9]+(?:b[1-9][0-9]*|\.dev[0-9]+)"
 
 
 @dataclass(frozen=True)

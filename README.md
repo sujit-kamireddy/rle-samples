@@ -45,7 +45,7 @@ ENV AZURE_AI_PROJECTS_RLE_VERSION=latest
 For reproducible builds, change it locally before rebuilding:
 
 ```dockerfile
-ENV AZURE_AI_PROJECTS_RLE_VERSION=2.7.0.dev20261012053512
+ENV AZURE_AI_PROJECTS_RLE_VERSION=2.7.0b1
 ```
 
 For local Python use, run from the sample's Docker build directory:
@@ -54,11 +54,15 @@ For local Python use, run from the sample's Docker build directory:
 python install_rle_sdk.py --requirements requirements.txt
 ```
 
+New preview releases use beta versions such as `2.7.0b1`, `2.7.0b2`, and so on.
+Previously published timestamped `.dev` versions remain available for existing pins.
+
 The local Python installer also accepts `--version <version>`. Docker builds use
 only the environment value defined in the Dockerfile, defaulting to latest.
 Runtime container environment variables cannot change the SDK baked into an
 image. The public SDK PR contains only the manifest and wheels; release tooling
-and installer source stay in the SDK fork. Keep the standalone sample installer
+and release validation stay in the SDK fork, while consumer installers live only
+in the samples. Keep the standalone sample installer
 copies byte-identical, using the [math sample copy](./examples/gym/openenv/math_rl/install_rle_sdk.py)
 as the reference within this repository;
 [`tools/test_rle_sdk_distribution.py`](./tools/test_rle_sdk_distribution.py)
