@@ -17,8 +17,8 @@ from urllib.request import urlopen
 import zipfile
 
 PUBLIC_REPOSITORY = "Azure/azure-sdk-for-python"
-PUBLIC_BRANCH = "rle-external-releases"
-PUBLIC_PATH = "sdk/ai/azure-ai-projects/rle-releases"
+PUBLIC_BRANCH = "rle-releases"
+PUBLIC_PATH = "sdk/ai/azure-ai-projects/rle"
 MANIFEST_URL = (
     f"https://raw.githubusercontent.com/{PUBLIC_REPOSITORY}/"
     f"{PUBLIC_BRANCH}/{PUBLIC_PATH}/registry.json"
@@ -40,7 +40,7 @@ def resolve_release(manifest: object, version: str = "latest") -> Release:
     if (
         manifest.get("schema_version") != 1
         or manifest.get("package") != "azure-ai-projects"
-        or manifest.get("channel") != "rle-external"
+        or manifest.get("channel") != "rle"
     ):
         raise ValueError("Unsupported SDK manifest schema, package, or channel.")
     selected = manifest.get("latest") if version == "latest" else version
