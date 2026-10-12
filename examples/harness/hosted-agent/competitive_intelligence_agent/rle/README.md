@@ -39,10 +39,10 @@ docker build -f rle/Dockerfile -t ci-rle-openenv:local rle/
 docker run --rm -p 127.0.0.1:8000:8000 ci-rle-openenv:local
 ```
 
-Or run it directly, which needs only the sample root on the path:
+Or, in a repository checkout, run it directly from the sample root:
 
 ```bash
-python rle/install_rle_sdk.py --requirements rle/requirements.txt
+python ../../../../tools/install_rle_sdk.py --requirements rle/requirements.txt
 PYTHONPATH="$PWD" \
   uvicorn rle.server.app:app --host 127.0.0.1 --port 8000 --workers 1
 ```
@@ -135,7 +135,7 @@ are only here to keep the sample itself correct. Run the commands below from
 this sample root.
 
 ```bash
-python ../../competitive_intelligence_agent/rle/install_rle_sdk.py \
+python ../../../../../tools/install_rle_sdk.py \
   --requirements ../../competitive_intelligence_agent/rle/requirements.txt
 python -m pip install -r ../../competitive_intelligence_agent/rle/requirements-test.txt
 python -m pytest rle/tests -q
@@ -149,7 +149,7 @@ always lands inside the `[0, 1]` range RLE requires.
 
 ## Dependency note
 
-[`install_rle_sdk.py`](./install_rle_sdk.py) installs `azure-ai-projects[rle]`
+The [shared SDK installer](../../../../../tools/install_rle_sdk.py) installs `azure-ai-projects[rle]`
 from the public wheel manifest, providing both `RLEnvironment` and the
 query-routing `create_app` export. [`Dockerfile`](./Dockerfile) sets
 `ENV AZURE_AI_PROJECTS_RLE_VERSION=latest`; edit that line locally to pin a

@@ -8,7 +8,7 @@ control share that instance; multiple sessions can run independently in one
 container.
 
 The app uses `azure.ai.projects.rle.environments.create_app`, which installs
-query-based session routing. [`install_rle_sdk.py`](./install_rle_sdk.py) installs
+query-based session routing. The [shared SDK installer](../../../../../tools/install_rle_sdk.py) installs
 a public SDK wheel containing that export. [`Dockerfile`](./Dockerfile) defaults
 to `ENV AZURE_AI_PROJECTS_RLE_VERSION=latest`; edit that line locally to pin a
 published version. Rebuild before publishing; older
@@ -36,10 +36,11 @@ docker run --rm -p 127.0.0.1:8000:8000 byoh-rle-openenv:local
 
 Use **one Uvicorn worker**: session IDs belong to that process.
 
-Alternatively, create an isolated Python environment and run from the sample root:
+Alternatively, in a repository checkout, create an isolated Python environment
+and run from the sample root:
 
 ```bash
-python rle/install_rle_sdk.py --requirements rle/requirements.txt
+python ../../../../tools/install_rle_sdk.py --requirements rle/requirements.txt
 uvicorn rle.server.app:app --factory --host 127.0.0.1 --port 8000 --workers 1
 ```
 

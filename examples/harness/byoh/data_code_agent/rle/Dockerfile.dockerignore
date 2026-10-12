@@ -5,7 +5,6 @@
 # out of the image.
 **
 !requirements.txt
-!install_rle_sdk.py
 !__init__.py
 !server/
 !server/*.py

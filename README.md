@@ -22,8 +22,13 @@ All four RLE container samples install `azure-ai-projects[rle]` wheels from the
 [public SDK manifest](https://raw.githubusercontent.com/Azure/azure-sdk-for-python/rle-external-releases/sdk/ai/azure-ai-projects/rle-external/registry.json),
 hosted by [Azure/azure-sdk-for-python#49482](https://github.com/Azure/azure-sdk-for-python/pull/49482).
 No source fork access, Git installation, or GitHub credentials are required.
-Each sample includes the same `install_rle_sdk.py`, which verifies the immutable
-wheel URL, SHA-256 and RLE package metadata before installing.
+All sample Dockerfiles fetch one shared
+[`tools/install_rle_sdk.py`](./tools/install_rle_sdk.py) from an immutable public
+commit, checking the script's SHA-256 before running it. The installer then
+verifies the immutable wheel URL, SHA-256 and RLE package metadata before installing.
+No installer copies are committed inside the samples, and each sample retains
+its own Docker build context. Updating the shared installer requires a new
+source commit and matching URL/checksum pins in the four Dockerfiles.
 
 Each sample's Dockerfile sets `ENV AZURE_AI_PROJECTS_RLE_VERSION=latest` before
 SDK installation. To pin a version, edit that line in your local Dockerfile to
@@ -31,7 +36,8 @@ an exact version listed in the manifest. A missing version fails; it never falls
 back. No SDK version setting, environment forwarding, or SDK installation is
 needed on the `azd` CLI side.
 The Dockerfiles use Git-source `ADD` scoped to the public distribution
-subdirectory. A Git-source-ADD-capable builder (such as Docker with BuildKit)
+subdirectory. A builder supporting Git-source `ADD` and `ADD --checksum`
+(such as current Docker with BuildKit)
 resolves the branch commit on each build, so new releases invalidate the SDK
 installation layer without relying on a CDN-cached raw manifest or GitHub REST
 API rate limits. Git is not installed in the runtime image.
@@ -48,10 +54,10 @@ For reproducible builds, change it locally before rebuilding:
 ENV AZURE_AI_PROJECTS_RLE_VERSION=2.7.0b1
 ```
 
-For local Python use, run from the sample's Docker build directory:
+For local Python use, run from this repository's root, choosing the sample requirements:
 
 ```powershell
-python install_rle_sdk.py --requirements requirements.txt
+python tools\install_rle_sdk.py --requirements examples\gym\openenv\math_rl\requirements.txt
 ```
 
 New preview releases use beta versions such as `2.7.0b1`, `2.7.0b2`, and so on.
@@ -61,12 +67,12 @@ The local Python installer also accepts `--version <version>`. Docker builds use
 only the environment value defined in the Dockerfile, defaulting to latest.
 Runtime container environment variables cannot change the SDK baked into an
 image. The public SDK PR contains only the manifest and wheels; release tooling
-and release validation stay in the SDK fork, while consumer installers live only
-in the samples. Keep the standalone sample installer
-copies byte-identical, using the [math sample copy](./examples/gym/openenv/math_rl/install_rle_sdk.py)
-as the reference within this repository;
+and release validation stay in the SDK fork, while the one shared consumer
+installer lives in this repository's tools folder.
 [`tools/test_rle_sdk_distribution.py`](./tools/test_rle_sdk_distribution.py)
-checks parity and build wiring.
+checks that all samples use the same pinned installer and that its checksum
+matches the shared source, as well as version selection, artifact verification
+and pip installation.
 
 ## `.agents/skills/` and `.claude/skills/` — the authoring skills
 
