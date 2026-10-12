@@ -28,9 +28,9 @@ ARG PIP_INDEX_URL
 
 WORKDIR /app
 
-ENV AZURE_AI_PROJECTS_RLE_VERSION=latest
+ENV AZURE_AI_PROJECTS_VERSION=latest
 COPY requirements.txt /app/
-ADD --checksum=sha256:33e70151ff68dd12939000ea1ddb602b7554bd0ff3bc304f0961d39cb423eec2 https://raw.githubusercontent.com/sujit-kamireddy/rle-samples/f57b019ae7e5c276fa6b2a4b4a41f98b8e749668/tools/install_rle_sdk.py /app/install_rle_sdk.py
+ADD --checksum=sha256:86bcd508cbca5ca978bf201ed67a1bcc1362c49a16bf2031c995f107c27c5f52 https://raw.githubusercontent.com/sujit-kamireddy/rle-samples/b7c131b6ce0d9e33b492b782c07a6cb2a97c9222/tools/install_rle_sdk.py /app/install_rle_sdk.py
 # Resolve the public branch commit; raw HTTP manifests can be CDN-cached.
 ADD https://github.com/Azure/azure-sdk-for-python.git#rle-releases:sdk/ai/azure-ai-projects/rle /app/rle-sdk-dist/
 RUN python /app/install_rle_sdk.py --manifest /app/rle-sdk-dist/registry.json \

@@ -10,7 +10,7 @@ container.
 The app uses `azure.ai.projects.rle.environments.create_app`, which installs
 query-based session routing. The [shared SDK installer](../../../../../tools/install_rle_sdk.py) installs
 a public SDK wheel containing that export. [`Dockerfile`](./Dockerfile) defaults
-to `ENV AZURE_AI_PROJECTS_RLE_VERSION=latest`; edit that line locally to pin a
+to `ENV AZURE_AI_PROJECTS_VERSION=latest`; edit that line locally to pin a
 published version. Rebuild before publishing; older
 environment images cannot serve the new routing contract.
 

@@ -33,10 +33,12 @@ verifies the public versioned wheel URL, SHA-256 and RLE package metadata before
 Wheel URLs may pin a Git commit or use the public release branch; approved version
 paths must not be overwritten, and a checksum mismatch always fails installation.
 No installer copies are committed inside the samples, and each sample retains
-its own Docker build context. Updating the shared installer requires a new
+its own Docker build context. The CLI scaffolds and builds each sample folder
+independently, so the repository-root installer is outside that context and
+cannot be copied with Docker `COPY`. Updating the shared installer requires a new
 source commit and matching URL/checksum pins in the four Dockerfiles.
 
-Each sample's Dockerfile sets `ENV AZURE_AI_PROJECTS_RLE_VERSION=latest` before
+Each sample's Dockerfile sets `ENV AZURE_AI_PROJECTS_VERSION=latest` before
 SDK installation. To pin a version, edit that line in your local Dockerfile to
 an exact version listed in the manifest. A missing version fails; it never falls
 back. No SDK version setting, environment forwarding, or SDK installation is
@@ -51,13 +53,13 @@ API rate limits. Git is not installed in the runtime image.
 The default Dockerfile setting is:
 
 ```dockerfile
-ENV AZURE_AI_PROJECTS_RLE_VERSION=latest
+ENV AZURE_AI_PROJECTS_VERSION=latest
 ```
 
 For reproducible builds, change it locally before rebuilding:
 
 ```dockerfile
-ENV AZURE_AI_PROJECTS_RLE_VERSION=2.7.0b1
+ENV AZURE_AI_PROJECTS_VERSION=2.7.0b1
 ```
 
 Only for local server development outside Docker, run from this repository's

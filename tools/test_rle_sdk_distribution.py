@@ -25,7 +25,7 @@ PUBLIC_GIT_SOURCE = (
 SHARED_INSTALLER = ROOT / "tools" / "install_rle_sdk.py"
 SHARED_INSTALLER_URL = (
     "https://raw.githubusercontent.com/sujit-kamireddy/rle-samples/"
-    "f57b019ae7e5c276fa6b2a4b4a41f98b8e749668/tools/install_rle_sdk.py"
+    "b7c131b6ce0d9e33b492b782c07a6cb2a97c9222/tools/install_rle_sdk.py"
 )
 VERSION = "2.7.0b1"
 SECOND_VERSION = "2.7.0b2"
@@ -108,8 +108,8 @@ def test_sample_installs_public_sdk_and_refreshes_manifest_cache(sample):
     dockerfile = (sample / "Dockerfile").read_text()
     requirements = (sample / "requirements.txt").read_text()
     assert not (sample / "sdk-version.txt").exists()
-    assert "ENV AZURE_AI_PROJECTS_RLE_VERSION=latest\n" in dockerfile
-    assert "ARG AZURE_AI_PROJECTS_RLE_VERSION" not in dockerfile
+    assert "ENV AZURE_AI_PROJECTS_VERSION=latest\n" in dockerfile
+    assert "ARG AZURE_AI_PROJECTS_VERSION" not in dockerfile
     assert "ARG PIP_INDEX_URL" in dockerfile
     digest = hashlib.sha256(SHARED_INSTALLER.read_text(encoding="utf-8").encode("utf-8")).hexdigest()
     shared_add = f"ADD --checksum=sha256:{digest} {SHARED_INSTALLER_URL} /app/install_rle_sdk.py"
@@ -120,7 +120,7 @@ def test_sample_installs_public_sdk_and_refreshes_manifest_cache(sample):
     assert "--manifest /app/rle-sdk-dist/registry.json" in dockerfile
     assert "--requirements /app/requirements.txt" in dockerfile
     assert "--version-file" not in dockerfile
-    assert dockerfile.index("ENV AZURE_AI_PROJECTS_RLE_VERSION=latest") < dockerfile.index("python /app/install_rle_sdk.py")
+    assert dockerfile.index("ENV AZURE_AI_PROJECTS_VERSION=latest") < dockerfile.index("python /app/install_rle_sdk.py")
     assert dockerfile.index(shared_add) < dockerfile.index("python /app/install_rle_sdk.py")
     assert dockerfile.index(f"ADD {PUBLIC_GIT_SOURCE}") < dockerfile.index("python /app/install_rle_sdk.py")
     assert "git+" not in dockerfile + requirements
@@ -238,12 +238,12 @@ def test_wrong_wheel_contents_fail(installer, tmp_path, kwargs):
 
 
 def test_selector_precedence_and_empty_values_fail(installer, monkeypatch):
-    monkeypatch.delenv("AZURE_AI_PROJECTS_RLE_VERSION", raising=False)
+    monkeypatch.delenv("AZURE_AI_PROJECTS_VERSION", raising=False)
     assert installer.selected_version(None) == "latest"
-    monkeypatch.setenv("AZURE_AI_PROJECTS_RLE_VERSION", SECOND_VERSION)
+    monkeypatch.setenv("AZURE_AI_PROJECTS_VERSION", SECOND_VERSION)
     assert installer.selected_version(None) == SECOND_VERSION
     assert installer.selected_version(VERSION) == VERSION
-    monkeypatch.setenv("AZURE_AI_PROJECTS_RLE_VERSION", "")
+    monkeypatch.setenv("AZURE_AI_PROJECTS_VERSION", "")
     with pytest.raises(ValueError):
         installer.resolve_release(manifest_for(installer), installer.selected_version(None))
 

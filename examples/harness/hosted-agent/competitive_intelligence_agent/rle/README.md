@@ -152,7 +152,7 @@ always lands inside the `[0, 1]` range RLE requires.
 The [shared SDK installer](../../../../../tools/install_rle_sdk.py) installs `azure-ai-projects[rle]`
 from the public wheel manifest, providing both `RLEnvironment` and the
 query-routing `create_app` export. [`Dockerfile`](./Dockerfile) sets
-`ENV AZURE_AI_PROJECTS_RLE_VERSION=latest`; edit that line locally to pin a
+`ENV AZURE_AI_PROJECTS_VERSION=latest`; edit that line locally to pin a
 published version, without any SDK configuration in the CLI. Wheel hashes and package
 metadata are checked before installation. An older wheel or image without that
 factory cannot serve this contract; rebuild before publishing. See

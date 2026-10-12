@@ -54,7 +54,7 @@ def test_app_uses_sdk_grade_action_and_explicit_state_model():
 def test_dockerfile_matches_sibling_mcp_sdk_and_openenv_pins():
     dockerfile = (ROOT / "Dockerfile").read_text()
 
-    assert "ENV AZURE_AI_PROJECTS_RLE_VERSION=latest" in dockerfile
+    assert "ENV AZURE_AI_PROJECTS_VERSION=latest" in dockerfile
     assert "install_rle_sdk.py" in dockerfile
     assert "rle-releases:sdk/ai/azure-ai-projects/rle" in dockerfile
     assert "git+" not in dockerfile

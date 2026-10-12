@@ -67,7 +67,7 @@ not problem content:
 
 The Dockerfile pins `openenv==0.6.0` and installs an RLE SDK wheel from the
 public manifest without source repository access. [`Dockerfile`](./Dockerfile)
-sets `ENV AZURE_AI_PROJECTS_RLE_VERSION=latest`; edit that line locally to pin
+sets `ENV AZURE_AI_PROJECTS_VERSION=latest`; edit that line locally to pin
 an exact published version for reproducible builds. No SDK CLI setting is needed.
 See [SDK installation](../../../../README.md#rle-sdk-installation).
 
