@@ -63,11 +63,13 @@ subtype = "OpenEnv"
 # qwen3_5_ext_disable_thinking.
 # renderer_name = "qwen3_ext"
 
-[rollout.gym_openenv]
+# [rollout.gym_openenv]
 # Names the action property that receives the model completion's content
 # verbatim. It must be a property the environment already declares in its own
-# action model, so there is no default. Maximum 128 characters.
-model_response_field = "response"
+# action model, so there is no default. Maximum 128 characters. This sample is
+# SDK MCP mode (subclasses RLEnvironment), not schema-driven, so this field
+# must stay unset.
+# model_response_field = "response"
 
 # [train.grpo]
 # Recipe-level GRPO settings. Stored with the version and read by training;
