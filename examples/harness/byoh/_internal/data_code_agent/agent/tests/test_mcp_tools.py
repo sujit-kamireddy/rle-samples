@@ -111,7 +111,7 @@ def test_no_separate_session_id_is_required():
     "https://tools.invalid/rollouts/r1/mcp/?rle_session_id=opaque%2Bvalue&other=keep/",
 ])
 def test_the_mcp_route_is_the_mcp_endpoint_verbatim(endpoint):
-    """`environmentProtocol = "mcp_environment"` means RLE hands this over already as `/mcp`."""
+    """RLE's MCP environment protocol means RLE hands this over already as `/mcp`."""
     context = RolloutContext.model_validate({**MCP_CONTEXT, "mcp_endpoint": endpoint})
     assert context.mcp_url == endpoint
 

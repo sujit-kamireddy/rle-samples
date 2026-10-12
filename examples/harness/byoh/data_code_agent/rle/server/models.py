@@ -36,6 +36,21 @@ class TaskObservation(Observation):
     score: float | None = None
     is_success: bool | None = None
     attempt: int = 0
+    # Two-dimension grading breakdown. `grade()` is the only writer, and it
+    # only runs once, at episode end (`done=True`): `reset()` never sets
+    # these, so the agent can never read `has_pii` off its own observation
+    # mid-episode as a shortcut for the judgement the disclosure check is
+    # grading. `reward`/`score` are the two dimensions blended together
+    # (correctness_reward * compliance_multiplier); the raw correctness
+    # dimension is recorded here unmultiplied so it can be analyzed
+    # independently of the compliance dimension below instead of only being
+    # recoverable by dividing back out a nonzero multiplier.
+    correctness_reward: float | None = None
+    has_pii: bool | None = None
+    pii_categories: list[str] = []
+    disclosed: bool | None = None
+    verdict: str | None = None
+    compliance_multiplier: float | None = None
 
 
 class TaskState(State):

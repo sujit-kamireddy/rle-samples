@@ -104,9 +104,9 @@ Both Gym samples use the SDK `RLEnvironment` MCP contract:
 - [`math_rl`](./examples/gym/openenv/math_rl) registers the typed
   `check_equivalence` helper and grades the final boxed answer.
 
-Each selects top-level `environment_protocol = "mcp_environment"`, omits
-`model_response_field`, and carries reset, MCP tool calls, and terminal
-`GradeAction` grading over one persistent OpenEnv session.
+Both run under RLE's MCP environment protocol (the only one), and carry reset,
+MCP tool calls, and terminal `GradeAction` grading over one persistent OpenEnv
+session.
 
 [`examples/gym/openenv/catalog.toml`](./examples/gym/openenv/catalog.toml)
 controls which sample directories `azd ai rle init` offers. A new sample

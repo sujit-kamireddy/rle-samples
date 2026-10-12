@@ -13,7 +13,6 @@ def test_manifest_selects_mcp_and_budgets_tool_calls_plus_grade():
     text = (ROOT / "rle.toml").read_text()
     manifest = tomllib.loads(text)
 
-    assert manifest["environment_protocol"] == "mcp_environment"
     assert manifest["defaults"]["reinforcement"]["max_episode_steps"] == 4
     assert "gym_openenv" not in manifest["defaults"]
     assert "model_response_field" not in text
