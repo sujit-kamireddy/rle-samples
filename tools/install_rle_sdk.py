@@ -59,11 +59,11 @@ def resolve_release(manifest: object, version: str = "latest") -> Release:
         raise ValueError(f"Unexpected wheel filename for {selected}.")
     expected_url = (
         rf"https://raw\.githubusercontent\.com/{re.escape(PUBLIC_REPOSITORY)}/"
-        rf"[0-9a-f]{{40}}/{re.escape(PUBLIC_PATH)}/wheels/"
+        rf"(?:[0-9a-f]{{40}}|{re.escape(PUBLIC_BRANCH)})/{re.escape(PUBLIC_PATH)}/wheels/"
         rf"{re.escape(selected)}/{re.escape(filename)}"
     )
     if not isinstance(url, str) or not re.fullmatch(expected_url, url):
-        raise ValueError("The wheel URL must reference an immutable public SDK commit.")
+        raise ValueError("The wheel URL must reference a public SDK commit or release branch.")
     if not isinstance(digest, str) or not re.fullmatch(r"[0-9a-f]{64}", digest):
         raise ValueError("The wheel SHA-256 must contain 64 lowercase hexadecimal digits.")
     return Release(selected, filename, url, digest)
