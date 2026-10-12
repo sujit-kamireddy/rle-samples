@@ -18,7 +18,7 @@ import zipfile
 
 PUBLIC_REPOSITORY = "Azure/azure-sdk-for-python"
 PUBLIC_BRANCH = "rle-external-releases"
-PUBLIC_PATH = "sdk/ai/azure-ai-projects/rle-external"
+PUBLIC_PATH = "sdk/ai/azure-ai-projects/rle-releases"
 MANIFEST_URL = (
     f"https://raw.githubusercontent.com/{PUBLIC_REPOSITORY}/"
     f"{PUBLIC_BRANCH}/{PUBLIC_PATH}/registry.json"
