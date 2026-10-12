@@ -65,7 +65,7 @@ to `safe_grade`; raw unboxed final text is never accepted as a lucky match.
 
 ## Build and run
 
-Use a Git-source-ADD-capable builder (such as Docker with BuildKit) from this directory:
+Build and run with Docker from this directory:
 
 ```bash
 docker build -t math-rl .
