@@ -29,7 +29,9 @@ No source fork access, Git installation, or GitHub credentials are required.
 All sample Dockerfiles fetch one shared
 [`tools/install_rle_sdk.py`](./tools/install_rle_sdk.py) from an immutable public
 commit, checking the script's SHA-256 before running it. The installer then
-verifies the immutable wheel URL, SHA-256 and RLE package metadata before installing.
+verifies the public versioned wheel URL, SHA-256 and RLE package metadata before installing.
+Wheel URLs may pin a Git commit or use the public release branch; approved version
+paths must not be overwritten, and a checksum mismatch always fails installation.
 No installer copies are committed inside the samples, and each sample retains
 its own Docker build context. Updating the shared installer requires a new
 source commit and matching URL/checksum pins in the four Dockerfiles.

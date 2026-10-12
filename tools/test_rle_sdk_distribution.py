@@ -25,7 +25,7 @@ PUBLIC_GIT_SOURCE = (
 SHARED_INSTALLER = ROOT / "tools" / "install_rle_sdk.py"
 SHARED_INSTALLER_URL = (
     "https://raw.githubusercontent.com/sujit-kamireddy/rle-samples/"
-    "9f6bf807e8ce8b3dc6d07daa574066075f59dc15/tools/install_rle_sdk.py"
+    "8c1424cd7383fc5bae4493a2f16c5c08131c0a83/tools/install_rle_sdk.py"
 )
 VERSION = "2.7.0b1"
 SECOND_VERSION = "2.7.0b2"
@@ -117,6 +117,27 @@ def test_beta_latest_and_legacy_pins_resolve_independently(installer):
     assert installer.resolve_release(manifest).version == SECOND_VERSION
     for version in (VERSION, SECOND_VERSION, LEGACY_VERSION):
         assert installer.resolve_release(manifest, version).version == version
+
+
+def test_versioned_release_branch_wheel_is_verified_before_installation(installer, tmp_path):
+    manifest = manifest_for(installer)
+    entry = manifest["versions"][VERSION]
+    entry["url"] = entry["url"].replace("a" * 40, installer.PUBLIC_BRANCH)
+    release = installer.resolve_release(manifest)
+    with patch.object(installer, "urlopen", return_value=io.BytesIO(wheel_bytes())):
+        assert installer.download_wheel(release, tmp_path).read_bytes() == wheel_bytes()
+    with patch.object(installer, "urlopen", return_value=io.BytesIO(b"tampered")):
+        with pytest.raises(ValueError, match="SHA-256 mismatch"):
+            installer.download_wheel(release, tmp_path)
+
+
+@pytest.mark.parametrize("reference", ["main", "other-branch", "a" * 39, "latest"])
+def test_unapproved_wheel_references_are_rejected(installer, reference):
+    manifest = manifest_for(installer)
+    entry = manifest["versions"][VERSION]
+    entry["url"] = entry["url"].replace("a" * 40, reference)
+    with pytest.raises(ValueError, match="public SDK commit or release branch"):
+        installer.resolve_release(manifest)
 
 
 @pytest.mark.parametrize("version", [
