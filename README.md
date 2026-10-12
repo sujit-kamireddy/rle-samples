@@ -19,8 +19,8 @@ locations, service IDs, or credentials.
 ## RLE SDK installation
 
 All four RLE container samples install `azure-ai-projects[rle]` wheels from the
-[public SDK manifest](https://raw.githubusercontent.com/Azure/azure-sdk-for-python/rle-external-releases/sdk/ai/azure-ai-projects/rle-releases/registry.json),
-hosted by [Azure/azure-sdk-for-python#49482](https://github.com/Azure/azure-sdk-for-python/pull/49482).
+[public SDK manifest](https://raw.githubusercontent.com/Azure/azure-sdk-for-python/rle-releases/sdk/ai/azure-ai-projects/rle/registry.json),
+hosted by [Azure/azure-sdk-for-python#49488](https://github.com/Azure/azure-sdk-for-python/pull/49488).
 During `azd ai rle publish`, the environment image is built and its Dockerfile
 installs the SDK inside that container. The SDK is a container dependency, not
 a dependency of the RLE CLI executable; no local SDK installation is needed
@@ -67,7 +67,7 @@ root, choosing the sample requirements:
 python tools\install_rle_sdk.py --requirements examples\gym\openenv\math_rl\requirements.txt
 ```
 
-New preview releases use beta versions such as `2.7.0b1`, `2.7.0b2`, and so on.
+Preview releases use beta versions such as `2.7.0b1` and `2.7.1b1`.
 Only versions listed in the public manifest are available for pinning.
 
 The local Python installer also accepts `--version <version>`. Docker builds use

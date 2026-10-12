@@ -33,9 +33,9 @@ WORKDIR /app
 
 ENV AZURE_AI_PROJECTS_RLE_VERSION=latest
 COPY requirements.txt /app/
-ADD --checksum=sha256:9ca918bdbe5afee0ff7aaebf0f3ad7644b609b9838e49266603e2ee1330a64d8 https://raw.githubusercontent.com/sujit-kamireddy/rle-samples/c2b4db2904d524d3f1793b0fb3eed31954f3729f/tools/install_rle_sdk.py /app/install_rle_sdk.py
+ADD --checksum=sha256:33e70151ff68dd12939000ea1ddb602b7554bd0ff3bc304f0961d39cb423eec2 https://raw.githubusercontent.com/sujit-kamireddy/rle-samples/f57b019ae7e5c276fa6b2a4b4a41f98b8e749668/tools/install_rle_sdk.py /app/install_rle_sdk.py
 # Resolve the public branch commit; raw HTTP manifests can be CDN-cached.
-ADD https://github.com/Azure/azure-sdk-for-python.git#rle-external-releases:sdk/ai/azure-ai-projects/rle-releases /app/rle-sdk-dist/
+ADD https://github.com/Azure/azure-sdk-for-python.git#rle-releases:sdk/ai/azure-ai-projects/rle /app/rle-sdk-dist/
 RUN python /app/install_rle_sdk.py --manifest /app/rle-sdk-dist/registry.json \
     --requirements /app/requirements.txt
 
