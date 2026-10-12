@@ -24,20 +24,12 @@ name = "data_code_agent"
 # new version.
 version = "1.0.0"
 
-# PROTOCOL.
-#
-# `environmentProtocol = "mcp_environment"` is what makes RLE open a sandbox
-# session per rollout and supply a session-scoped `mcp_endpoint` in the
-# rollout POST body. Required for this sample.
-#
-# This folder's environment serves its tools over MCP. `../agent` forwards
-# the endpoint unchanged and translates the baked instruction's flat tool POST
-# into a normal `tools/call`; the SDK app factory handles session routing
-# (see `_compliance_endpoint` and `/local-tools` in `../agent/app.py`).
-#
-# Needs an `azd ai rle` build that knows the key. Older extensions parse this
-# manifest in strict mode and reject it outright.
-environmentProtocol = "mcp_environment"
+# This folder's environment serves its tools over MCP. RLE always drives
+# environments with the MCP environment protocol, so there is no field to set
+# here. `../agent` forwards the session-scoped `mcp_endpoint` unchanged and
+# translates the baked instruction's flat tool POST into a normal
+# `tools/call`; the SDK app factory handles session routing (see
+# `_compliance_endpoint` and `/local-tools` in `../agent/app.py`).
 
 # Pins the harness container independently of `version`, for build scripts that
 # tag images. Not used by the CLI itself -- `azd ai rle publish` takes the image

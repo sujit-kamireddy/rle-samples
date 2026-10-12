@@ -3,7 +3,7 @@
 The action-variant rules below apply to **schema-driven mode**. In SDK MCP mode,
 `RLEnvironment` supplies MCP `tools/list` and `tools/call`, typed methods registered with
 `self.tool()` define tool schemas, and `GradeAction.response` carries the terminal response. SDK MCP
-mode sets `[rle] environmentProtocol = "mcp_environment"` and has no `model_response_field`.
+mode has no protocol field to set (RLE always drives it this way) and has no `model_response_field`.
 
 ### Schema-driven mode: `GET /schema` is the whole story
 

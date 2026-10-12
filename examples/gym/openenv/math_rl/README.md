@@ -23,11 +23,13 @@ and row, helper count and last helper inputs/result, and terminal status.
 Because MCP calls and grading share one persistent OpenEnv WebSocket, this
 state proves that tool activity belongs to the same episode instance.
 
-The manifest selects this mode explicitly:
+The manifest no longer needs to select this mode -- RLE always drives Gym/BYOH
+environments with the MCP environment protocol:
 
 ```toml
 [rle]
-environmentProtocol = "mcp_environment"
+name = "math_rl"
+version = "1.0.0"
 ```
 
 `max_episode_steps` is no longer a manifest field -- RLE now caps a Gym

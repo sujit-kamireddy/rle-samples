@@ -18,18 +18,11 @@ a reward and what an RLE training run sees are the same code.
 1. **Local phase:** run and smoke-test this environment standalone, with no
    RLE or Foundry dependency at all -- see "Build and run locally" below.
 2. **Foundry phase using RLE:** the agent in [`../agent`](../agent) calls tools
-   over this folder's `/mcp` JSON-RPC surface. With `mcp_environment`, RLE
-   supplies a session-scoped endpoint with an opaque `rle_session_id` query.
-   The agent forwards the endpoint unchanged; this app uses the SDK
-   `create_app` wrapper to route tool requests without a body session ID.
-
-   RLE picks that path from the `environmentProtocol` field in
-   [`rle.toml`](./rle.toml), which this folder sets to `mcp_environment`. The
-   value is recorded at publish time and is immutable for the version, so
-   switching protocols means publishing a new version. `azd ai rle publish`
-   prints the protocol the service recorded and fails if it does not match the
-   manifest, which is what catches a version published on the wrong one before
-   it reaches a training run.
+   over this folder's `/mcp` JSON-RPC surface. RLE always drives this sample
+   with the MCP environment protocol, supplying a session-scoped endpoint with
+   an opaque `rle_session_id` query. The agent forwards the endpoint
+   unchanged; this app uses the SDK `create_app` wrapper to route tool
+   requests without a body session ID.
 
 ## Build and run locally
 

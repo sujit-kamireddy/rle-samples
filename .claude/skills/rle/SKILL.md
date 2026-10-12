@@ -15,7 +15,7 @@ description: >-
 
   USE FOR: writing any Foundry RLE environment; deciding Gym vs Harness and, for Harness, BYOH vs
   HostedAgent; rle.toml, schema-driven model_response_field, SDK RLEnvironment/GradeAction,
-  environmentProtocol, GET /schema action vocabulary,
+  GET /schema action vocabulary,
   reward shaping, reset selectors, a Harness's /invoke or Responses wire contract,
   agent_name/agent_version vs invocation_url, and debugging EnvironmentContractViolation,
   RolloutDependencyFailed, degenerate_rollout, a wrong episode being graded, or a truncated answer.
@@ -69,7 +69,7 @@ reset(task)  ->  observation  ->  model completion  ->  action  ->  step()  ->  
 | RLE needs | It reads it from |
 | --- | --- |
 | what the model may emit | schema-driven: `GET /schema` `action`; SDK MCP: registered `self.tool()` methods plus `GradeAction` |
-| how the contract is selected | schema-driven: `defaults.rollout.gym_openenv.model_response_field`; SDK MCP: `rle.environmentProtocol = "mcp_environment"` |
+| how the contract is selected | schema-driven: `defaults.rollout.gym_openenv.model_response_field`; SDK MCP: no field to set, RLE always drives it this way |
 | how many tokens | `rle.toml` → `defaults.rollout`, clamped by server ceilings (the step budget is now a fixed server ceiling, not a manifest field) |
 | the episode to run | the job's `task` JSON, forwarded verbatim to `reset()` |
 
@@ -94,9 +94,8 @@ reset(task)  ->  observation  ->  model completion  ->  action  ->  step()  ->  
   tools with `self.tool()`, and grade `GradeAction`.
 - `rle.toml` has `schema_version = "1.0.0"`, `[rle] type = "Gym"` / `subtype = "OpenEnv"`.
   Schema-driven mode sets `[defaults.rollout.gym_openenv] model_response_field`; SDK MCP mode
-  instead sets `[rle] environmentProtocol = "mcp_environment"` and must not set
-  `model_response_field`. The completion-token budget is a fixed server ceiling (8192), not a
-  manifest field.
+  has no protocol field to set and must not set `model_response_field`. The completion-token
+  budget is a fixed server ceiling (8192), not a manifest field.
 - `reset()` ends in `**kwargs` and rejects selectors it does not understand.
 - The episode reaches `done=True` with a real reward on every terminal path — including the
   give-up path — so the rollout is never exported ungraded.

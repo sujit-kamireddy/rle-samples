@@ -3,7 +3,7 @@
 | Symptom | Cause | Fix |
 | --- | --- | --- |
 | HTTP 400 `EnvironmentContractViolation` on a schema-driven rollout | the published version has no `[defaults.rollout.gym_openenv] model_response_field` | add it and publish a new version |
-| SDK MCP environment is treated as schema-driven | `[rle] environmentProtocol` is absent or not `mcp_environment` | set `[rle] environmentProtocol = "mcp_environment"`, remove `model_response_field`, and republish |
+| SDK MCP environment is treated as schema-driven | the manifest still sets `[rollout.gym_openenv] model_response_field` | remove `model_response_field` and republish |
 | `azure.ai.projects.rle` cannot be imported | the installed public SDK build does not contain the additive RLE package | install the pinned RLE-enabled artifact documented by the sample; equal public package versions may not have the same modules |
 | MCP tool is missing or has an untyped schema | it was registered before `RLEnvironment.__init__`, not registered, or uses untyped parameters | call `super().__init__()` first, then `self.tool()(self.method)`, with concrete annotations |
 | Correct SDK MCP answer gets reward 0 | tool evidence was stored globally or on another instance | update `self.state` inside the tool and read that same state in `grade(GradeAction)` |

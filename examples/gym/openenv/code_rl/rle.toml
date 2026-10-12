@@ -24,10 +24,6 @@ name = "code_rl"
 # new version.
 version = "1.0.0"
 
-# RLE decides whether to open an MCP sandbox session for a rollout from this
-# field, recorded at publish time and immutable for the version.
-environmentProtocol = "mcp_environment"
-
 # Pins the environment container independently of `version`, for build scripts
 # that tag images. Not used by the CLI itself -- `azd ai rle publish` takes the
 # image as an argument -- but declared so a pinned tag does not fail the strict

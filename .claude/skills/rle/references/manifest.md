@@ -28,7 +28,6 @@ schema_version = "1.0.0"
 [rle]
 name = "code_rl"
 version = "1.0.0"
-environmentProtocol = "mcp_environment"
 
 [harness]
 type = "Gym"
@@ -46,9 +45,9 @@ combinations select entirely different rollout paths.
 
 **Choose one Gym contract.** In schema-driven mode,
 `[rollout.gym_openenv] model_response_field` is mandatory and must name a property on
-exactly one action variant (maximum 128 characters). In SDK MCP mode, set
-`[rle] environmentProtocol = "mcp_environment"` and omit `model_response_field`. Combining the two
-selectors asks RLE to apply incompatible response contracts.
+exactly one action variant (maximum 128 characters). In SDK MCP mode, there is no protocol
+field to set, and `model_response_field` must be omitted. Combining the two selectors asks
+RLE to apply incompatible response contracts.
 
 **There is no manifest field for the step budget any more.** RLE now caps every Gym episode at a
 fixed 32 `step()` calls server-side; there is no `max_episode_steps` field in the schema (a

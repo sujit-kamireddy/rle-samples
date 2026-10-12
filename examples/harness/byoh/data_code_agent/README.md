@@ -129,7 +129,6 @@ Set `invocation_url` in `rle/rle.toml` to your deployed agent's invocation URL:
 [rle]
 name = "data_code_agent_byoh"
 version = "2.0.0"
-environmentProtocol = "mcp_environment"
 
 [harness]
 type = "Harness"
@@ -137,10 +136,9 @@ subtype = "BYOH"
 invocation_url = "https://<your-deployed-agent-host>/invoke"
 ```
 
-`environmentProtocol = "mcp_environment"` is what this sample's compliance
-disclosure depends on (see below); it needs an `azd ai rle` build recent
-enough to know the key, since the manifest is parsed in strict mode and an
-older extension rejects it outright rather than ignoring it.
+RLE always drives this sample with the MCP environment protocol (the only
+one), which is what this sample's compliance disclosure depends on (see
+below).
 
 Then publish from the folder that holds `rle.toml`:
 
@@ -283,7 +281,7 @@ agent's own.
 same request but are not rollout parameters -- they are lifted out of the
 rollout context into environment variables on that rollout's `opencode`
 process, so the agent can file a compliance disclosure back to `rle/` (see
-"Compliance disclosure" above). Under `environmentProtocol = "mcp_environment"`,
+"Compliance disclosure" above). With RLE's MCP environment protocol,
 the endpoint already includes opaque `rle_session_id` routing metadata.
 `agent/app.py` forwards the entire URL unchanged with the bearer token, sending
 normal `tools/call` JSON-RPC without a body session ID. There is no separate

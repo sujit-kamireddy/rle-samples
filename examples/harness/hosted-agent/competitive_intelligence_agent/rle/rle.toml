@@ -27,18 +27,10 @@ version = "2.0.1"
 
 # PROTOCOL.
 #
-# RLE decides whether to open an MCP sandbox session for a rollout from this
-# field, recorded at publish time and immutable for the version. Reading
-# `mcp_environment`, RLE opens that session per rollout and supplies an opaque
-# session-scoped MCP endpoint. `../agent` forwards it unchanged; the SDK app
-# factory handles session routing without agent-side JSON-RPC injection.
-#
-# `mcp_environment` is the only value this manifest sets, and the only
-# protocol `../agent` speaks.
-#
-# Needs an `azd ai rle` build that knows the key. Older extensions parse this
-# manifest in strict mode and reject it outright.
-environmentProtocol = "mcp_environment"
+# RLE always opens an MCP sandbox session per rollout and supplies an opaque
+# session-scoped MCP endpoint; there is no field to set here. `../agent`
+# forwards it unchanged; the SDK app factory handles session routing without
+# agent-side JSON-RPC injection.
 
 # Pins the harness container independently of `version`, for build scripts that
 # tag images. The CLI takes the image as an argument to `publish` and does not
