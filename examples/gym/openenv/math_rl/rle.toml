@@ -9,19 +9,19 @@ type = "Gym"
 subtype = "OpenEnv"
 
 [model]
-name = "qwen3-32b-1"
-renderer_name = "qwen3_ext"
+name = "Qwen/Qwen3.8-27B"
+renderer_name = "qwen3_8_low_reasoning"
 
 [train.grpo]
-learning_rate = 0.0003
+learning_rate = 2e-5
 lora_rank = 32
 group_size = 8
-groups_per_batch = 128
+groups_per_batch = 256
 num_epochs = 1
 max_steps = 150
-eval_every = 10
-save_every = 10
-remove_constant_reward_groups = true
+eval_every = 999999
+save_every = 999999
+remove_constant_reward_groups = false
 sampling_seed = 42
-rollout_failure_rate_abort = 0.45
+rollout_failure_rate_abort = 0.2
 min_trainable_group_members = 2
