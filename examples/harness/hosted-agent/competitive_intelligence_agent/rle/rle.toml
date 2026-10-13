@@ -1,104 +1,29 @@
-# Hosted Agent harness for the competitive-intelligence agent RLE.
-#
-# This is the manifest for the OpenEnv service in this folder. It is the one
-# `azd ai rle init`, `publish` and `train` read: all three resolve `rle.toml`
-# from `<sample>/rle/`, so the sample does not work without it.
-#
-# `[rle]` and `[train.grpo]` are the only tables this file has, and both
-# describe the published version: everything here is immutable once
-# published. `model`, `training_file`, `validation_file` and `suffix` are
-# CLI-flag-only, not manifest fields; see
-# `../README.md#5-start-the-training-run` for the exact command this
-# environment is trained with. The manifest is parsed in *strict* mode: an
-# unknown key is a hard error.
-#
-# [train.grpo] is carried over from the published run that produced
-# the reward curve in `../README.md`, with one deliberate change: that run was
-# configured for eight epochs and stopped by hand once the held-out curve
-# turned over, while this one is pinned to a single epoch so it finishes on
-# its own at the point the original was stopped. See the comments below.
-
 schema_version = "1.0.0"
 
 [rle]
 name = "competitive_intelligence_agent"
-# Bump before republishing: registered versions are immutable.
 version = "2.0.1"
-
-# PROTOCOL.
-#
-# RLE always opens an MCP sandbox session per rollout and supplies an opaque
-# session-scoped MCP endpoint; there is no field to set here. `../agent`
-# forwards it unchanged; the SDK app factory handles session routing without
-# agent-side JSON-RPC injection.
-
-# Pins the harness container independently of `version`, for build scripts that
-# tag images. The CLI takes the image as an argument to `publish` and does not
-# read this, but it is declared so a pinned tag does not fail the strict parse.
-# imageTag = "2.0.0"
 
 [harness]
 type = "Harness"
 subtype = "HostedAgent"
-
-# The registered Foundry Hosted Agent RLE calls for each rollout. Replace both
-# of these with your own registration -- see step 3 in `../README.md`. RLE
-# resolves the name against the project and posts to
-# {project}/agents/{agent_name}/endpoint/protocols/openai/responses.
 agent_name = "competitive-intelligence-rle-agent"
-# A positive integer, or "draft-{unix-timestamp}" for an unpublished draft.
 agent_version = "1"
 
-# invocation_url is BYOH-only and is rejected for HostedAgent.
-# invocation_url = "https://your-harness.example.com/invoke"
-
-
-# ---------------------------------------------------------------------------
-# [train.grpo] -- published with the version and returned by the service.
-# Every value here is optional and none of them has a service-side default:
-# omitted means absent.
-# ---------------------------------------------------------------------------
+[model]
+name = "qwen3-32b-1"
+renderer_name = "qwen3_ext"
 
 [train.grpo]
-# Carried unchanged from the published run.
 learning_rate = 0.0003
+lora_rank = 32
 group_size = 6
-# Groups per optimiser step. 48 training rows per batch, previously carried as
-# the Training-Jobs-vocabulary `batch_size`, which has no equivalent in this
-# schema; 48 x 6 = 288 rollouts per training batch.
 groups_per_batch = 48
-
-# ONE EPOCH, FOURTEEN STEPS.
-#
-# 655 training rows at a batch of 48 is 13.6 batches, so an epoch is 14 steps
-# and the last one is short. That is the whole run: `num_epochs` and
-# `max_steps` agree here, and either one alone would stop it in the same place.
-#
-# The original run set `num_epochs = 8` and `max_steps = 60`, which disagree
-# with each other and with the data -- 60 steps over 14-step epochs is 4.3
-# epochs, not 8 -- and it was cancelled by hand at step 13. Nothing was lost by
-# that: held-out reward peaked at step 10 and had already fallen back by step
-# 12, while sampling entropy was down 74% from its own peak and still dropping.
-# The policy had stopped exploring. Pinning the run to the epoch it actually
-# learned in removes the judgement call and makes the budget predictable.
 num_epochs = 1
 max_steps = 14
-
-# Evaluate and checkpoint on the same even steps, so every published point on
-# the curve has weights behind it that can be served and inspected. Checkpoint
-# N carries step_number N-1, and the validation reward logged at step N was
-# measured on checkpoint N's weights.
 eval_every = 2
 save_every = 2
-
-# Drop groups whose rollouts all scored identically. They contribute no
-# advantage signal to GRPO, so sampling them is spend with no gradient.
 remove_constant_reward_groups = true
-
-# Fixed so a replication draws the same batches in the same order.
 sampling_seed = 42
-
-# Transient 502s from the capture proxy during a weight swap should be absorbed
-# rather than abort a step. The abort threshold stays well above the observed
-# failure rate so a bad patch of minutes cannot end a 15-hour run.
 rollout_failure_rate_abort = 0.5
+min_trainable_group_members = 2

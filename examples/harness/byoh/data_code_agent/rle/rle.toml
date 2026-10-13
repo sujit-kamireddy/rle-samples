@@ -1,158 +1,28 @@
-# Bring-Your-Own-Harness target for the data-code agent RLE.
-#
-# This is the manifest for the OpenEnv service in this folder. It is the one
-# `azd ai rle init`, `publish` and `train` read: all three resolve `rle.toml`
-# from `<sample>/rle/`, so the sample does not work without it.
-#
-# `[rle]`, `[model]`, `[train.grpo]` and `[rollout]` are the only tables this
-# file has, and all describe the published version: everything here is
-# immutable once published. `model`, `training_file`, `validation_file` and
-# `suffix` are CLI-flag-only, not manifest fields; see
-# `../README.md#5-start-a-training-job` for the exact command this
-# environment is trained with. The manifest is parsed in *strict* mode: an
-# unknown key is a hard error, so uncommenting a line is always safe but
-# inventing one is not. The commented-out settings below are the ones this
-# environment leaves unset, listed with their default and their validation
-# rule so the whole surface is visible in one file.
-
 schema_version = "1.0.0"
 
 [rle]
-# snake_case, starting with a letter.
 name = "data_code_agent"
-# Semantic version, MAJOR.MINOR.PATCH. Immutable: publishing a change means a
-# new version.
 version = "1.0.0"
 
-# This folder's environment serves its tools over MCP. RLE always drives
-# environments with the MCP environment protocol, so there is no field to set
-# here. `../agent` forwards the session-scoped `mcp_endpoint` unchanged and
-# translates the baked instruction's flat tool POST into a normal
-# `tools/call`; the SDK app factory handles session routing (see
-# `_compliance_endpoint` and `/local-tools` in `../agent/app.py`).
-
-# Pins the harness container independently of `version`, for build scripts that
-# tag images. Not used by the CLI itself -- `azd ai rle publish` takes the image
-# as an argument -- but declared so a pinned tag does not fail the strict parse.
-# imageTag = "2.0.0"
-
 [harness]
-# "Gym" or "Harness".
 type = "Harness"
-# "HostedAgent" or "BYOH" for Harness; "OpenEnv" for Gym.
 subtype = "BYOH"
-
-# Where RLE POSTs each rollout. Required for BYOH, and the only thing RLE knows
-# about your harness: it is reached over the public internet with no auth
-# header of any kind, so the endpoint has to protect itself. It must answer
-# exactly 202 and then serve GET {invocation_url}/rollouts/{operation_id} for
-# polling and DELETE for cancellation.
-# Replace the placeholder below with your own deployed harness's URL -- see
-# `../agent/README.md#build-and-deploy` for verified Google Cloud Run and
-# Azure Container Apps deployment commands. `publish` only validates that this
-# is a well-formed absolute HTTPS URL (no DNS/reachability check), so leaving
-# the placeholder as-is will publish successfully and only fail later, when a
-# rollout can't reach this host.
 invocation_url = "https://your-harness.example.com/invoke"
 
-# agent_name and agent_version are HostedAgent-only and are rejected for BYOH.
-# agent_name = "data-code-agent"
-# agent_version = "1"
-
-
-# ---------------------------------------------------------------------------
-# [model], [train.grpo] and [rollout] -- published with the version and
-# returned by the service. Every value here is optional and none of them has
-# a service-side default: omitted means absent. Supplying any of them
-# requires schema_version = "1.0.0".
-#
-# For the Harness type RLE consumes none of these: the harness owns the model
-# call, so they are carried for downstream training. [train.grpo] and
-# [rollout] are the only recipe settings a manifest can still carry --
-# everything else that used to live in a free-form `[train.options]` table
-# (max_train_examples, max_test_examples, max_concurrent_rollouts, seed,
-# batch_size, rollout_max_retries, renderer_name aside) now has no manifest
-# home and is passed on the `azd ai rle train` command line instead; see
-# `../README.md#5-start-a-training-job`.
-# ---------------------------------------------------------------------------
-
 [model]
-# Informational. Stored with the version; Execute Rollout never reads it.
-# name = "mai/mai-code-1.1-flash"
-# The Capture Proxy renderer. Left unset, the harness sends the model's default
-# renderer. Switched to MAI's own renderer: mai_harmony_internal is a
-# capture-only renderer for MAI-Code-1.1-Flash (no local tokenization), per
-# tools/local_finetune_facade/mai_recipe.py in loom. Qwen3-32B used qwen3_ext
-# instead (see the hillclimb note on [train.grpo] below).
+name = "mai/mai-code-1.1-flash"
 renderer_name = "mai_harmony_internal"
 
-# [rollout.gym_openenv]
-# Gym/OpenEnv only: names the action property that receives the model
-# completion verbatim. Not valid for a Harness, so it is unset here even
-# though this folder serves an OpenEnv service -- the *callable interface*
-# RLE sees is still the harness.
-# model_response_field = "response"
-
 [train.grpo]
-# Recipe-level GRPO settings, read by training and carried here so a published
-# version records what it was tuned against. The values below are the ones
-# that actually produced a measured hillclimb on this environment with
-# Qwen3-32B, not a guess at a starting point: on a fixed 100-task validation
-# pool the mean reward rose from 0.255 at step 0 to a peak of 0.632 at step 60
-# (0.611 at the final step, 64).
-#
-# A judgement call, not a measurement: no reference config for this
-# environment exists. 5e-6 is too low to move a 32B LoRA inside a reasonable
-# budget, and 3e-4 risks the base competence this reward multiplies against.
-# 5e-5 sits between them.
 learning_rate = 5e-5
-# Pinned to the proving run's value, which happens to match this version of
-# the facade's own default -- set explicitly so it does not silently drift if
-# that default ever changes.
 lora_rank = 32
-# Rollouts per group. A GRPO group needs at least two to have any advantage
-# signal at all. The proven value for this hillclimb was 8 (64 rollouts/step);
-# doubled to 16 here (128 rollouts/step) because rle-harness hard-rejects
-# refill_on_drop / strategy / dynamic_sampling at config validation ("MVP1
-# supports only synchronous on-policy training"; loom-command-job/recipes/
-# rle-harness/config.py _validate_mvp1_contract), so there is no batch-refill
-# mechanism available when remove_constant_reward_groups drops a degenerate
-# (all-equal-reward) group. A wider group is the only lever this recipe
-# exposes to make that less likely: more members per group means better odds
-# of nonzero within-group reward variance.
 group_size = 16
-# Groups per optimiser step.
-#
-# max_train_examples (now `azd ai rle train --task-count`) and max_steps are
-# coupled through this value, not independent knobs: the recipe's dataset
-# wraps its batch index at ceil(max_train_examples / groups_per_batch), so a
-# max_steps equal to that number sees every curated task exactly once with
-# zero repeats. num_epochs below never gets a chance to start a second pass
-# because max_steps truncates the run first -- resizing the dataset (see
-# `../README.md#5-start-a-training-job`) without raising max_steps to match
-# silently drops the untouched tail of train.jsonl instead of training on it.
 groups_per_batch = 8
 num_epochs = 2
-# Loom has no LR schedule and a finished job cannot be extended, so max_steps is
-# set past the expected stopping point and the run is judged on its curve. See
-# the groups_per_batch comment above for why this must equal
-# max_train_examples / groups_per_batch (1024 / 8 = 128).
 max_steps = 128
-# Both boundaries are what make a checkpoint durable: the recipe only writes one
-# when a step falls on eval_every or save_every, so a run configured without
-# them trains weights it cannot later recover. 4 gives 32 points across the
-# curve (steps 4/8/.../128, the final step included), and the proving run's
-# own numbers are why that resolution matters, not just more data: its best
-# checkpoint (step 28, 0.82 validation success) sits ahead of a regression
-# (0.37 by step 40) that an 8-step cadence would have landed past instead of
-# on, missing the checkpoint this sample's results are drawn from.
 eval_every = 4
 save_every = 4
 remove_constant_reward_groups = true
 sampling_seed = 42
-# Rollout-failure tolerance. Because the recipe trains a group's survivors
-# rather than discarding all sixteen when one member fails, a failure costs one
-# rollout rather than a whole group. The abort rate ends the run outright when
-# tripped, so it is set well above the ~32% a first attempt reached.
 rollout_failure_rate_abort = 0.45
 min_trainable_group_members = 2
