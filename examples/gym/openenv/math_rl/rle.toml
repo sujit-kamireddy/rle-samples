@@ -1,107 +1,27 @@
-# Gym/OpenEnv environment for the math_rl sample.
-#
-# Every setting `rle.toml` accepts is listed here, including the ones this
-# environment leaves unset -- those are commented out, with their default and
-# their validation rule, so the whole surface is visible in one file. The
-# manifest is parsed in *strict* mode: an unknown key is a hard error, so
-# uncommenting a line is always safe but inventing one is not.
-#
-# `[rle]`, `[model]`, `[train.grpo]` and `[rollout]` are the only tables this
-# file has, and all describe the published version: everything here is
-# immutable once published. `model`, `training_file`, `validation_file` and
-# `suffix` are CLI-flag-only, not manifest fields; see
-# the commands below.
-
-# Manifest schema version. Optional; the only accepted value is "1.0.0", which
-# is also what is assumed when it is omitted. Required as soon as [model],
-# [train] or [rollout] is supplied.
 schema_version = "1.0.0"
 
 [rle]
-# snake_case, starting with a letter.
 name = "math_rl"
-# Semantic version, MAJOR.MINOR.PATCH. Immutable: publishing a change means a
-# new version.
 version = "1.0.0"
 
-# Pins the environment container independently of `version`, for build scripts
-# that tag images. Not used by the CLI itself -- `azd ai rle publish` takes the
-# image as an argument -- but declared so a pinned tag does not fail the strict
-# parse.
-# imageTag = "1.0.0"
-
 [harness]
-# "Gym" or "Harness".
 type = "Gym"
-# "OpenEnv" for Gym; "HostedAgent" or "BYOH" for Harness.
 subtype = "OpenEnv"
 
-# agent_name/agent_version/invocation_url are Harness-only and are rejected
-# for a Gym target: RLE reaches this environment through the sandbox it
-# schedules from the published image, so there is no agent/harness address
-# to register.
-# agent_name = "..."
-# agent_version = "..."
-# invocation_url = "..."
+[model]
+name = "qwen3-32b-1"
+renderer_name = "qwen3_ext"
 
-
-# ---------------------------------------------------------------------------
-# [model], [train.grpo] and [rollout] -- published with the version and
-# returned by the service. Every value here is optional and none of them has
-# a service-side default: omitted means absent. Supplying any of them
-# requires schema_version = "1.0.0".
-# ---------------------------------------------------------------------------
-
-# [model]
-# Informational. Stored with the version; Execute Rollout never reads it.
-# Maximum 256 characters.
-# name = "qwen3-32b-1"
-# The transcript renderer for the policy. Persisted, but not promoted into the
-# sampler's own configuration. Maximum 256 characters. Accepted values include
-# mai_harmony, mai_harmony_internal, qwen3_instruct, qwen3, qwen3_ext,
-# qwen3_disable_thinking, qwen3_5, qwen3_5_ext, qwen3_5_disable_thinking,
-# qwen3_5_ext_disable_thinking.
-# renderer_name = "qwen3_ext"
-
-# [rollout.gym_openenv]
-# Names the action property that receives the model completion's content
-# verbatim. It must be a property the environment already declares in its own
-# action model, so there is no default. Maximum 128 characters. This sample is
-# SDK MCP mode (subclasses RLEnvironment), not schema-driven, so this field
-# must stay unset.
-# model_response_field = "response"
-
-# [train.grpo]
-# Recipe-level GRPO settings. Stored with the version and read by training;
-# RLE itself never consumes them. Each is optional and has no default.
-# learning_rate = 0.0003                 # finite float > 0
-# group_size = 8                         # integer > 0
-# groups_per_batch = 128                 # integer > 0
-# lora_rank = 32                         # integer > 0
-# num_epochs = 1                         # integer > 0
-# max_steps = 150                        # integer > 0
-# eval_every = 10                        # integer > 0
-# save_every = 10                        # integer > 0
-# remove_constant_reward_groups = true   # bool
-# sampling_seed = 42                     # integer
-# rollout_failure_rate_abort = 0.45      # finite float in [0, 1]
-# min_trainable_group_members = 2        # integer > 0
-
-
-# ---------------------------------------------------------------------------
-# Training a published version.
-#
-# There is no free-form `[train]` options table: `model`, `training_file`,
-# `validation_file` and `suffix` are CLI-flag-only, and `--task-count N` caps
-# the number of training rows read. Any option that used to live in a
-# free-form `[train.options]` table and is not one of the
-# `[train.grpo]`/`[rollout]` fields above
-# (for example a fixed concurrency or a held-out example count) has no
-# manifest home any more and is not accepted by the CLI either.
-# ---------------------------------------------------------------------------
-# cd rle
-# azd ai rle train --rle-version 1.0.0 \
-#   --model qwen3-32b-1 \
-#   --training-file ./job_data/train.jsonl \
-#   --validation-file ./job_data/validation.jsonl \
-#   --suffix math-rl
+[train.grpo]
+learning_rate = 0.0003
+lora_rank = 32
+group_size = 8
+groups_per_batch = 128
+num_epochs = 1
+max_steps = 150
+eval_every = 10
+save_every = 10
+remove_constant_reward_groups = true
+sampling_seed = 42
+rollout_failure_rate_abort = 0.45
+min_trainable_group_members = 2
