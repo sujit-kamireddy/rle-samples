@@ -282,9 +282,8 @@ gcloud run deploy data-code-agent-byoh \
   (`asyncio.create_subprocess_exec` in `opencode_direct.py`); gen2's fuller
   Linux syscall/networking surface is what that needs over gen1's stricter
   sandbox.
-- `--cpu=8 --memory=32Gi`: sized for `rle.toml`'s default
-  `max_concurrent_rollouts = 8`; scale with that setting per the memory note
-  above.
+- `--cpu=8 --memory=32Gi`: sized for 8 concurrent rollouts;
+  scale with the rollout concurrency per the memory note above.
 - `--concurrency=100`: just needs to clear the number of concurrent rollouts
   you expect; one request occupies one in-flight rollout for its whole
   (possibly long) duration.
@@ -323,7 +322,7 @@ az containerapp create \
 ```
 
 `--cpu 4 --memory 8Gi` is the Consumption plan's per-replica ceiling; a
-Dedicated workload profile allows more if `max_concurrent_rollouts` needs it.
+Dedicated workload profile allows more if the rollout concurrency needs it.
 `--ingress external --target-port 8080` gives it a public HTTPS endpoint with
 no extra auth in front of it by default -- the same anonymous-access
 requirement as Cloud Run above.

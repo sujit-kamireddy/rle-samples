@@ -58,8 +58,7 @@ and `validation.jsonl` (200 disjoint tasks). Each JSONL row contains
 
 From `rle_deprecated/`, `[train]` in `rle.toml` points to those files as
 `../job_data/train.jsonl` and `../job_data/validation.jsonl`; the CLI uploads
-them automatically. It also sets model `qwen3-32b-1`, `group_size = 4`, and
-`max_concurrent_rollouts = 8`. Override the files for one job with
+them automatically. It also sets model `qwen3-32b-1`, and `group_size = 4`. Override the files for one job with
 `--training-file` and `--validation-file` if needed.
 
 ```powershell
