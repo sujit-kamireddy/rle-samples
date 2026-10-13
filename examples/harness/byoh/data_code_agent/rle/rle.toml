@@ -24,5 +24,4 @@ eval_every = 4
 save_every = 4
 remove_constant_reward_groups = true
 sampling_seed = 42
-rollout_failure_rate_abort = 0.45
 min_trainable_group_members = 2

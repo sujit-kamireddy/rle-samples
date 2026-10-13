@@ -196,9 +196,7 @@ coupled.
 `model`, `training_file`, `validation_file` and `suffix` are CLI-flag-only:
 `rle.toml` no longer carries a `[train]` table, so every run needs them
 passed explicitly. `rle/rle.toml`'s `[train.grpo]` is still pre-tuned
-for this environment and produced a validated hillclimb against Qwen3-32B --
-see that file's comments for the reasoning behind each one and for how to
-resume a run if `rollout_failure_rate_abort` trips.
+for this environment and produced a validated hillclimb against Qwen3-32B.
 
 ```bash
 cd rle
