@@ -13,10 +13,10 @@ name = "qwen3-32b-1"
 renderer_name = "qwen3_ext"
 
 [train.grpo]
-learning_rate = 1e-5
+learning_rate = 2e-5
 lora_rank = 32
 group_size = 8
-groups_per_batch = 64
+groups_per_batch = 256
 num_epochs = 1
 max_steps = 150
 eval_every = 6
