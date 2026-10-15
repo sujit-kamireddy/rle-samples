@@ -1,60 +1,76 @@
-## Grading, token budget, and the ungraded-rollout trap
+# Grading, capture and budgets
 
-### Reward shaping
+## Grade the task that reset selected
 
-Both samples use the same two-part shape: a small format term that is cheap to satisfy, plus the
-real correctness term.
+Use the environment's private task and the same session's tool evidence. The
+agent's answer, claimed reward or embedded selector cannot replace those.
+Grade ordinary wrong/malformed answers deterministically, but surface genuine
+grader/transport/setup faults explicitly rather than hiding them as reward zero.
 
-`math_rl` (`server/math_rl_environment.py`, `FORMAT_COEF = 0.1`):
+Test exact values, not merely `reward is not None`:
 
-```python
-reward = FORMAT_COEF * (format_score - 1.0) + correct_score
-```
+| Sample | Correct | Wrong but formatted | Malformed |
+| --- | --- | --- | --- |
+| Gym math | `1.0` | `0.0` | `-0.1` (no boxed answer) |
+| Gym code | `1.0` | `0.0` (fenced, tests fail) | Negative format coefficient (unfenced) |
+| BYOH data-code | Correctness times disclosure multiplier | Task/rubric-specific | Task/rubric-specific |
+| Hosted competitive intelligence | Rubric rescaled to `[0,1]` | Rubric-specific | Rubric-specific |
 
-- answer without `\boxed{}` → `-0.1`, and correctness is **not even graded**
-- correct, well-formed answer → `1.0`
+The math helper is optional; absence of tool use alone is not a penalty there.
+Disclosure/tool-discipline requirements in other samples are task-specific,
+not a universal RLE rule.
 
-`code_rl`: `1.0` correct and fenced, `0.0` fenced but failing tests, `-FORMAT_COEF` unfenced.
+Use finite numeric rewards. Choose a bounded, comparable task scale and preserve
+ordering between malformed, wrong and correct responses. Do not clamp all
+format penalties to zero merely to imitate a different sample's scale.
+The Hosted sample's `[0,1]` mapping is not evidence that every RLE environment
+must have that range; the Gym samples deliberately use negative penalties.
 
-The pattern to copy: **a malformed response is worse than a wrong one**, and grading a malformed
-response is skipped entirely (it is also the expensive path — do not run hidden tests on output you
-already know is unusable).
+Keep scoring separately testable; avoid hidden-test execution on unusable
+submissions. Protect the grader from untrusted code and bound subprocess,
+expression-evaluation and external-grader runtimes.
 
-Keep the scale bounded and comparable across episodes. Rewards that vary in magnitude with the
-difficulty of the row teach the policy about the dataset, not about the task.
+## Terminal episodes and captured model calls
 
-### The ungraded-rollout trap
+Return `done=True` with a reward for every expected terminal submission,
+including giving up. A legitimate single-turn Gym episode is valid when it
+terminates graded; don't add dummy model calls to avoid graph validation.
 
-After the loop finishes, the rollout graph is exported and validated. A rollout with **exactly one
-model call** is checked against a rule named `degenerate_rollout`, which is **FATAL** — the export
-refuses to stand behind it.
+`degenerate_rollout` can indicate an ungraded episode or missing model calls.
+For Harness, verify every model call uses the supplied capture proxy;
+successful answer grading does not prove the policy trajectory was captured.
+Inspect tool/call counts and task identity in diagnostics.
 
-That rule exists to catch an agent that stopped after its first response. The graph cannot tell that
-apart from a legitimate one-question/one-answer episode, because both produce the same shape: one
-root, one turn, nothing to stitch. The difference is only knowable from the environment, so RLE
-passes an `episode_terminated` assertion when — and only when — **the Gym episode came back graded**.
+Foundry-backed `rollout --mode eval` produces text-only captures that are
+intentionally not trainable. Do not diagnose that as a failure or add artificial
+turns. Training trajectories require the Loom-backed path, with token
+IDs/logprobs; `--mode eval --loom` is also available for Loom evaluation.
 
-The practical consequence for you:
+Use optional `GradeAction.rollout_graph` for additional capture-based rubric
+evidence where available; don't require it on every target/SDK version.
+Do not reconstruct missing capture by trusting an agent-submitted transcript.
 
-> A single-turn environment is completely fine, **provided the episode terminates with a grade.** An
-> episode that ends ungraded — the step budget ran out, or a code path returned without setting a
-> reward — is exported as `degenerate_rollout` FATAL and the rollout is wasted.
+## Separate the budgets
 
-So:
+Latest remote service options default to Gym ceilings of **32 turns** and
+**8192 completion tokens**, and an Execute Rollout deadline of **1800 seconds**.
+These are service behavior, not configurable authoring manifest fields, and can
+differ by deployment configuration. Verify deployed limits when diagnosing
+exhaustion.
 
-- Design the environment to terminate with a grade well inside RLE's fixed 32-step server ceiling.
-  A single-turn environment that returns `done=True` on its first `step()` is the correct design,
-  not a workaround — there is no manifest field to declare that any more, it is just what the
-  environment does.
-- Never let the loop end by exhausting the step budget. If the policy has not submitted by the last
-  step, grade it as a failure and set `done=True` yourself.
-- Never return from `step()` on an error path without a reward and `done=True`.
+- Design a Gym episode to finish well inside its service turn budget.
+- Don't treat training `max_steps` as an episode/tool budget.
+- A token cutoff can break an otherwise correct fenced/boxed submission.
+  Inspect finish reasons/usage before concluding the grader is wrong.
+- OpenEnv `session_timeout` bounds detached-session idleness, not total rollout
+  runtime; attached clients still require explicit cleanup.
+- Harness agents control their own model calls/tool loops. Bound individual
+  model requests and total agent runtime separately and below service deadlines.
+- BYOH cancel is advisory. Always have independent timeout/cleanup.
+- Gateway HTTP deadlines and WebSocket rollout deadlines need not match.
+  A multi-minute agent should not copy a short HTTP timeout into its entire
+  loop without confirming the transport.
 
-### Token budget
-
-There is no manifest field for the completion-token budget any more. Every model call's
-`max_tokens` is a fixed server ceiling (8192, see the manifest reference) regardless of what the
-environment would otherwise ask for. A reasoning model can still be cut off mid-thought and submit
-a truncated answer, which the format term then scores as malformed -- that looks like a bad policy;
-it is actually the ceiling. Design the environment's expected completions to fit comfortably inside
-it; there is nothing to configure here.
+Do not advertise a manifest token-budget knob when none is represented in the
+current authoring schema. Shorten expected output or change the appropriate
+agent/service configuration only when that surface actually supports it.

@@ -1,6 +1,7 @@
 # RLE samples
 
-RLE has two implementation types: `Gym` and `Harness`. Every environment
+RLE uses `gym` when RLE drives the model loop, or `byoh` when an external agent
+drives its own loop. Every environment
 carries a host-agnostic `rle.toml` manifest declaring its immutable identity
 and callable interface:
 
@@ -13,9 +14,13 @@ version = "1.0.0"
 type = "gym"
 ```
 
-The `[harness]` table (`type`, `endpoint`, `protocol`) matches the RLE control plane `harness` object. The manifest
-intentionally does not contain Foundry project endpoints, registry
-locations, service IDs, or credentials.
+For `byoh`, `[harness]` also binds an HTTPS `endpoint` and invocation `protocol`:
+`rle-invocation` for async start/poll/cancel, or `responses` for a same-project
+Foundry agent URL ending in `/agents/<name>`. Removed subtype/name/version
+binding keys are not accepted. The manifest excludes registry locations,
+service IDs and credentials; a Responses harness endpoint includes its project.
+Task format defaults to `json`; Harbor tasks and harness packages are reserved,
+not yet runnable.
 
 ## RLE SDK installation
 
@@ -71,11 +76,14 @@ verification, and pip installation.
 
 ## `.agents/skills/` and `.claude/skills/` — the authoring skills
 
-The skills carry the RLE authoring contract: the server surface, the action
-vocabulary behind `GET /schema`, the manifest fields, grading and step budget,
-and the failure modes worth recognizing. A coding agent working in a project
-that has them can author or extend an environment without being told the
-contract first.
+One unified [`rle` skill](./.agents/skills/rle/SKILL.md) covers creating, editing
+and migrating all three supported paths: `gym`, `byoh/rle-invocation` and
+`byoh/responses` (HostedAgent). It explains the shared SDK/OpenEnv
+environment contract, [`rle.toml`](./.agents/skills/rle/references/manifest.md),
+[MCP sessions and tools](./.agents/skills/rle/references/mcp.md),
+[agent invocation](./.agents/skills/rle/references/invocation.md), grading,
+local verification and publish/rollout workflows. References load on demand
+through normal Markdown links.
 
 They ship twice because no single directory reaches every agent:
 
@@ -89,12 +97,40 @@ The two trees must stay byte-identical. `.agents/skills/` is the source of
 truth and `.github/workflows/skills-parity.yml` fails the build if they
 diverge, so after editing a skill mirror it across:
 
-```bash
-rm -rf .claude/skills && cp -R .agents/skills .claude/skills
+```powershell
+Copy-Item -Path .agents\skills\rle -Destination .claude\skills -Recurse -Force
+python -m unittest discover -s tools -p test_rle_skill.py
 ```
 
 `azd ai rle init` copies both trees into a new environment, and
 `azd ai rle skill install` refreshes them in place from this repository.
+Run it from an initialized RLE build context with a valid manifest. It reads
+the published `main` branch, not uncommitted local skill edits. See the
+[isolated authoring workflow](./.agents/skills/rle/references/workflow.md)
+for testing without changing a shared azd profile.
+Check installed `azd ai rle --help` first: a compatible azd host needs the
+`azure.ai.rle` extension installed from the intended source. Core commands no
+longer need `AZD_AI_RLE_ENABLE`; Harness init and staged training commands use
+`AZD_AI_RLE_ENABLE_ALL`. See the
+[verified remote source/release baseline](./.agents/skills/rle/references/upstream-contracts.md)
+for the CLI, SDK and service revisions used to refresh the skill.
+
+### Try authoring with an agent
+
+Open this repo or an initialized RLE project in your coding agent, then ask:
+
+- "Use the rle skill to create a Gym/OpenEnv environment with a typed MCP
+  helper and test correct, wrong and malformed answers."
+- "Use the rle skill to wrap my existing agent as BYOH. Preserve its loop and
+  implement async start/poll/cancel plus session-scoped MCP tools."
+- "Use the rle skill to edit this HostedAgent RLE's manifest, tool schema and
+  grader, then verify task identity and session isolation."
+
+The skill guides local smoke tests before a managed rollout and reports any
+missing runtime, CLI or cloud credentials instead of claiming a publish worked.
+See the [step-by-step workflow](./.agents/skills/rle/references/workflow.md).
+The dependency-free skill checks validate links, examples, discovery metadata
+and byte parity; CI runs them alongside the existing parity checks.
 
 ## `examples/gym/openenv/` — Gym/OpenEnv samples
 
@@ -118,25 +154,27 @@ controls which sample directories `azd ai rle init` offers. A new sample
 directory is visible automatically; add an entry with `visible = false` to
 stage a sample before announcing it.
 
-## `examples/harness/` — byoh harness samples (`responses`, `rle-invocation`)
+## `examples/harness/` — Harness samples (HostedAgent, BYOH)
 
 [`examples/harness/`](./examples/harness) holds worked reference examples
-for the `byoh` type, where RLE wraps a production agent that owns its own
+for the `Harness` type, where RLE wraps a production agent that owns its own
 loop: [`examples/harness/hosted-agent/`](./examples/harness/hosted-agent)
-for agents running as a Foundry hosted agent (`protocol = "responses"`), and
+for agents running as a Foundry Hosted Agent version, and
 [`examples/harness/byoh/`](./examples/harness/byoh) for bring-your-own
-harnesses deployed anywhere at an https `endpoint` (`protocol = "rle-invocation"`). Each directory holds
+harnesses deployed anywhere and registered by base URL. Each subtype holds
 one directory per sample — today
-[`data_code_agent`](./examples/harness/byoh/data_code_agent) under both — and each
+[`data_code_agent`](./examples/harness/byoh/data_code_agent) for BYOH and
+[`competitive_intelligence_agent`](./examples/harness/hosted-agent/competitive_intelligence_agent)
+for HostedAgent — and each
 sample includes the agent/harness code and the paired RLE code (task setup,
 mock tools, grader), plus a README covering deploy → wire → publish. Because
 the agent side is always specific to your own harness,
-`azd ai rle init --type byoh` scaffolds only the RLE side for you — these
+`azd ai rle init --type Harness` scaffolds only the RLE side for you — these
 folders show how to build and wire the other half.
 
-Each directory has its own
+Each subtype has its own
 [`catalog.toml`](./examples/harness/byoh/catalog.toml), with the same
-visibility rules as the gym one. Pick a sample with
+visibility rules as the Gym/OpenEnv one. Pick a sample with
 `azd ai rle init --sample <name>`, or let the CLI prompt — it always does,
 even when only one sample is visible.
 

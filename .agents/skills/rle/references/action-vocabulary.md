@@ -1,106 +1,73 @@
-## The action vocabulary: choose schema-driven or SDK MCP
+# Model-visible tools
 
-The action-variant rules below apply to **schema-driven mode**. In SDK MCP mode,
-`RLEnvironment` supplies MCP `tools/list` and `tools/call`, typed methods registered with
-`self.tool()` define tool schemas, and `GradeAction.response` carries the terminal response. SDK MCP
-mode has no protocol field to set (RLE always drives it this way) and has no `model_response_field`.
+The current vocabulary comes from MCP `tools/list`, not discriminator members
+in a custom OpenEnv action union. `GET /schema` is useful for inspecting
+observation/state/action serialization, but does not replace MCP tool discovery.
+There is no `model_response_field` to configure.
 
-### Schema-driven mode: `GET /schema` is the whole story
+## Adding or editing a tool
 
-RLE derives everything the model may do from the `action` schema your OpenEnv server publishes at
-`GET /schema`. There is no separate tool spec to write, register, or keep in sync. The rule:
-
-> Of all the action variants in the schema, **the one variant declaring `model_response_field` receives
-> the model's completion text. Every other variant is offered to the model as a tool named after its
-> discriminator.**
-
-### Case 1 — no tools (single action)
-
-A plain `Action` subclass:
+1. Add a named method with concrete argument types and a useful docstring.
+2. Register it after `super().__init__()` with `self.tool()(self.method)`.
+3. Check its published `tools/list` name, description and `inputSchema`.
+4. Call it on an active session and assert its result and state changes.
+5. Grade that same session and verify the rubric sees the evidence.
 
 ```python
-class AnswerAction(Action):
-    answer_text: str = Field(default="", description="...")
-```
+from azure.ai.projects.rle.environments import RLEnvironment
 
-With `model_response_field = "answer_text"` there is one variant, it carries the response field,
-and the model is given no tools. The completion text arrives in `action.answer_text`.
-
-### Case 2 — with tools (discriminated union)
-
-A `RootModel` union with an explicit discriminator:
-
-```python
-class CheckSolutionAction(Action):
-    type: Literal["check_solution"] = "check_solution"
-    code: str = Field(description="Python code implementing the solution.")
-
-class SubmitAnswerAction(Action):
-    type: Literal["submit_answer"] = "submit_answer"
-    code_text: str = Field(default="", description="...")
-
-class CodeAction(RootModel[Annotated[
-    Union[CheckSolutionAction, SubmitAnswerAction],
-    Field(discriminator="type"),
-]]):
-    ...
-```
-
-The `RootModel` union is what makes `GET /schema`'s `action` a `oneOf` with a `discriminator`, which
-is how RLE tells variants apart. With `model_response_field = "code_text"`, `SubmitAnswerAction` is
-the response variant and `check_solution` becomes a tool — its name is the discriminator value, its
-parameters are the variant's other properties, and its description is the class docstring. Reach the
-concrete action through `.root` in `step()`.
-
-**Adding a tool is therefore: add a union member.** Nothing else.
-
-### SDK MCP mode: typed tools plus `GradeAction`
-
-```python
-class CodeRLEnvironment(RLEnvironment):
+class ExampleEnvironment(RLEnvironment):
     def __init__(self):
         super().__init__()
-        self.tool()(self.check_solution)
+        self.tool()(self.check_candidate)
 
-    async def check_solution(self, code: str) -> dict:
-        """Run a candidate solution against hidden tests."""
-        ...
-
-    def grade(self, action: GradeAction, **kwargs):
-        ...
+    def check_candidate(self, candidate: str) -> dict[str, bool]:
+        """Check a candidate without revealing the private reference answer."""
+        # Implement task-specific validation/checking here.
+        raise NotImplementedError
 ```
 
-Register tools after `super().__init__()` creates the MCP server. Tool and grading evidence must
-live on the same environment instance. Pass `GradeAction` to `create_app` so the terminal step is
-deserialized correctly. Do not add MCP list/call variants or configure a response field yourself.
-The shipped `code_rl` and `math_rl` samples demonstrate this mode with `check_solution` and
-`check_equivalence`, respectively.
+This fragment shows registration only; a concrete environment must also
+implement `reset` and `grade`. Do not leave a placeholder in the shipped app.
 
-### Conformance rules RLE enforces
+Names and descriptions are policy-facing instructions. Preserve production
+tool names/schemas for Harness environments instead of substituting easier
+training-only tools. The competitive-intelligence sample deliberately publishes
+production Pydantic parameter schemas while allowing malformed calls to reach
+the rubric; copy that advanced pattern only when grading invalid calls is an
+explicit requirement, not as an excuse to use untyped schemas everywhere.
 
-The rollout fails with a conformance error — before any model call — if:
+## State and result rules
 
-| Condition | Why |
-| --- | --- |
-| `action` is not a JSON object | nothing to read |
-| the schema declares no variant | nothing the model could emit |
-| **no** variant declares `model_response_field` | the error lists every property it *did* find — read it, it is usually a typo or the wrong field name in `rle.toml` |
-| **more than one** variant declares `model_response_field` | RLE cannot tell which one carries the graded response |
-| a non-response variant has no discriminator | it cannot be named as a tool |
-| two variants share a discriminator value | ambiguous tool name |
+- Store per-episode tool evidence on the environment instance, never a process
+  global or a second independently created environment.
+- SDK `state` is a defensive copy. If using `_state`, mutate the snapshot then
+  call `_set_state(state)`; modifying `self.state` alone does not persist.
+- Check lifecycle: tools before reset or after terminal grading must not silently
+  mutate an unrelated episode.
+- Return JSON-serializable values or text; the SDK produces the MCP result.
+  Do not manufacture model tool-call IDs or assistant messages in tool results.
+- Keep labels/reference answers out of descriptions, public state and outputs.
+- Distinguish protocol faults from task-level tool failures. If a rubric needs
+  to score a rejected action, return the documented task-level error result.
+  Do not turn session/transport faults into successful acknowledgements.
+- Offload expensive blocking work appropriately; don't block the event loop
+  through its keepalive or rollout deadline.
 
-### Authoring constraints that follow from this
+## Migrating an old schema-driven environment
 
-- **Do not put the response field on more than one variant.** If two actions both need free text,
-  give them different property names and pick one as the response field.
-- **Keep `$ref` chains shallow.** `$ref` resolution is bounded at 8 hops (deliberately, so a `$ref`
-  cycle cannot spin), which no legitimate action schema approaches — but deeply nested generic
-  models can surprise you.
-- **`Optional[...]` is fine.** Null union branches are handled; the non-null branch is what
-  describes the parameter.
-- **Descriptions are prompt text.** The model sees your `Field(description=...)` and class
-  docstrings. Vague descriptions produce vague policies.
-- **Do not add an episode-identity field** (`problem_id`, `instance_id`, …) to the action. RLE drives
-  Gym/OpenEnv only over `/ws`, one environment instance per connection, so `step()` resolves the
-  episode from what `reset()` stored on `self`. An identity field on the action is a field the model
-  can get wrong.
+Preserve selectors, grader and reward semantics, then:
+
+- Replace the action-union tool members with registered MCP methods.
+- Replace the final response action with SDK `GradeAction`; grade
+  `action.response`, and accept optional `action.rollout_graph`.
+- Replace custom ordinary `step()` dispatch with `RLEnvironment`'s dispatch.
+- Wire `GradeAction`, observation/state models and the suitable `create_app`.
+- Remove `model_response_field`, `[rollout.gym_openenv]` and environment
+  protocol selectors from the manifest. Preserve `[harness].protocol` for
+  `byoh` invocation. Do not retain obsolete keys as comments in a template.
+- Test the same known tasks and tool evidence before and after migration.
+
+For old Harness REST tools, move task initialization to `reset`, scoring to
+`grade`, and each `/tools/<name>` operation to an MCP tool. Change the agent's
+tool adapter to use the supplied session-scoped MCP endpoint.
