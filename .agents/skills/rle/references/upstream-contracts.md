@@ -93,10 +93,25 @@ Vienna paths are under `src/azureml-api/src/RLE/`:
 
 ## Limits of this verification
 
-This is **source and distribution verification**, not proof that a particular
-Foundry deployment is running those commits. No managed environment was
-published and no cloud rollout was performed during the refresh. Deployed
-service configuration can also differ from source option defaults.
+Source and distribution verification is not proof that a particular Foundry
+deployment is running those commits. Deployed service configuration can also
+differ from source option defaults. Runtime evidence below is dated separately.
+
+The October 15 current-schema trial used a pinned source-built CLI in an
+isolated azd profile and installed this skill through the real installer using
+a controlled local Git source. One fresh agent authored, then edited, Gym,
+BYOH and HostedAgent variants. All five image contexts built; independent
+container tests exercised actual MCP sessions, BYOH start/poll/cancel and the
+SDK's background Responses host with a deliberately synthetic model.
+Those local loops are not managed Harness capture.
+
+The fresh Gym image was then published through that CLI and reached Ready.
+Two real CLI Foundry evaluations, train seed 0 and validation seed 1, returned
+reward 1 with the requested tasks, two captured model turns and one helper call
+each. Saved artifacts agreed with the local grader and the CLI confirmed
+resource cleanup. These were text-only, non-trainable captures. Positive
+managed BYOH/HostedAgent episodes remain unverified: approved BYOH HTTPS
+hosting and HostedAgent authentication/project access are still prerequisites.
 
 The October 14 isolated trials used the preceding manifest schema. They
 published a Gym version that reached Ready and
@@ -114,13 +129,13 @@ proof of deploying the user-built image or of a positive managed Harness
 episode. The tested host/environment container loop remains local with a mock
 model proxy. The owned cloud host/session and sampler were released afterward.
 
-Other targets rejected Foundry policy support or failed provisioning/capacity.
+Earlier targets rejected Foundry policy support or failed provisioning/capacity.
 These outcomes do not identify a deployed commit or invalidate this snapshot.
 Keep publishing, image readiness, agent deployment, policy acceptance, capture,
 rollout completion and cleanup as separate verification claims.
-Those runtime results do not claim a fresh managed rollout using the October
-15 schema redesign. Current-schema verification covers the remote source,
-sample manifests and local skill regression checks.
+The earlier Loom/HostedAgent results do not establish current-schema Harness
+support. The current-schema Gym evaluations above do establish Foundry policy
+acceptance on their tested deployment, not universal availability.
 
 When updating this skill, resolve the current remote refs again, read the
 active implementation rather than stale README examples, distinguish public

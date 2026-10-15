@@ -37,6 +37,11 @@ production Pydantic parameter schemas while allowing malformed calls to reach
 the rubric; copy that advanced pattern only when grading invalid calls is an
 explicit requirement, not as an excuse to use untyped schemas everywhere.
 
+For an intentional rename, update registration, published schemas, agent
+discovery/allowlists, dispatch, model fixtures and documentation together.
+Exercise the new name through the real agent-to-MCP loop and assert that the
+removed name is absent; changing the Python method alone is not a complete edit.
+
 ## State and result rules
 
 - Store per-episode tool evidence on the environment instance, never a process

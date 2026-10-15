@@ -271,6 +271,42 @@ class RLESkillTests(unittest.TestCase):
         for text in ("masked internal error", "exact owned agent/version/session", "registration/deletion"):
             self.assertIn(text, troubleshooting)
 
+    def test_rollout_uses_manifest_version_not_removed_flag(self):
+        workflow = (SKILL / "references" / "workflow.md").read_text(encoding="utf-8")
+        self.assertIn("`rle.name` and `rle.version`", workflow)
+        self.assertIn("has no\n`--version` flag", workflow)
+        for path in SKILL.rglob("*.md"):
+            with self.subTest(file=str(path)):
+                self.assertNotRegex(
+                    path.read_text(encoding="utf-8"),
+                    r"azd ai rle rollout[^\r\n]*--version\b",
+                )
+
+    def test_concurrency_and_cross_surface_tool_edits(self):
+        server = (SKILL / "references" / "server-contract.md").read_text(encoding="utf-8")
+        self.assertIn("SUPPORTS_CONCURRENT_SESSIONS = True", server)
+        self.assertIn("isolation promise", server)
+        tools = (SKILL / "references" / "action-vocabulary.md").read_text(encoding="utf-8")
+        self.assertIn("agent\ndiscovery/allowlists", tools)
+        self.assertIn("removed name is absent", tools)
+
+    def test_actual_host_api_and_capability_safe_diagnostics(self):
+        invocation = (SKILL / "references" / "invocation.md").read_text(encoding="utf-8")
+        for text in (
+            "ResponseEventStream(response_id=context.response_id, request=request)",
+            "await context.get_input_text()",
+            "`CreateResponse` is dict-shaped",
+            "immediately\nfailed response",
+            "preserving the existing path",
+            "access and telemetry exporters",
+            "before host initialization",
+            "actual container stdout and stderr",
+            "session/operation capabilities",
+            "not silent failures",
+        ):
+            with self.subTest(guidance=text):
+                self.assertIn(text, invocation)
+
 
 if __name__ == "__main__":
     unittest.main()

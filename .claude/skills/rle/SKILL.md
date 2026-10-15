@@ -2,7 +2,7 @@
 name: rle
 license: MIT
 metadata:
-  version: "2.7"
+  version: "2.8"
 description: >-
   Author, edit, migrate, test and publish Microsoft Foundry Reinforcement Learning
   Environments (RLE containers). Use for Gym/OpenEnv, BYOH or HostedAgent,
@@ -130,4 +130,6 @@ They are normal Markdown links, not template includes.
 - MCP failures cover OpenEnv `is_error` and standard MCP `isError`; a HostedAgent
   output fragment alone is not a runnable Responses host.
 - Harness calls the capture proxy rather than its normal production model endpoint.
+- Agent failures retain secret-safe diagnostics; access/client/telemetry output
+  does not expose credentials or session/operation capabilities.
 - Local smoke check passes; managed publish/rollout verified or explicitly blocked.

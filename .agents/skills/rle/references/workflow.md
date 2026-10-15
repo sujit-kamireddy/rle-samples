@@ -287,14 +287,18 @@ Choose the rollout backend deliberately:
 For a Foundry deployment smoke test:
 
 ```powershell
-azd ai rle rollout <name> --version <version> --mode eval --model <deployment-name> --task-file .\task.json
+azd ai rle rollout --mode eval --model <deployment-name> --task-file .\task.json
 ```
+
+Run from the environment build context containing `rle.toml`. The current
+command reads `rle.name` and `rle.version` from that manifest; it has no
+`--version` flag. Check the selected immutable version before execution.
 
 For a trainable Loom rollout:
 
 ```powershell
 azd ai rle rollout --help
-azd ai rle rollout <name> --version <version> --mode train --model <base-model> --task '{"seed":0,"split":"train"}'
+azd ai rle rollout --mode train --model <base-model> --task '{"seed":0,"split":"train"}'
 ```
 
 That task is for Gym math/code. Use BYOH's actual dataset split/index or

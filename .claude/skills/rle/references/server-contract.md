@@ -34,6 +34,13 @@ Use one worker. RLE creates one environment per session; detached HTTP sessions
 and the WebSocket must resolve to that same instance. A warm process can receive
 different rollout credentials, so none belong in module-level mutable clients.
 
+Keep capacity at one unless concurrent instances are needed and proven isolated.
+At the tested OpenEnv baseline, increasing `max_concurrent_envs` also requires
+the environment class to opt in with `SUPPORTS_CONCURRENT_SESSIONS = True`.
+That flag is an isolation promise, not a fix for shared state. Test interleaved
+resets, tools and grades on distinct instances before enabling it; one worker
+still serves those sessions.
+
 ## Reset and private task selection
 
 Implement `reset(seed=None, episode_id=None, ..., **kwargs)`. Capture unknown

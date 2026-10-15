@@ -4,6 +4,27 @@ Do not confuse invocation with environment MCP. Invocation runs the user's
 agent; MCP calls the already-reset environment's tools. The returned answer
 is graded by RLE through `GradeAction.response`, not REST `/grade`.
 
+## Shared model context and safe failures
+
+`model_endpoint` is the supplied capture **base URL**, not the agent's normal
+deployment. The current service supplies a base ending in `/v1`; a Chat
+Completions client appends `/chat/completions`, preserving the existing path
+prefix and query. Do not append another `/v1`, drop routing data, or substitute
+a production endpoint. The pinned capture proxy rewrites the model from the
+registered sampling session; verify the deployed path/model behavior rather
+than relying on a permissive local mock.
+
+Keep failed operations failed, but don't replace every exception with an
+unlogged "Agent invocation failed". Emit a fixed stage/error category and safe
+HTTP status where available; allowlist exception classes if reporting them.
+Do not log raw exception text, traceback locals, headers or request bodies.
+HTTP client, access and telemetry exporters can also expose full MCP query URLs
+or BYOH poll paths, even when application error messages are safe. Configure
+redaction or suppress those sensitive outputs before host initialization.
+Test actual container stdout and stderr with unique synthetic keys and
+session/operation capabilities; checking only the returned error or application ERROR logs misses
+these other sinks. Retain safe operational diagnostics, not silent failures.
+
 ## BYOH: start, poll, withdraw
 
 Set `[harness] type = "byoh", protocol = "rle-invocation"` and register the
@@ -179,6 +200,15 @@ response IDs, background storage and retrieval; do not recreate them.
 Read `context.client_headers` per request, observe cancellation, bound the
 agent work, and close owned model clients. Propagate failures to the host
 instead of returning a traceback as a successful assistant answer.
+
+For this SDK, `CreateResponse` is dict-shaped, not a Pydantic model with
+`model_validate`. Construct the stream with
+`ResponseEventStream(response_id=context.response_id, request=request)` and
+obtain input using `await context.get_input_text()`. Check the installed SDK's
+signatures if they differ; do not guess constructor arguments or create methods.
+Accept that a handler failing before `emit_created` can return an immediately
+failed response: still verify its ID and subsequent GET retrieval, rather than
+requiring every background POST to report `queued`.
 
 Test the real ASGI host with HTTP requests, not only the adapter function.
 Then test the built agent and environment containers together: reset one
