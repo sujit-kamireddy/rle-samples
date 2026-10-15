@@ -6,7 +6,7 @@ version = "2.0.1"
 
 [harness]
 type = "byoh"
-endpoint = "https://<account>.services.ai.azure.com/api/projects/<project>/agents/competitive-intelligence-rle-agent/endpoint/protocols/openai/responses"
+endpoint = "https://<account>.services.ai.azure.com/api/projects/<project>/agents/competitive-intelligence-rle-agent"
 protocol = "responses"
 
 [model]

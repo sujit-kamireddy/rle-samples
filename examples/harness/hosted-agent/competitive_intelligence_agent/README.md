@@ -405,7 +405,7 @@ version = "2.0.0"
 
 [harness]
 type = "byoh"
-endpoint = "https://<account>.services.ai.azure.com/api/projects/<project>/agents/<your-registered-agent-name>/endpoint/protocols/openai/responses"
+endpoint = "https://<account>.services.ai.azure.com/api/projects/<project>/agents/<your-registered-agent-name>"
 protocol = "responses"
 ```
 
@@ -507,7 +507,7 @@ That is what step 12 is in the recorded curve, and why this run stops at 14.
 RLE calls the agent's Responses endpoint once per rollout, synchronously:
 
 ```text
-POST {project}/agents/{agentName}/endpoint/protocols/openai/responses?api-version=v1
+POST {project}/agents/{agentName}/endpoint/protocols/openai/responses?api-version=v1   # rle.toml endpoint is {project}/agents/{agentName}; RLE appends the path
 x-client-rle-rollout-id: ...
 x-client-rle-model-endpoint: https://.../rle/v1.0/capture-proxy/v1
 x-client-rle-model-api-key: ...

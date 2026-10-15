@@ -106,7 +106,7 @@ starting a rollout).
 One synchronous request per rollout — no acknowledgement, no poll resource, no cancel leg:
 
 ```
-POST <endpoint>   # e.g. {project}/agents/{name}/endpoint/protocols/openai/responses?api-version=v1
+POST <endpoint>/endpoint/protocols/openai/responses?api-version=v1   # <endpoint> = {project}/agents/{name}; RLE appends the path
 Authorization: ******
 x-ms-client-request-id: <rollout id>
 Foundry-Features: HostedAgents=V1Preview
@@ -161,7 +161,7 @@ byoh with a Foundry agent endpoint (`responses`):
 ```toml
 [harness]
 type = "byoh"
-endpoint = "https://<account>.services.ai.azure.com/api/projects/<project>/agents/<name>/endpoint/protocols/openai/responses"
+endpoint = "https://<account>.services.ai.azure.com/api/projects/<project>/agents/<name>"
 protocol = "responses"
 ```
 
