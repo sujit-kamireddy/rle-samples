@@ -32,6 +32,23 @@ version = "1.0.0"
 type = "gym"
 ```
 
+### `[task]` and `[harness] type = "package"`
+
+The schema also accepts `[task] format = "json" | "harbor"` (default `json`) and
+`[harness] type = "package"` with `name = "opencode"` (`name` is valid only with `package`). All
+values are lowercase and unknown values are rejected. Harbor tasks and harness packages are **not
+yet runnable**: the `azd ai rle` extension and the RLE service reject `format = "harbor"` and
+`type = "package"` with a "not yet supported" error until Harbor execution ships. Do not use them
+in samples yet.
+
+```toml
+[task]
+format = "json"   # json (default) | harbor
+
+[harness]
+type = "gym"      # gym (default) | byoh | package
+```
+
 ### Rules
 
 **`schema_version` must be exactly `"1.0.0"`,** and it is *required whenever any of `[model]`,

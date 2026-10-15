@@ -25,6 +25,10 @@ When `protocol` is omitted the service resolves it: `responses` for your own Fou
 project agent URL, otherwise `rle-invocation`. A gym environment needs neither
 `endpoint` nor `protocol` (`type = "gym"`, the default).
 
+The manifest schema also reserves `[task] format = "harbor"` and
+`[harness] type = "package"` (with `name`), but they are not yet runnable and no sample
+uses them.
+
 Each protocol directory holds one directory per named sample, alongside a
 `catalog.toml` listing which samples `azd ai rle init` offers. Pick one with
 `--sample <name>`, or let the CLI prompt: it always does, even when only one
