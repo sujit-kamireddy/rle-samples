@@ -13,8 +13,7 @@ name = "math_rl"
 version = "1.0.0"
 
 [harness]
-type = "Gym"
-subtype = "OpenEnv"
+type = "gym"
 
 [rollout.gym_openenv]
 model_response_field = "answer_text"
@@ -30,8 +29,7 @@ name = "code_rl"
 version = "1.0.0"
 
 [harness]
-type = "Gym"
-subtype = "OpenEnv"
+type = "gym"
 ```
 
 ### Rules
@@ -40,8 +38,9 @@ subtype = "OpenEnv"
 `[train]`, or `[rollout]` is present. Omitting it while supplying those is a publish-time validation
 error, not a silent default.
 
-**`[harness] type` / `subtype` must be `Gym` / `OpenEnv`** for this skill's contract to apply. Other
-combinations select entirely different rollout paths.
+**`[harness] type` must be `gym`** (the default when omitted) for this skill's contract to apply.
+`byoh` selects an entirely different rollout path. The old `type = "Gym"`/`"Harness"` and `subtype`
+keys are rejected.
 
 **Choose one Gym contract.** In schema-driven mode,
 `[rollout.gym_openenv] model_response_field` is mandatory and must name a property on
@@ -71,5 +70,5 @@ invisible to RLE in both modes.
 There is also no `[train]` / `[train.options]` free-form table any more. `model`, `training-file`,
 `validation-file`, and `suffix` are CLI-flag-only on `azd ai rle train`; GRPO and rollout
 hyperparameters that should travel with the published environment live under `[train.grpo]` and
-`[rollout]` instead (see the Harness reference and the `examples/harness/*/rle/rle.toml` samples
+`[rollout]` instead (see the byoh harness reference and the `examples/harness/*/rle/rle.toml` samples
 for the full field list).

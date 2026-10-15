@@ -5,9 +5,9 @@ name = "data_code_agent"
 version = "1.0.0"
 
 [harness]
-type = "Harness"
-subtype = "BYOH"
-invocation_url = "https://your-harness.example.com/invoke"
+type = "byoh"
+endpoint = "https://your-harness.example.com/invoke"
+protocol = "rle-invocation"
 
 [model]
 name = "mai/mai-code-1.1-flash"

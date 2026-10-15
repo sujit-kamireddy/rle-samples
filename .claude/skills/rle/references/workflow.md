@@ -5,7 +5,7 @@ Work in this order. Each step catches a class of failure that the next step cann
 ### 1. Start from a sample
 
 ```bash
-azd ai rle init <folder-name> --type Gym --subtype OpenEnv
+azd ai rle init <folder-name> --type gym
 ```
 
 This copies a working sample out of the samples repo. Pick the closest one:

@@ -5,23 +5,27 @@ training, evaluation, or optimization job) owns the agent loop and drives the
 environment through `reset`/`step`. They are copied directly by
 `azd ai rle init <sample-name>`.
 
-`examples/harness/` covers the other RLE type: `Harness`. A harness RLE
+`examples/harness/` covers the other RLE type: `byoh`. A harness RLE
 wraps a *production agent* that owns its own loop. RLE does not call
 `reset`/`step` on it; instead it invokes the harness once per rollout and the
-harness reports back a final response. `azd ai rle init --type Harness`
+harness reports back a final response. `azd ai rle init --type byoh`
 scaffolds the RLE-side container for you (task setup, mock tools, grader),
 but the harness side is always specific to your agent, so these folders are
 worked reference examples to copy from and adapt rather than something the
 CLI templates automatically.
 
-Two harness subtypes exist:
+Two byoh protocols exist (`[harness] type = "byoh"`, with `endpoint` and `protocol`):
 
-| Subtype | Where the agent runs | Samples |
+| Protocol | Where the agent runs | Samples |
 | --- | --- | --- |
-| `HostedAgent` | A Foundry Hosted Agent version | [`hosted-agent/`](./hosted-agent) |
-| `BYOH` (Bring Your Own Harness) | Anywhere you register a base URL | [`byoh/`](./byoh) |
+| `responses` | A Foundry hosted agent; `endpoint` is its project agent responses URL | [`hosted-agent/`](./hosted-agent) |
+| `rle-invocation` | Anywhere with an https `endpoint`, using RLE's own BYOH POST/poll contract | [`byoh/`](./byoh) |
 
-Each subtype directory holds one directory per named sample, alongside a
+When `protocol` is omitted the service resolves it: `responses` for your own Foundry
+project agent URL, otherwise `rle-invocation`. A gym environment needs neither
+`endpoint` nor `protocol` (`type = "gym"`, the default).
+
+Each protocol directory holds one directory per named sample, alongside a
 `catalog.toml` listing which samples `azd ai rle init` offers. Pick one with
 `--sample <name>`, or let the CLI prompt: it always does, even when only one
 sample is visible. Today `hosted-agent/` holds
@@ -31,14 +35,14 @@ and `byoh/` holds [`data_code_agent/`](./byoh/data_code_agent).
 Each sample ships two independent pieces that get deployed and published
 separately:
 
-- `agent/` — the harness/agent code. For `BYOH` this is a small service you
-  deploy anywhere and register with RLE by base URL. For `HostedAgent` this is
-  the agent code that runs as a Foundry Hosted Agent version.
+- `agent/` — the harness/agent code. For `rle-invocation` this is a small service you
+  deploy anywhere and point `endpoint` at. For `responses` this is
+  the agent code that runs as a Foundry hosted agent.
 - `rle/` — the RLE side: the environment container, with its concrete task
   setup, tool surface and grader, plus its `rle.toml` and `Dockerfile`.
 
 `rle/` implements the OpenEnv protocol, which the RLE environment contract is
-converging on across every type and subtype. The environment it describes is
+converging on across every type and protocol. The environment it describes is
 unchanged: the harness still drives your `agent/`, the agent still calls the
 environment's tools, and the environment still owns grading. Only the wire
 format between RLE and the environment differs.
@@ -62,12 +66,12 @@ Microsoft Fabric toolbox. The sample trains Qwen3-32B on that same job, and
 ships the recorded run that took held-out reward from 0.525 to 0.766 and the
 material/immaterial/abstain call from 47.5% to 74.2% correct.
 
-`data_code_agent` ships as a `BYOH` sample only. The two harness subtypes
-differ at the entrypoint rather than in the environment: `BYOH` adds an HTTP
+`data_code_agent` ships as an `rle-invocation` sample only. The two harness protocols
+differ at the entrypoint rather than in the environment: `rle-invocation` adds an HTTP
 invocation endpoint that RLE POSTs to and then polls, reading the rollout
-context out of the request body, while `HostedAgent` serves the Responses API
+context out of the request body, while `responses` serves the Responses API
 and reads the same context off `x-client-rle-*` request headers, answering
-synchronously. A `HostedAgent` build of `data_code_agent` may be added later.
+synchronously. A `responses` build of `data_code_agent` may be added later.
 
 See each sample's own README for the deploy → wire → register → publish
 flow.

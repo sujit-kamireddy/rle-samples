@@ -3,21 +3,21 @@ name: rle
 license: MIT
 metadata:
   version: "1.0"
-  # Bump major when either subtype's wire contract or rle.toml schema changes.
+  # Bump major when either harness protocol's wire contract or rle.toml schema changes.
   # Bump minor when adding a reference or a newly observed failure mode.
 description: >-
   **WORKFLOW SKILL** — Authors, validates and ships a Foundry RLE environment of any type: a
-  Gym/OpenEnv environment RLE drives itself, or a Harness (BYOH or HostedAgent) wrapping a
-  production agent that drives itself. Covers rle.toml, local run/rollout, and publish.
+  gym environment RLE drives itself, or a byoh harness (protocol `responses` or `rle-invocation`)
+  wrapping a production agent that drives itself. Covers rle.toml, local run/rollout, and publish.
 
   INVOKES: azd ai rle CLI (init, run, publish, list, show, rollout, train), docker, curl, python,
   git.
 
-  USE FOR: writing any Foundry RLE environment; deciding Gym vs Harness and, for Harness, BYOH vs
-  HostedAgent; rle.toml, schema-driven model_response_field, SDK RLEnvironment/GradeAction,
+  USE FOR: writing any Foundry RLE environment; deciding gym vs byoh and, for byoh, `responses` vs
+  `rle-invocation`; rle.toml, schema-driven model_response_field, SDK RLEnvironment/GradeAction,
   GET /schema action vocabulary,
-  reward shaping, reset selectors, a Harness's /invoke or Responses wire contract,
-  agent_name/agent_version vs invocation_url, and debugging EnvironmentContractViolation,
+  reward shaping, reset selectors, a byoh harness's /invoke or Responses wire contract,
+  harness `type`/`endpoint`/`protocol`, and debugging EnvironmentContractViolation,
   RolloutDependencyFailed, degenerate_rollout, a wrong episode being graded, or a truncated answer.
 
   DO NOT USE FOR: training-job hyperparameter tuning, Foundry model deployment, or changes to the
@@ -26,7 +26,7 @@ description: >-
 
 # rle
 
-Authors a Foundry RLE environment — Gym/OpenEnv or Harness — that a rollout can actually drive (or
+Authors a Foundry RLE environment — gym or byoh — that a rollout can actually drive (or
 be driven by) and grade.
 
 ## Overview
@@ -35,29 +35,29 @@ RLE has one job either way: run a rollout against your container(s) and produce 
 How the model loop is driven is what tells the two types apart, and it decides almost everything
 else about how you author the environment:
 
-| | Gym/OpenEnv | Harness (BYOH / HostedAgent) |
+| | gym | byoh (`responses` / `rle-invocation`) |
 | --- | --- | --- |
 | Who drives the model loop | RLE itself | Your own agent, which RLE invokes once per rollout |
 | RLE talks to your container over | OpenEnv WebSocket `reset`/`step`; SDK MCP tools also use the session's MCP endpoint | a fixed contract: `/health`, `/reset`, `/tools/<name>`, `/grade` |
 | What you author | One container implementing either the schema-driven or SDK MCP OpenEnv contract | Two pieces: your `agent/` (always yours) and RLE's own `rle/` container |
-| `rle.toml` `[rle]` | `type = "Gym"`, `subtype = "OpenEnv"` | `type = "Harness"`, `subtype = "BYOH"` or `"HostedAgent"` |
+| `rle.toml` `[harness]` | `type = "gym"` (default) | `type = "byoh"`, `endpoint = "https://..."`, optional `protocol = "responses"` or `"rle-invocation"` |
 
-If you don't already know which type you're building: pick **Gym/OpenEnv** when you want RLE to run
-the model completion loop for you against a plain tool/reward server; pick **Harness** when you
+If you don't already know which type you're building: pick **gym** when you want RLE to run
+the model completion loop for you against a plain tool/reward server; pick **byoh** when you
 already have (or are building) a production agent — with its own tool use, multi-step planning, or
 existing deployment — that should keep driving itself while RLE just scores what it produces.
 
 Start from a sample instead of a blank folder: `azd ai rle init` copies one out of this repo,
-prompting for type/subtype/sample. `examples/gym/openenv/math_rl` and `code_rl` demonstrate
+prompting for type/protocol/sample. `examples/gym/openenv/math_rl` and `code_rl` demonstrate
 the SDK `RLEnvironment` MCP mode with typed `check_equivalence` and `check_solution` tools.
-`examples/harness/{byoh,hosted-agent}/*` are the Harness samples.
+`examples/harness/{byoh,hosted-agent}/*` are the byoh harness samples.
 
 RLE never reads your source for either type. Everything it needs, it takes declaratively from
 `rle.toml` and (for Gym) your `GET /schema`, so most authoring failures are contract failures, not
 logic bugs — and several of them fail *silently*, grading a real reward for the wrong episode.
 Follow the references below rather than inferring the contract from one working sample.
 
-## If you are building a Gym/OpenEnv environment
+## If you are building a gym environment
 
 A Gym/OpenEnv environment is a container that speaks the OpenEnv protocol. Foundry RLE leases one
 container per rollout, opens a WebSocket to it, and then runs the loop itself:
@@ -87,12 +87,12 @@ reset(task)  ->  observation  ->  model completion  ->  action  ->  step()  ->  
 
 {{ references/troubleshooting.md }}
 
-### Gym/OpenEnv exit criteria
+### gym exit criteria
 
 - Choose exactly one contract. Schema-driven environments declare exactly one action variant
   carrying `model_response_field`; SDK MCP environments subclass `RLEnvironment`, register typed
   tools with `self.tool()`, and grade `GradeAction`.
-- `rle.toml` has `schema_version = "1.0.0"`, `[rle] type = "Gym"` / `subtype = "OpenEnv"`.
+- `rle.toml` has `schema_version = "1.0.0"`, `[harness] type = "gym"` (or omitted).
   Schema-driven mode sets `[defaults.rollout.gym_openenv] model_response_field`; SDK MCP mode
   has no protocol field to set and must not set `model_response_field`. The completion-token
   budget is a fixed server ceiling (8192), not a manifest field.
@@ -104,6 +104,6 @@ reset(task)  ->  observation  ->  model completion  ->  action  ->  step()  ->  
 - `azd ai rle publish` then `azd ai rle rollout <name> --version <v> --model <m> --task '{"seed": 0}'`
   returns a rollout whose graded episode is the one the task asked for.
 
-## If you are building a Harness environment (BYOH or HostedAgent)
+## If you are building a byoh harness environment (`responses` or `rle-invocation`)
 
 {{ references/harness.md }}

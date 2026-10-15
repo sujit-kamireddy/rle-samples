@@ -1,4 +1,4 @@
-# catalog.toml controls which HostedAgent sample directories in this folder are
+# catalog.toml controls which `responses` (Foundry hosted agent) sample directories in this folder are
 # shown by `azd ai rle init`'s interactive picker and accepted as an explicit
 # `--sample <name>` value.
 #
@@ -12,7 +12,7 @@
 # `azd ai rle init` always prompts with the visible samples, even when only one
 # is available, so the chosen sample is always stated back to the user.
 #
-# Today every sample in this folder is hidden, so the HostedAgent subtype
+# Today every sample in this folder is hidden, so the `responses` protocol
 # offers nothing by default. Reach the one below with AZD_AI_RLE_ENABLE_ALL=true.
 
 [[sample]]

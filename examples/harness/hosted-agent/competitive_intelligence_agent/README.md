@@ -404,13 +404,12 @@ name = "competitive_intelligence_agent"
 version = "2.0.0"
 
 [harness]
-type = "Harness"
-subtype = "HostedAgent"
-agent_name = "<your-registered-agent-name>"
-agent_version = "1"
+type = "byoh"
+endpoint = "https://<account>.services.ai.azure.com/api/projects/<project>/agents/<your-registered-agent-name>/endpoint/protocols/openai/responses"
+protocol = "responses"
 ```
 
-`invocation_url` is rejected for this subtype, because there is no URL to register.
+`endpoint` is your own Foundry project agent URL; the agent version is not targetable.
 Then publish from the folder holding `rle.toml`:
 
 ```bash

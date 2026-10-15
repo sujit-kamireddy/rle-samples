@@ -27,21 +27,21 @@ The sample's `rle.toml` already has:
 [rle]
 name = "data_code_agent_byoh"
 version = "1.0.0"
-type = "Harness"
-subtype = "BYOH"
-invocation_url = "https://data-code-agent-sujit-107203347434.us-east1.run.app/invoke"
+type = "byoh"
+endpoint = "https://data-code-agent-sujit-107203347434.us-east1.run.app/invoke"
+protocol = "rle-invocation"
 ```
 
 This is the **hosted harness `/invoke` URL**, not the training API. Run
 `azd ai rle show --output json` from `rle_deprecated/` and confirm version `1.0.0` is
 **Ready** in the selected project; it is already published, so do not
-republish it. A Foundry Hosted Agent Responses endpoint cannot simply replace
-the BYOH `/invoke` URL — that is a different subtype with a different wire
+republish it. A Foundry agent Responses endpoint cannot simply replace
+the `/invoke` URL — that is a different protocol (`responses`) with a different wire
 contract; see
 [`hosted-agent/competitive_intelligence_agent`](./hosted-agent/competitive_intelligence_agent)
-for a sample of that subtype.
+for a sample of that protocol.
 To register your own hosted harness, deploy the sample's `agent/`,
-update `invocation_url`, choose a new RLE name/version, and follow the
+update `endpoint`, choose a new RLE name/version, and follow the
 [sample README's publish and ACR setup](./byoh/data_code_agent/README.md).
 Only that path needs `AZURE_CONTAINER_REGISTRY_ENDPOINT`.
 

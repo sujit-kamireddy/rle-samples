@@ -108,10 +108,10 @@ multiplier (`rle/server/compliance.py`). Adapt `grade` for different reward
 shaping; `agent/` never computes or sees a `reward`, only relays the answer
 (see `agent/app.py`'s `run_harness_rollout`).
 
-`azd ai rle run` is supported only for `Gym: OpenEnv` environments, so iterate
+`azd ai rle run` is supported only for `gym` environments, so iterate
 here by publishing a version and running a rollout (steps 3 and 4).
 
-## 3. Register the base URL and publish
+## 3. Set the endpoint and publish
 
 Once your deployed agent URL is stable, point the manifest at it and publish
 a version. Complete [registry setup](#before-the-first-publish) and set
@@ -123,7 +123,7 @@ $env:FOUNDRY_PROJECT_ENDPOINT = "https://<account>.services.ai.azure.com/api/pro
 $env:AZURE_CONTAINER_REGISTRY_ENDPOINT = "<registry>.azurecr.io"
 ```
 
-Set `invocation_url` in `rle/rle.toml` to your deployed agent's invocation URL:
+Set `endpoint` in `rle/rle.toml` to your deployed agent's invocation URL:
 
 ```toml
 [rle]
@@ -131,9 +131,9 @@ name = "data_code_agent_byoh"
 version = "2.0.0"
 
 [harness]
-type = "Harness"
-subtype = "BYOH"
-invocation_url = "https://<your-deployed-agent-host>/invoke"
+type = "byoh"
+endpoint = "https://<your-deployed-agent-host>/invoke"
+protocol = "rle-invocation"
 ```
 
 RLE always drives this sample with the MCP environment protocol (the only

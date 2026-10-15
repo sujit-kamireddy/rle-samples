@@ -67,7 +67,7 @@ def salvage_output_text(envelope_text: str) -> list[str]:
 def final_text(agent_response: str) -> str:
     """The agent's report, out of whatever shape RLE handed back.
 
-    For a HostedAgent environment, `agent_response` is the serialised Responses
+    For a `responses` byoh environment, `agent_response` is the serialised Responses
     object, not the report: ``{"id": "caresp_...", "output": [...]}``. Grading it
     as-is looks for the fenced decision block inside a JSON envelope, where the
     report's own quotes are backslash-escaped, so `parse_decision` never matches.

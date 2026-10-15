@@ -1,6 +1,6 @@
 """The competitive-intelligence agent's routine phase chain, RLE-routed.
 
-This is the agent half of the Harness/HostedAgent RLE. It runs the same phases
+This is the agent half of the byoh `responses` RLE. It runs the same phases
 the deployed agent runs on its scheduled ``routine`` path, in the same order,
 with the same prompt text, against the same tool surface -- and it is the thing
 RLE trains. A Hosted Agent RLE exists to hillclimb the agent already in
