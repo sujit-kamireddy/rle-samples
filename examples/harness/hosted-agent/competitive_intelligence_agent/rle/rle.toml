@@ -5,10 +5,9 @@ name = "competitive_intelligence_agent"
 version = "2.0.1"
 
 [harness]
-type = "Harness"
-subtype = "HostedAgent"
-agent_name = "competitive-intelligence-rle-agent"
-agent_version = "1"
+type = "byoh"
+endpoint = "https://<account>.services.ai.azure.com/api/projects/<project>/agents/competitive-intelligence-rle-agent"
+protocol = "responses"
 
 [model]
 name = "qwen3-32b-1"

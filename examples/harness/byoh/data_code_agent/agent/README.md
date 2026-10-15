@@ -236,7 +236,7 @@ docker run --rm -p 8080:8080 \
 ```
 
 Push this image anywhere RLE can reach over HTTPS (Azure Container Apps, Google
-Cloud Run, your own cluster, a VM) and register that base URL as your BYOH
+Cloud Run, your own cluster, a VM) and use that URL as your byoh `endpoint`
 harness. RLE appends `/invoke` to it, so register the root.
 
 Size the container for concurrency: each rollout holds its own copy of the

@@ -1,7 +1,7 @@
 """Example BYOH agent harness for the data-code agent RLE.
 
 Deploy this anywhere reachable over HTTPS, then point ``rle/rle.toml``'s
-``invocation_url`` at ``<this-url>/invoke`` and run ``azd ai rle publish``.
+``endpoint`` at ``<this-url>/invoke`` and run ``azd ai rle publish``.
 
 This is the whole harness: it speaks RLE's ``Harness``/``BYOH`` invocation
 contract *and* runs the agent. A rollout fetches its task's input files and

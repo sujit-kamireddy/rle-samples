@@ -13,8 +13,8 @@ def test_manifest_selects_mcp_and_has_no_schema_driven_fields():
     text = (ROOT / "rle.toml").read_text()
     manifest = tomllib.loads(text)
 
-    assert manifest["harness"]["type"] == "Gym"
-    assert manifest["harness"]["subtype"] == "OpenEnv"
+    assert manifest["harness"]["type"] == "gym"
+    assert "subtype" not in manifest["harness"]
     assert "rollout" not in manifest
     assert "defaults" not in manifest
     assert "model_response_field" not in text.replace("# model_response_field", "")

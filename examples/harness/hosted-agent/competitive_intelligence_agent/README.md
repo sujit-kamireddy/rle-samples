@@ -404,13 +404,12 @@ name = "competitive_intelligence_agent"
 version = "2.0.0"
 
 [harness]
-type = "Harness"
-subtype = "HostedAgent"
-agent_name = "<your-registered-agent-name>"
-agent_version = "1"
+type = "byoh"
+endpoint = "https://<account>.services.ai.azure.com/api/projects/<project>/agents/<your-registered-agent-name>"
+protocol = "responses"
 ```
 
-`invocation_url` is rejected for this subtype, because there is no URL to register.
+`endpoint` is your own Foundry project agent URL; the agent version is not targetable.
 Then publish from the folder holding `rle.toml`:
 
 ```bash
@@ -508,7 +507,7 @@ That is what step 12 is in the recorded curve, and why this run stops at 14.
 RLE calls the agent's Responses endpoint once per rollout, synchronously:
 
 ```text
-POST {project}/agents/{agentName}/endpoint/protocols/openai/responses?api-version=v1
+POST {project}/agents/{agentName}/endpoint/protocols/openai/responses?api-version=v1   # rle.toml endpoint is {project}/agents/{agentName}; RLE appends the path
 x-client-rle-rollout-id: ...
 x-client-rle-model-endpoint: https://.../rle/v1.0/capture-proxy/v1
 x-client-rle-model-api-key: ...

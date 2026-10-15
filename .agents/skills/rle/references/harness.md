@@ -1,44 +1,44 @@
-## Harness (BYOH / HostedAgent)
+## byoh harness (`responses` / `rle-invocation`)
 
-A Harness environment wraps a *production agent* that already owns its own loop. Unlike
-Gym/OpenEnv, RLE never calls `reset`/`step`: it invokes the harness once per rollout, the harness
+A byoh harness environment wraps a *production agent* that already owns its own loop. Unlike
+gym, RLE never calls `reset`/`step`: it invokes the harness once per rollout, the harness
 runs the agent to completion itself, and reports back a single final response for RLE's own
 `rle/` container to grade.
 
-Every Harness sample ships two independent pieces that deploy and publish separately:
+Every byoh sample ships two independent pieces that deploy and publish separately:
 
 - `agent/` — the harness/agent code. Always yours to write and deploy; the CLI never scaffolds it.
-  For `BYOH` this is a small service you host anywhere and register by base URL. For `HostedAgent`
-  this is the agent code that runs as a Foundry Hosted Agent version.
-- `rle/` — the RLE-side container `azd ai rle init --type Harness` scaffolds for you: task setup,
+  For `rle-invocation` this is a small service you host anywhere and point `endpoint` at. For
+  `responses` this is the agent code that runs as a Foundry hosted agent.
+- `rle/` — the RLE-side container `azd ai rle init --type byoh` scaffolds for you: task setup,
   mock tools, and a grader, behind `rle/server/env.py`, plus `rle/rle.toml` and `rle/Dockerfile`.
 
-`rle/` is identical in shape whichever subtype invokes it — RLE does not care which one called the
-harness — so most of what differs between BYOH and HostedAgent lives entirely in `agent/`'s
+`rle/` is identical in shape whichever protocol invokes it — RLE does not care which one called the
+harness — so most of what differs between `rle-invocation` and `responses` lives entirely in `agent/`'s
 entrypoint and `rle.toml`'s `[harness]` table.
 
-### Choosing a subtype
+### Choosing a protocol
 
-| | `HostedAgent` | `BYOH` (Bring Your Own Harness) |
+| | `responses` (Foundry hosted agent) | `rle-invocation` (RLE's own BYOH contract) |
 | --- | --- | --- |
-| Where the agent runs | A Foundry Hosted Agent version | Anywhere you register a base URL |
-| `rle.toml` identifies it by | `[harness] agent_name` / `agent_version` | `[harness] invocation_url` |
+| Where the agent runs | A Foundry hosted agent | Anywhere you can serve an https endpoint |
+| `rle.toml` identifies it by | `[harness] endpoint` = the agent's responses URL, `protocol = "responses"` | `[harness] endpoint` = your service URL, `protocol = "rle-invocation"` |
 | Invocation | One synchronous call | Async: start, then poll, then optional cancel |
 | Hosting burden | None — Foundry hosts it | You deploy and protect the endpoint yourself |
 
-Start from a sample instead of a blank folder: `azd ai rle init --type Harness --subtype <subtype>
---sample <name>` copies one out of this repo's `examples/harness/<subtype>/` and scaffolds
-`rle/`. The two subtype samples of the same environment are typically near-identical at the code
+Start from a sample instead of a blank folder: `azd ai rle init --type byoh --protocol <protocol>
+--sample <name>` copies one out of this repo's `examples/harness/<byoh|hosted-agent>/` and scaffolds
+`rle/`. The two protocol samples of the same environment are typically near-identical at the code
 level — same `rle/`, same agent loop — with only the entrypoint differing, so porting one to the
-other subtype is usually small.
+other protocol is usually small.
 
 ### The RLE-side container's contract (`rle/server/env.py`)
 
-RLE calls a Harness rollout's own container over a small, fixed surface — deliberately not the
+RLE calls a byoh rollout's own container over a small, fixed surface — deliberately not the
 OpenEnv `reset`/`step` protocol:
 
 - `GET /health` — readiness probe RLE polls before it will attempt `/reset`.
-- `POST /reset` — a liveness formality on the BYOH path, not a data channel. Called with the
+- `POST /reset` — a liveness formality on the `rle-invocation` path, not a data channel. Called with the
   caller's `--task` before RLE invokes the harness; use it to pin the task by `rollout_id` so
   `/grade` can look it up later even though the harness itself never sees this container.
 - `POST /tools/<name>` — any mock tool the task needs, reachable at
@@ -47,9 +47,9 @@ OpenEnv `reset`/`step` protocol:
   score the harness claims. RLE forwards the harness's final `output_text` (or Responses output)
   here verbatim as `agent_response`; this is the only place a reward is produced.
 
-### BYOH wire contract
+### `rle-invocation` wire contract
 
-RLE invokes a BYOH harness asynchronously against the registered `invocation_url`. Two identifiers arrive
+RLE invokes the harness asynchronously against `[harness] endpoint`. Two identifiers arrive
 and answer different questions: `rollout_id` is the correlation handle both sides log;
 `operation_id` is what RLE polls and cancels, is minted per invocation, and — because the poll and
 cancel legs carry no credential — is also what authorizes those calls. Key your own state on
@@ -97,16 +97,16 @@ cancel legs carry no credential — is also what authorizes those calls. Key you
    DELETE <base-url>/rollouts/{operation_id}
    ```
 
-RLE never attaches caller, workspace, or identity headers to these requests, so a BYOH endpoint has
+RLE never attaches caller, workspace, or identity headers to these requests, so an `rle-invocation` endpoint has
 no built-in auth and must protect itself (for example, a shared-secret header validated before
 starting a rollout).
 
-### HostedAgent wire contract
+### `responses` wire contract
 
 One synchronous request per rollout — no acknowledgement, no poll resource, no cancel leg:
 
 ```
-POST {project}/agents/{agentName}/endpoint/protocols/openai/responses?api-version=v1
+POST <endpoint>/endpoint/protocols/openai/responses?api-version=v1   # <endpoint> = {project}/agents/{name}; RLE appends the path
 Authorization: ******
 x-ms-client-request-id: <rollout id>
 Foundry-Features: HostedAgents=V1Preview
@@ -130,9 +130,9 @@ tolerate a bare scalar, since `azd ai rle rollout --agent-input <value>` can sen
 agent answers synchronously with a normal Responses API payload; its final assistant message text is
 what reaches `rle/`'s `/grade` as `agent_response`.
 
-### `rle.toml` for Harness
+### `rle.toml` for byoh
 
-Same manifest shape as Gym, with a different `[rle]` payload and inert Gym-only defaults:
+Same manifest shape as gym, with a `[harness]` table that points at your endpoint:
 
 ```toml
 [rle]
@@ -140,22 +140,48 @@ name = "my_harness_env"
 version = "1.0.0"
 
 [harness]
-type = "Harness"
-subtype = "BYOH"          # or "HostedAgent"
-
-# BYOH only — rejected for HostedAgent:
-invocation_url = "https://your-harness.example.com/invoke"
-
-# HostedAgent only — rejected for BYOH:
-# agent_name = "my-agent"
-# agent_version = "1"      # or "draft-<unix-timestamp>"
+type = "byoh"
+endpoint = "https://your-harness.example.com/invoke"
+protocol = "rle-invocation"   # or "responses"; optional
 ```
 
-- `[defaults.rollout.gym_openenv]` (`model_response_field`) is Gym/OpenEnv-only and rejected for
-  Harness.
-- `[defaults.train.grpo]` is still meaningful for Harness — the harness owns its own
+`endpoint` is required for `byoh` (absolute `https`, no credentials, query, or fragment) and must be
+omitted for `gym`. `protocol` is optional: when omitted the service resolves it to `responses` if
+`endpoint` is your own Foundry project agent URL, otherwise `rle-invocation`.
+
+Gym (default, `[harness]` may be omitted):
+
+```toml
+[harness]
+type = "gym"
+```
+
+byoh with a Foundry agent endpoint (`responses`):
+
+```toml
+[harness]
+type = "byoh"
+endpoint = "https://<account>.services.ai.azure.com/api/projects/<project>/agents/<name>"
+protocol = "responses"
+```
+
+byoh with a custom https service (`rle-invocation`):
+
+```toml
+[harness]
+type = "byoh"
+endpoint = "https://your-harness.example.com/invoke"
+protocol = "rle-invocation"
+```
+
+The old `type = "Gym"|"Harness"`, `subtype`, `agent_name`, `agent_version`, `invocation_url`, and
+`baseUrl` keys are removed and rejected; agent versions are no longer targetable.
+
+- `[defaults.rollout.gym_openenv]` (`model_response_field`) is gym-only and rejected for
+  byoh.
+- `[defaults.train.grpo]` is still meaningful for byoh — the harness owns its own
   model-call/turn loop, so RLE never reads it at rollout time, but `azd ai rle train` flattens it
-  into the training job's hyperparameters, so this is where a Harness sample's tuned GRPO defaults
+  into the training job's hyperparameters, so this is where a byoh sample's tuned GRPO defaults
   live. There is no manifest field for a completion-token budget any more; RLE applies a fixed
   server ceiling regardless of rollout kind.
 - There is no `[train]` / `[train.options]` table any more. `model`, `training-file`,
@@ -164,27 +190,26 @@ invocation_url = "https://your-harness.example.com/invoke"
 
 ### Workflow
 
-1. `azd ai rle init --type Harness --subtype <BYOH|HostedAgent> --sample <name>` scaffolds `rle/`
+1. `azd ai rle init --type byoh --protocol <responses|rle-invocation> --sample <name>` scaffolds `rle/`
    from a working sample and copies its paired `agent/` alongside it as a reference to adapt.
-2. Build and deploy `agent/` — anywhere reachable over HTTPS for BYOH, or as a registered Foundry
-   Hosted Agent version for HostedAgent — independently of the RLE side.
-3. Point `rle.toml` at it (`[harness] invocation_url`, or `agent_name`/`agent_version`), then
+2. Build and deploy `agent/` — anywhere reachable over HTTPS for `rle-invocation`, or as a Foundry
+   hosted agent for `responses` — independently of the RLE side.
+3. Point `rle.toml` at it (`[harness] endpoint`, and `protocol` if not inferable), then
    `azd ai rle publish`.
 4. `azd ai rle rollout <name> --version <v> --agent-input '...'` exercises one rollout end to end
    before training: confirm the harness answers, and that `/grade` grades the episode the task
    asked for.
-5. `azd ai rle train` as usual — a Harness rollout still trains through the same recipe, it just
+5. `azd ai rle train` as usual — a byoh rollout still trains through the same recipe, it just
    never touches `[defaults.rollout.gym_openenv]` or `model_response_field`, which are
-   Gym/OpenEnv-only.
+   gym-only.
 
 ### Exit criteria
 
-- `rle.toml` has `[harness] type = "Harness"`, the correct `subtype`, and exactly one of
-  `[harness] invocation_url` (BYOH) or `agent_name`/`agent_version` (HostedAgent) — never both,
-  never neither.
+- `rle.toml` has `[harness] type = "byoh"`, an absolute https `endpoint`, and (when the
+  endpoint is not your own Foundry agent URL) the correct `protocol`.
 - `rle/server/env.py`'s `/reset` pins whatever `/grade` needs to identify and score the right
   episode, keyed so a concurrent rollout with a different task can't cross-contaminate it.
-- The harness answers the real wire contract for its subtype (202 + poll + optional cancel for
-  BYOH; one synchronous Responses call for HostedAgent) — not a guess at it.
+- The harness answers the real wire contract for its protocol (202 + poll + optional cancel for
+  `rle-invocation`; one synchronous Responses call for `responses`) — not a guess at it.
 - `azd ai rle rollout` against a deployed harness returns a rollout whose graded episode is the one
   the task asked for, not a stale or mismatched one.

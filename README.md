@@ -8,11 +8,12 @@ and callable interface:
 [rle]
 name = "code_rl"
 version = "1.0.0"
-type = "Gym"
-subtype = "OpenEnv"
+
+[harness]
+type = "gym"
 ```
 
-The `type` and `subtype` values match the RLE control plane. The manifest
+The `[harness]` table (`type`, `endpoint`, `protocol`) matches the RLE control plane `harness` object. The manifest
 intentionally does not contain Foundry project endpoints, registry
 locations, service IDs, or credentials.
 
@@ -117,25 +118,25 @@ controls which sample directories `azd ai rle init` offers. A new sample
 directory is visible automatically; add an entry with `visible = false` to
 stage a sample before announcing it.
 
-## `examples/harness/` — Harness samples (HostedAgent, BYOH)
+## `examples/harness/` — byoh harness samples (`responses`, `rle-invocation`)
 
 [`examples/harness/`](./examples/harness) holds worked reference examples
-for the `Harness` type, where RLE wraps a production agent that owns its own
+for the `byoh` type, where RLE wraps a production agent that owns its own
 loop: [`examples/harness/hosted-agent/`](./examples/harness/hosted-agent)
-for agents running as a Foundry Hosted Agent version, and
+for agents running as a Foundry hosted agent (`protocol = "responses"`), and
 [`examples/harness/byoh/`](./examples/harness/byoh) for bring-your-own
-harnesses deployed anywhere and registered by base URL. Each subtype holds
+harnesses deployed anywhere at an https `endpoint` (`protocol = "rle-invocation"`). Each directory holds
 one directory per sample — today
 [`data_code_agent`](./examples/harness/byoh/data_code_agent) under both — and each
 sample includes the agent/harness code and the paired RLE code (task setup,
 mock tools, grader), plus a README covering deploy → wire → publish. Because
 the agent side is always specific to your own harness,
-`azd ai rle init --type Harness` scaffolds only the RLE side for you — these
+`azd ai rle init --type byoh` scaffolds only the RLE side for you — these
 folders show how to build and wire the other half.
 
-Each subtype has its own
+Each directory has its own
 [`catalog.toml`](./examples/harness/byoh/catalog.toml), with the same
-visibility rules as the Gym/OpenEnv one. Pick a sample with
+visibility rules as the gym one. Pick a sample with
 `azd ai rle init --sample <name>`, or let the CLI prompt — it always does,
 even when only one sample is visible.
 

@@ -5,8 +5,7 @@ name = "math_rl"
 version = "1.0.0"
 
 [harness]
-type = "Gym"
-subtype = "OpenEnv"
+type = "gym"
 
 [model]
 name = "qwen3-32b-1"
