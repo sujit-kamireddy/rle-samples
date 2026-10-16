@@ -1,109 +1,123 @@
-## The OpenEnv server contract
+# Shared environment contract
 
-### Entry point
+Gym and both `byoh` protocols use an SDK `RLEnvironment`, OpenEnv control and
+MCP tools. The **agent loop**, not the grader container's base class, differs.
+The SDK provides routing and health; don't implement a parallel REST grader.
 
-In schema-driven mode, `server/app.py` uses `create_fastapi_app`:
+## App factory
 
-```python
-app = create_fastapi_app(
-    ExampleEnvironment,
-    ExampleAction,
-    ExampleObservation,
-    max_concurrent_envs=1,
-    env_name="example_rl",
-)
-```
-
-SDK MCP mode uses `create_app`, `GradeAction`, and a state class:
+For HTTP tools with Foundry's query-based session routing:
 
 ```python
+from azure.ai.projects.rle.environments import GradeAction, create_app
+from openenv.core.env_server.types import ConcurrencyConfig
+
 app = create_app(
-    CodeRLEnvironment,
+    ExampleEnvironment,
     GradeAction,
-    CodeObservation,
-    state_cls=CodeState,
-    env_name="code_rl",
-    concurrency_config=ConcurrencyConfig(max_concurrent_envs=1),
+    ExampleObservation,
+    state_cls=ExampleState,
+    env_name="example_rl",
+    concurrency_config=ConcurrencyConfig(
+        max_concurrent_envs=1,
+        session_timeout=600.0,
+    ),
 )
 ```
 
-**Serve it with a single worker, and keep `max_concurrent_envs=1`.** A rollout container is leased
-to one RLE instance for the life of the rollout. Extra workers do not add throughput; they add
-processes that hold a different episode's state than the one being graded.
+Supply real environment/observation/state classes. The Gym samples use upstream
+OpenEnv `create_app` for their WebSocket-driven loop. Harness samples use the
+SDK wrapper: it adapts `rle_session_id` query routing for HTTP MCP. Do not swap
+the Harness wrapper for upstream OpenEnv while keeping query-scoped tool URLs.
 
-### Session transport
+Use one worker. RLE creates one environment per session; detached HTTP sessions
+and the WebSocket must resolve to that same instance. A warm process can receive
+different rollout credentials, so none belong in module-level mutable clients.
 
-Schema-driven Gym actions use the WebSocket endpoint. SDK MCP mode additionally serves registered
-tools on the session's MCP endpoint; `RLEnvironment` and `create_app` own that routing. In both
-modes, reset, tool work, and grade must resolve to the same environment instance. The WebSocket
-path has three consequences:
+Keep capacity at one unless concurrent instances are needed and proven isolated.
+At the tested OpenEnv baseline, increasing `max_concurrent_envs` also requires
+the environment class to opt in with `SUPPORTS_CONCURRENT_SESSIONS = True`.
+That flag is an isolation promise, not a fix for shared state. Test interleaved
+resets, tools and grades on distinct instances before enabling it; one worker
+still serves those sessions.
 
-1. **The environment instance persists for the connection.** State set in `reset()` is still there in
-   `step()`. This is why actions carry no episode id.
-2. **Never send an unsolicited frame.** The session correlates each response to the request it has
-   outstanding. A frame sent when nothing is awaiting one is a protocol violation, and the session
-   is entitled to abort the rollout over it. Emit frames only as replies (the pre-loop error frames
-   OpenEnv itself sends before the loop starts are the one exception, and they are fatal by design).
-3. **Keep the connection alive.** The server pings on an interval (uvicorn's default WebSocket
-   keepalive is 20s); long silent gaps get the connection dropped mid-rollout. Do not block the
-   event loop for minutes inside `step()` — run long grading work off-thread.
+## Reset and private task selection
 
-### `reset()` — the silent-failure footgun
+Implement `reset(seed=None, episode_id=None, ..., **kwargs)`. Capture unknown
+selectors and reject them, or validate the complete task through its explicit
+task model before doing work. OpenEnv can filter undeclared reset arguments;
+without `**kwargs`, a typo may silently pick a different task.
 
-This is the single most dangerous thing in the contract, because it fails by **grading the wrong
-episode and reporting success**.
+Do not impose Gym's seed picker on every environment:
+
+- Math/code support deterministic `seed` and separate `split` snapshots.
+  Reuse their fixed-permutation `EpisodePicker` for an epoch-like seed traversal.
+- BYOH data-code requires explicit dataset `split` and integer `task_index`;
+  it rejects seeds and boolean indexes.
+- Hosted competitive intelligence validates the complete caller-supplied task.
+
+Reset must clear previous tool evidence and terminal status, store the private
+task/reference on the instance, and return only policy-visible information.
+Test missing, unknown and out-of-range selectors and reset after grading.
+Do not trust a task selector the model puts into its final answer over the task
+that reset already pinned.
+
+Test strict selector types over the actual managed transport on a **fresh session**
+before any valid reset, and again after grading. Direct Python tests do not prove
+wire validation; an active-episode guard can also mask invalid input in a test.
+Use boolean, string and float payloads when an integer-only selector is required.
+Framework request models can coerce types: OpenEnv's HTTP `ResetRequest` accepts
+some values that a strict integer check would reject. This does not imply its
+WebSocket reset path does the same; test the path RLE actually uses. Preserve
+valid task identity and state after rejection. Do not globally monkeypatch
+framework request models to change validation.
+
+## The reset observation is the agent's first turn
+
+Harness agents do not receive the raw dataset row as `agent_input`. RLE resets
+the environment, renders that observation as chat messages, and invokes the
+agent with those messages. Use an explicit string `prompt` where the agent must
+consume a precise first-turn shape. The samples use:
+
+- BYOH: JSON text with `split` and `task_index`.
+- HostedAgent: JSON text with `topic` and `execution_mode`.
+- Gym math/code: structured chat `messages` describing the problem.
+
+Keep the parser and observation renderer in agreement. Test that the rendered
+input names the exact reset task, and never fall back to task zero or a string
+like `"None"` when parsing fails. Do not expose reference solutions by
+serializing the entire private task into the observation.
+
+## Grade and state
+
+Implement:
 
 ```python
-def reset(
-    self,
-    seed: Optional[int] = None,
-    episode_id: Optional[str] = None,
-    split: str = "train",
-    **kwargs: Any,
-) -> MathObservation:
-    reject_unknown_selectors(kwargs)
+def grade(self, action: GradeAction, timeout_s=None, **kwargs):
     ...
 ```
 
-Two rules, both mandatory:
+`action.response` is the final answer string. `action.rollout_graph` is optional
+sanitized capture evidence; tolerate `None` for versions/targets that do not
+provide it. Keep grading independent of the agent's claimed score.
 
-- **The signature must end in `**kwargs`.**
-- **The first statement must reject unknown selectors.**
+- Return a terminal observation with `done=True` and a finite numeric reward
+  for correct, incorrect, malformed and deliberate give-up submissions.
+- For Harness, also expose a boolean `is_success` on the terminal observation;
+  the service validates it along with termination and the finite reward.
+  Define it according to task correctness, independently of reward shaping.
+- Reject grade-before-reset, invalid lifecycle and unexpected options explicitly.
+- Treat infrastructure/grader faults as errors, not fabricated zero-reward
+  successes. Log safe diagnostic context and retain enough state to investigate.
+- Put task ID and grading metrics in diagnostics without leaking reference
+  answers to subsequent model turns.
+- Persist SDK state snapshots through `_set_state`; override `state` only if
+  deliberately implementing equivalent snapshot/isolation behavior.
 
-Why: RLE forwards the job's `task` JSON to `reset()` verbatim and *cannot* validate it —
-`GET /schema` describes actions, observations and state, and never the reset signature. OpenEnv's
-`ResetRequest` is `extra="allow"`, and its server then filters the payload down to the parameters
-`reset` actually declares (`_get_valid_kwargs` in `openenv/core/env_server/http_server.py`). So a
-task like `{"instance_id": "abc"}` against a `reset(seed=...)` signature is dropped twice over,
-`seed` stays `None`, and the episode picker draws a **random** row. The rollout completes, the reward
-is real, and it belongs to a different episode than the one the job asked for. Nothing in the
-response marks it wrong.
+Do not override ordinary tool `step()` dispatch: `RLEnvironment` handles MCP
+actions and routes non-MCP `GradeAction` into `grade()`. Passing a bare `Action`
+class to the app factory instead of `GradeAction` breaks terminal grading.
 
-`reject_unknown_selectors` (see `math_rl/server/dataset.py`) turns that into a loud failure. Copy it.
-
-### Episode selection
-
-Select by **seed**, not by content. A seed should index into a fixed shuffled permutation of the
-dataset rather than drawing independently, so that a training run using consecutive seeds
-(`base_seed + i`) traverses distinct rows — independent random draws leave roughly 1/e of the rows
-unvisited in what is meant to be one epoch, and duplicate others. `EpisodePicker` in
-`math_rl/server/dataset.py` implements this; reuse it.
-
-Support a `split` selector so training and validation draw from different rows.
-
-### `step()` and `grade()`
-
-In schema-driven mode, implement `step()`:
-
-- Read the concrete action (`.root` for a union), apply it, grade, return an observation.
-- **Always reach `done=True` on every terminal path**, including the give-up path — an episode that
-  simply runs out of steps without ever being graded is treated as a failed rollout downstream (see
-  the grading-and-budget reference).
-- Put the reward on the step that ends the episode.
-- Return only what the policy should see. For a tool step, return the tool's result text; RLE — not
-  the environment — owns the tool call's id, so return text, not a synthesized tool-call envelope.
-
-In SDK MCP mode, do not override ordinary tool dispatch. `RLEnvironment` handles MCP list/call
-actions and routes terminal `GradeAction` to `grade()`. Register typed methods with `self.tool()`
-and update the environment's `State` inside those methods, so `grade()` can prove the call happened
-on that same instance. Return a terminal observation with `done=True` and reward from `grade()`.
+Terminal grading does not itself close a detached OpenEnv session. The caller
+must detach and close it; implement `close()` to release task resources and
+invalidate mutable tools. Never push unsolicited WebSocket frames.

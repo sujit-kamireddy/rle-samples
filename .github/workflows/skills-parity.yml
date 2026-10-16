@@ -12,6 +12,8 @@ on:
     paths:
       - ".agents/skills/**"
       - ".claude/skills/**"
+      - "tools/test_rle_skill.py"
+      - "examples/**/rle.toml"
       - ".github/workflows/skills-parity.yml"
 
 jobs:
@@ -19,6 +21,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: RLE skill metadata, links and protocol examples
+        run: python -m unittest discover -s tools -p test_rle_skill.py
 
       - name: .agents/skills and .claude/skills are identical
         run: |

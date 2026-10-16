@@ -1,91 +1,172 @@
-## The `rle.toml` manifest
+# `rle.toml` authoring schema
 
-`rle.toml` is the only file the RLE service reads directly. It is validated at publish time and
-re-read at rollout time.
+Use the current sample/CLI TOML shape below. Do not copy control-plane JSON
+models literally into TOML: publishing translates the authoring manifest into
+the service's type configuration and stored defaults.
 
-Schema-driven Gym mode:
+## Minimal manifests
 
-```toml
-schema_version = "1.0.0"
-
-[rle]
-name = "math_rl"
-version = "1.0.0"
-
-[harness]
-type = "gym"
-
-[rollout.gym_openenv]
-model_response_field = "answer_text"
-```
-
-SDK `RLEnvironment` MCP mode:
+Gym:
 
 ```toml
 schema_version = "1.0.0"
 
 [rle]
-name = "code_rl"
+name = "my_math_rl"
 version = "1.0.0"
 
 [harness]
 type = "gym"
 ```
 
-### `[task]` and `[harness] type = "package"`
-
-The schema also accepts `[task] format = "json" | "harbor"` (default `json`) and
-`[harness] type = "package"` with `name = "opencode"` (`name` is valid only with `package`). All
-values are lowercase and unknown values are rejected. Harbor tasks and harness packages are **not
-yet runnable**: the `azd ai rle` extension and the RLE service reject `format = "harbor"` and
-`type = "package"` with a "not yet supported" error until Harbor execution ships. Do not use them
-in samples yet.
+BYOH:
 
 ```toml
-[task]
-format = "json"   # json (default) | harbor
+schema_version = "1.0.0"
+
+[rle]
+name = "my_byoh_rl"
+version = "1.0.0"
 
 [harness]
-type = "gym"      # gym (default) | byoh | package
+type = "byoh"
+endpoint = "https://your-harness.example.com/invoke"
+protocol = "rle-invocation"
 ```
 
-### Rules
+HostedAgent:
 
-**`schema_version` must be exactly `"1.0.0"`,** and it is *required whenever any of `[model]`,
-`[train]`, or `[rollout]` is present. Omitting it while supplying those is a publish-time validation
-error, not a silent default.
+```toml
+schema_version = "1.0.0"
 
-**`[harness] type` must be `gym`** (the default when omitted) for this skill's contract to apply.
-`byoh` selects an entirely different rollout path. The old `type = "Gym"`/`"Harness"` and `subtype`
-keys are rejected.
+[rle]
+name = "my_hosted_rl"
+version = "1.0.0"
 
-**Choose one Gym contract.** In schema-driven mode,
-`[rollout.gym_openenv] model_response_field` is mandatory and must name a property on
-exactly one action variant (maximum 128 characters). In SDK MCP mode, there is no protocol
-field to set, and `model_response_field` must be omitted. Combining the two selectors asks
-RLE to apply incompatible response contracts.
+[harness]
+type = "byoh"
+endpoint = "https://<account>.services.ai.azure.com/api/projects/<project>/agents/my-deployed-agent"
+protocol = "responses"
+```
 
-**There is no manifest field for the step budget any more.** RLE now caps every Gym episode at a
-fixed 32 `step()` calls server-side; there is no `max_episode_steps` field in the schema (a
-publish-time error if present) rather than defaulted. Design the environment to terminate well
-before 32 steps regardless.
+## Fields and target constraints
 
-**There is no manifest field for the completion-token budget any more.** Every model call's
-`max_tokens` is now a fixed server ceiling (**8192**) regardless of what the environment would
-otherwise ask for; there is no `max_completion_tokens` field in the schema (a publish-time error if
-present) rather than defaulted, following the same pattern as `max_episode_steps`. This may be
-re-exposed in the manifest later once there is feedback on which environments actually need a
-different budget.
+| Table / field | Value / meaning |
+| --- | --- |
+| `schema_version` | Use `"1.0.0"`; required with any model/train/rollout table; recommended otherwise |
+| `[rle].name` | Environment identity matching `^[a-z][a-z0-9_]*$`; scaffold may rename it |
+| `[rle].version` | Immutable `major.minor.patch` version, no prerelease/build suffix |
+| `[rle].imageTag` | Optional string accepted for image-tag metadata compatibility; not required by samples |
+| `[task].format` | Lowercase `json` (default); `harbor` is reserved and rejected as not yet supported |
+| `[harness].type` | Lowercase `gym` (default), `byoh`, or reserved/not-yet-runnable `package` |
+| `[harness].endpoint` | Required for `byoh`: absolute HTTPS URL, at most 2048 characters; no credentials/query/fragment |
+| `[harness].protocol` | For `byoh`: `responses` or `rle-invocation`; set explicitly rather than relying on inference |
+| `[harness].name` | Package name such as `opencode`, valid only with reserved `type = "package"` |
+| `[model].name` | Optional model default, at most 256 characters; not an endpoint or credential |
+| `[model].renderer_name` | Optional renderer default, at most 256 characters |
+| `[train.grpo]` | Optional typed training defaults, not environment turn limits |
+| `[rollout.gym_openenv].model_response_field` | Accepted optional string (maximum 128 characters) for legacy schema routing; omit for SDK MCP environments |
 
-### What the manifest does *not* cover
+`gym` has no endpoint, protocol or package name. Both externally hosted async
+agents and Foundry HostedAgents use `byoh`; the protocol selects the invocation
+wire contract, not the environment MCP contract.
 
-There is no manifest syntax for individual tools, the reset signature, the observation shape, or
-the step budget (now a fixed server ceiling). Schema-driven tools come from action variants. SDK MCP
-tools come from typed methods registered with `RLEnvironment.tool()`. The reset signature is
-invisible to RLE in both modes.
+For `responses`, use the same-project Foundry **agent URL ending in
+`/agents/<name>`**, not a version URL or `/endpoint/protocols/openai/responses`.
+The service builds the Responses dispatch URL and rejects cross-project agent
+URLs before forwarding platform credentials. Agent versions are no longer
+targetable in this schema. Deploy the agent and configure its endpoint traffic
+before publishing.
 
-There is also no `[train]` / `[train.options]` free-form table any more. `model`, `training-file`,
-`validation-file`, and `suffix` are CLI-flag-only on `azd ai rle train`; GRPO and rollout
-hyperparameters that should travel with the published environment live under `[train.grpo]` and
-`[rollout]` instead (see the byoh harness reference and the `examples/harness/*/rle/rle.toml` samples
-for the full field list).
+Removed `subtype`, `agent_name`, `agent_version`, `invocation_url`, `base_url`
+and their legacy aliases are rejected, not silently translated. Replace an
+old BYOH `invocation_url` with `endpoint` and `protocol = "rle-invocation"`;
+replace HostedAgent name/version binding with the agent URL and
+`protocol = "responses"`.
+
+Identity and interface fields are not interchangeable. `[rle]` does **not**
+contain `type`/`subtype` in the current authoring manifest. Never put the agent
+name in `rle.name` merely because that agent is being optimized.
+Lengths above use the validators' UTF-16 character count after trimming.
+Unknown TOML fields are rejected by strict decoding. `imageTag` is camel-case;
+do not introduce an `image_tag` alias or assume it changes `publish` behavior.
+A new environment starts at `1.0.0`; later versions follow the direct next
+major, minor or patch release, rather than skipping versions.
+
+## Training defaults carried by the samples
+
+These are the fields in the verified current CLI schema as well as the samples:
+
+| `[train.grpo]` field | TOML type |
+| --- | --- |
+| `learning_rate` | float |
+| `lora_rank` | integer |
+| `group_size` | integer |
+| `groups_per_batch` | integer |
+| `num_epochs` | integer |
+| `max_steps` | integer |
+| `eval_every` | integer |
+| `save_every` | integer |
+| `remove_constant_reward_groups` | boolean |
+| `sampling_seed` | integer |
+| `min_trainable_group_members` | integer |
+
+All these integer defaults must be positive when supplied, **including
+`sampling_seed`**. `learning_rate` must be finite and positive;
+`remove_constant_reward_groups` is a boolean. Do not use zero to mean "disabled"
+unless the installed schema explicitly supports it.
+
+Copy tuned values only when intentionally preserving the sample's training
+setup. `train.grpo.max_steps` is the **training** step count, not the Gym
+episode length. Task records and training/validation file paths are job inputs,
+not tool schemas. Use the installed `train --help` for model/file/suffix flags;
+don't invent a `[train.options]` free-form table.
+
+The four shipped manifests do not contain `[rollout]`. The current service
+accepts `rollout.gym_openenv.model_response_field`, but SDK MCP environments do
+not need it. Do not invent additional rollout fields from service options or
+old documentation.
+
+## Patterns not to generate for current samples
+
+- `[rle] type = ...` / `subtype = ...`: use `[harness]`.
+- `[defaults.rollout]`, `[defaults.train.grpo]`: past documentation shapes,
+  not current sample authoring tables.
+- `[rollout.gym_openenv] model_response_field`: old schema-driven action
+  routing; current environments use SDK `GradeAction.response` and MCP tools.
+- `environment_protocol`: not an authoring selector. `[harness].protocol`
+  selects agent invocation, not the environment's MCP protocol.
+- `max_episode_steps` / `max_completion_tokens`: not represented in current
+  sample manifests. Do not confuse them with `train.grpo.max_steps`.
+
+### Current service defaults
+
+Latest remote Vienna source normalizes `model`, `train` and `rollout` defaults,
+with the fields listed above. The older `reinforcement` defaults model and its
+environment-authored `max_episode_steps` / `max_completion_tokens` are no
+longer active members. Gym limits are service-owned options, not authoring
+fields. Do not copy those obsolete members back from an older local checkout.
+
+Runtime session timeouts/capacity belong in app configuration; production
+agent timeouts belong in the agent. Neither implies a supported TOML key.
+
+## Validation and publication
+
+Parse TOML locally, then use the installed CLI/service for semantic validation:
+
+```powershell
+python -c "import pathlib,tomllib; tomllib.loads(pathlib.Path('rle.toml').read_text(encoding='utf-8')); print('TOML syntax OK')"
+azd ai rle publish
+```
+
+TOML parsing does not validate enum combinations, deployed agent versions,
+HTTPS reachability or model/renderer compatibility. Inspect publish errors;
+don't suppress unknown-field failures or delete fields blindly until it passes.
+
+Keep registry locations, access tokens, API keys and service IDs out of this
+manifest. The `byoh` harness endpoint is an intentional target binding; a
+Responses agent URL necessarily includes its project. Set other deployment
+context separately. Publish a
+new version for contract/image changes; do not mutate an already published
+version. `show` is a typed convenience view, not proof that every stored key
+was rendered.
