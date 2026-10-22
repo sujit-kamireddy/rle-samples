@@ -201,7 +201,7 @@ for this environment and produced a validated hillclimb against Qwen3-32B.
 ```bash
 cd rle
 azd ai rle train --rle-version <published-version> \
-  --model mai/mai-code-1.1-flash \
+  --model MAI/MAI-Code-1.1-Flash \
   --training-file ../job_data/train.jsonl \
   --validation-file ../job_data/validation.jsonl \
   --suffix data-code-agent
@@ -217,7 +217,7 @@ environment end to end, which is cheaper than waiting on the full dataset:
 
 ```bash
 azd ai rle train --rle-version <published-version> \
-  --model mai/mai-code-1.1-flash \
+  --model MAI/MAI-Code-1.1-Flash \
   --training-file ../job_data/train.jsonl \
   --validation-file ../job_data/validation.jsonl \
   --suffix data-code-agent \

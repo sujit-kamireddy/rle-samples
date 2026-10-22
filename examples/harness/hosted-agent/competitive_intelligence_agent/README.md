@@ -453,7 +453,7 @@ relative to the working directory:
 ```bash
 cd "$SAMPLE/rle"
 azd ai rle train --rle-version 2.0.0 \
-  --model qwen3-32b-1 \
+  --model Qwen/Qwen3-32B \
   --training-file ../job_data/train.jsonl \
   --validation-file ../job_data/validation.jsonl \
   --suffix ci-agent-1epoch \
@@ -470,7 +470,7 @@ discovering a problem at step 3:
 ```bash
 cd "$SAMPLE/rle"
 azd ai rle train --rle-version 2.0.0 \
-  --model qwen3-32b-1 \
+  --model Qwen/Qwen3-32B \
   --training-file ../job_data/train.jsonl \
   --validation-file ../job_data/validation.jsonl \
   --suffix ci-agent-1epoch \

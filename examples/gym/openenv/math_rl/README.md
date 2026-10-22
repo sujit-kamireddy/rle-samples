@@ -98,7 +98,7 @@ azd ai rle rollout --model Qwen/Qwen3-32B --task '{"seed":0,"split":"train"}'
 Start training with the checked-in selectors:
 
 ```powershell
-azd ai rle train --model qwen3-32b-1 --suffix math-rl `
+azd ai rle train --model Qwen/Qwen3-32B --suffix math-rl `
   --training-file .\job_data\train.jsonl `
   --validation-file .\job_data\validation.jsonl
 ```
