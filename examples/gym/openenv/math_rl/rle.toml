@@ -8,7 +8,7 @@ version = "1.0.0"
 type = "gym"
 
 [model]
-name = "qwen3-32b-1"
+name = "Qwen/Qwen3-32B"
 renderer_name = "qwen3_ext"
 
 [train.grpo]

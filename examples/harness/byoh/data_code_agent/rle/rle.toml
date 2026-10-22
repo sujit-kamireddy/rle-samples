@@ -10,7 +10,7 @@ endpoint = "https://your-harness.example.com/invoke"
 protocol = "rle-invocation"
 
 [model]
-name = "mai/mai-code-1.1-flash"
+name = "MAI/MAI-Code-1.1-Flash"
 renderer_name = "mai_harmony_internal"
 
 [train.grpo]

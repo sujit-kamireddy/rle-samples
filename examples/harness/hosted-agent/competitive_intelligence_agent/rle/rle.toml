@@ -10,7 +10,7 @@ endpoint = "https://<account>.services.ai.azure.com/api/projects/<project>/agent
 protocol = "responses"
 
 [model]
-name = "qwen3-32b-1"
+name = "Qwen/Qwen3-32B"
 renderer_name = "qwen3_ext"
 
 [train.grpo]
